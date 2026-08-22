@@ -172,3 +172,26 @@ continued in the parent session on branch `feat/wf4-ui-foundation`.
   (TDD §7.3); tests use fakes so no ffmpeg/librosa in this workflow.
 - Naming defaults to short classical; unknown Camelot raises ValueError rather
   than packing a garbage slot name.
+
+---
+
+## 2026-08-22 — WF5 (motion editor)
+
+### RESULT
+- Canvas + tools + picker implemented. Tools are pure functions; the canvas
+  calls the same primitives the byte-verify suite does, so drawn == scripted.
+- Byte-verify PASS: N=2 {0,64}, N=3 {0,43,86}, N=4 {0,32,64,96}, Disabl=0x80,
+  length-mask leaves bytes beyond N untouched, 130-byte to_bytes form matches
+  Spike A framing. `pytest tests/` = 96 passed.
+
+### RULES ENFORCED
+- Discrete writes go through `snap_stored` — a Filter Type ramp never emits 1/2/3.
+- Pitch is hidden from the picker (TDD §12 / encoding still OPEN).
+- Forced-TRIG domains always draw as staircases, even if TRIG HOLD is unchecked.
+- A 25th slot assignment is refused with a dialog, never dropped silently.
+- Overwrite of a populated target asks first (hardware erases on re-assign).
+
+### DEFERRED
+- Binding to pattern N>0 (currently pattern 0 on bank open).
+- OSC EDIT 1/2 are not in the 313-target TSV, so they cannot be offered.
+- Pitch drawable mapping still needs the hardware knob sweep.

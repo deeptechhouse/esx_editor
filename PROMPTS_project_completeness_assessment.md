@@ -73,3 +73,17 @@ Running log of user prompts for this chat session.
    - Created `ui/`: theme tokens + QSS, BudgetMeter/KnobDial/StepGrid/WaveformView, MainWindow shell (6 placeholder tabs), BankSession composition root.
    - `pytest tests/` → **78 passed** (offscreen Qt). No lint errors.
    - Logged in `research/CODEC_FINDINGS_LOG.md`.
+
+---
+
+## Prompt 8 — 2026-08-22
+
+> what are next steps when ready  /  start WF5
+
+**Action taken:** Implemented WF5 (motion editor) on `feat/wf5-motion-editor`:
+- `MotionDomain.snap_stored` + `MotionSlot.write_stored` / `empty` (length masking).
+- `OperationTable.targets_for_part` picker rules (accent=LEVEL only, hide Pitch, audio-in hides Start/Reverse, FX on non-accent).
+- Pure `ui/motion/tools.py` (pencil/line/ramp/lfo/s&h/invert/scale/smooth/random/clear/eraser).
+- `MotionCanvas` (three-state, forced-TRIG stairs, length mask), `TargetPicker`, `MotionEditor` (n/24 refuse, overwrite guard, Start Point seconds/step) wired into the Motion tab.
+- Byte-verify suite: discrete N=2/3/4 encodings, Disabl=0x80, mask, on-disk 130 B form.
+- `pytest tests/` → **96 passed**.

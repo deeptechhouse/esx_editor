@@ -96,6 +96,30 @@ class MotionDomain:
             return tuple(i * step for i in range(self._option_count))
         return tuple(range(128))
 
+    def snap_stored(self, raw: int) -> int:
+        """Clamp a raw 0–127 to a legal stored byte for this domain.
+
+        Discrete kinds snap to the nearest knob position (i * ceil(128/N));
+        continuous/bipolar clamp to 0–127 with no extra snap. Never returns the
+        Disabl sentinel — that is a third state, not a value.
+        """
+        raw = max(0, min(127, int(raw)))
+        if self._kind not in (self.BOOLEAN, self.ENUM):
+            return raw
+        legal = self.legal_values()
+        return min(legal, key=lambda v: abs(v - raw))
+
+    def is_discrete(self) -> bool:
+        return self._kind in (self.BOOLEAN, self.ENUM)
+
+    @classmethod
+    def continuous(cls, forced_trig: bool = False) -> "MotionDomain":
+        return cls(cls.CONTINUOUS, 0, forced_trig)
+
+    @classmethod
+    def discrete(cls, option_count: int, forced_trig: bool = True) -> "MotionDomain":
+        return cls(cls.ENUM, option_count, forced_trig)
+
 
 class MotionSlot:
     """One motion sequence: a target parameter + one value per step.
@@ -134,6 +158,11 @@ class MotionSlot:
     def in_use(self) -> bool:
         return self._target != self.EMPTY_TARGET
 
+    def set_target(self, target: int) -> None:
+        if not (0 <= target <= 0xFFFF):
+            raise InvariantError(f"motion target {target} out of uint16 range")
+        self._target = target
+
     def set_step(self, step: int, value: int | None,
                  domain: "MotionDomain") -> None:
         """Set one step. `value=None` means Disabl.
@@ -145,6 +174,29 @@ class MotionSlot:
         if not (0 <= step < self.NUM_STEPS):
             raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS-1}")
         self._values[step] = self.DISABLED if value is None else domain.encode(value)
+
+    def write_stored(self, step: int, stored: int | None,
+                     domain: "MotionDomain", *, length: int = NUM_STEPS) -> None:
+        """Write a raw 0–127 (or None=Disabl), snapping discrete targets.
+
+        Steps at or beyond `length` are masked and left untouched (TDD §8.2 / §8.5).
+        """
+        if not (0 <= step < self.NUM_STEPS):
+            raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS-1}")
+        if step >= length:
+            return
+        if stored is None:
+            self._values[step] = self.DISABLED
+            return
+        snapped = domain.snap_stored(stored)
+        if domain.is_discrete():
+            self.set_step(step, domain.decode(snapped), domain)
+        else:
+            self.set_step(step, snapped, domain)
+
+    @classmethod
+    def empty(cls) -> "MotionSlot":
+        return cls(cls.EMPTY_TARGET, bytes([cls.DISABLED] * cls.NUM_STEPS))
 
     def get_step(self, step: int) -> int:
         """Return the raw stored byte at a step (may be the Disabl sentinel)."""

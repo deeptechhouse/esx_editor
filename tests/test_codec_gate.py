@@ -347,10 +347,22 @@ def test_operation_table_resolves_discrete_domain() -> None:
     assert any(t.kind == "continuous" for t in ops)
 
 
-def test_operation_table_targets_for_part_not_implemented() -> None:
+def test_operation_table_targets_for_part_rules() -> None:
     ops = OperationTable.load(RESEARCH_DIR)
-    with pytest.raises(NotImplementedError):
-        ops.targets_for_part("drum")
+    drums = ops.targets_for_part("drum")
+    assert drums and all(
+        t.name.startswith("Drum") or t.name.startswith("FX") for t in drums)
+    assert not any(t.name.upper().endswith("PITCH") for t in drums)
+    accent = ops.targets_for_part("accent")
+    assert accent and all(t.name.upper().endswith("LEVEL") for t in accent)
+    audio = ops.targets_for_part("audioin")
+    assert not any("PITCH" in t.name.upper() or "START POINT" in t.name.upper()
+                   or t.name.upper().endswith("REVERSE") for t in audio)
+    keys = ops.targets_for_part("keyboard")
+    assert any("GLIDE" in t.name.upper() for t in keys)
+    assert not any(t.name.upper().endswith("PITCH") for t in keys)
+    with pytest.raises(ValueError):
+        ops.targets_for_part("nope")
 
 
 def test_operation_table_missing_domains_file() -> None:

@@ -142,13 +142,59 @@ class OperationTable:
     def is_known(self, target_id: int) -> bool:
         return target_id in self._by_id
 
-    def targets_for_part(self, part_kind: str) -> Sequence[MotionTarget]:
-        """Targets a given part type may automate (best-effort filter by name).
+    def section_of(self, target: MotionTarget) -> str:
+        """Hardware grouping: Part Common / Filter / Modulation / Effects."""
+        upper = target.name.upper()
+        if upper.startswith("FX") or "EFFECT" in upper:
+            return "Effects"
+        if "FILTER" in upper:
+            return "Filter"
+        if "MODULATION" in upper or " MOD " in f" {upper} ":
+            return "Modulation"
+        return "Part Common"
 
-        Full picker rules (accent=LEVEL only, audio-in hides Pitch/Start/Reverse,
-        keyboard swaps Pitch for Glide) are finalised in the motion-editor WF.
+    def targets_for_part(self, part_kind: str, *,
+                         hide_unverified_pitch: bool = True
+                         ) -> Sequence[MotionTarget]:
+        """Targets a given part type may automate (TDD §8.5).
+
+        Rules:
+          - accent offers only LEVEL
+          - audio-in hides Pitch / Start Point / Reverse
+          - keyboard already uses Glide (not Pitch) in the 313 table
+          - Pitch is hidden by default until the hardware mapping is proven
+            (research/CODEC_FINDINGS_LOG.md / TDD §12)
+          - FX Edit1/Edit2 are offered on every non-accent part
         """
-        raise NotImplementedError
+        prefixes = {
+            "drum": ("Drum",),
+            "keyboard": ("Keyboard",),
+            "stretchslice": ("Stretch", "Slice"),
+            "audioin": ("AudioIn",),
+            "accent": ("Accent",),
+        }.get(part_kind)
+        if prefixes is None:
+            raise ValueError(f"unknown part kind {part_kind!r}")
+
+        audio_hide = (" PITCH", " START POINT", " REVERSE")
+        out: list[MotionTarget] = []
+        for t in self._by_id.values():
+            if t.target_id == 0:
+                continue
+            name_u = t.name.upper()
+            is_fx = t.name.startswith("FX")
+            is_part = any(t.name.startswith(p) for p in prefixes)
+            if not (is_part or (is_fx and part_kind != "accent")):
+                continue
+            if part_kind == "accent" and not name_u.endswith("LEVEL"):
+                continue
+            if part_kind == "audioin" and any(name_u.endswith(s.strip()) or s in name_u
+                                              for s in audio_hide):
+                continue
+            if hide_unverified_pitch and name_u.endswith("PITCH"):
+                continue
+            out.append(t)
+        return tuple(out)
 
     def __iter__(self) -> Iterator[MotionTarget]:
         return iter(self._by_id.values())

@@ -21,6 +21,7 @@ from ui.session import BankSession
 from ui.theme import PALETTE
 from ui.widgets.budget_meter import BudgetMeter
 from ui.widgets.placeholder import PlaceholderView
+from ui.motion.editor import MotionEditor
 
 
 APP_TITLE = "ESX Bank Studio"
@@ -46,13 +47,20 @@ class MainWindow(QMainWindow):
         self._build_tabs()
         self._build_menus()
         self._build_status()
+        self.bankChanged.connect(self._bind_motion)
         self._refresh_chrome()
+        self._bind_motion()
 
     def _build_tabs(self) -> None:
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
+        self.motion_editor: MotionEditor | None = None
         for name, hint in TABS:
-            self.tabs.addTab(PlaceholderView(name, hint), name)
+            if name == "Motion":
+                self.motion_editor = MotionEditor()
+                self.tabs.addTab(self.motion_editor, name)
+            else:
+                self.tabs.addTab(PlaceholderView(name, hint), name)
         self.setCentralWidget(self.tabs)
 
     def _build_menus(self) -> None:
@@ -106,6 +114,13 @@ class MainWindow(QMainWindow):
         self._path_label.setText(path or name)
         self._dirty_label.setText("modified" if self.session.dirty else "")
         self.meter.set_used(self.session.pcm_used())
+
+    def _bind_motion(self) -> None:
+        if self.motion_editor is None or self.session.bank is None:
+            return
+        patterns = self.session.bank.patterns()
+        if patterns:
+            self.motion_editor.bind_pattern(patterns[0])
 
     def _on_new(self) -> None:
         if not self._confirm_discard():
