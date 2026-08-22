@@ -3,8 +3,11 @@ core — the pure-Python domain model for an ESX-1 bank.
 
 WHAT LIVES HERE
     Plain objects with NO I/O: Bank and everything it contains. The whole model
-    is unit-testable without touching a file. The codec turns bytes into these
-    objects and back; the UI edits them; nothing here imports codec or Qt.
+    is unit-testable without touching a file.     The codec turns bytes into these
+    objects and back; the UI edits them. Nothing here imports Qt or any codec
+    *logic*; the only codec dependency is `codec.layout`, a pure declarative
+    table of byte offsets that is the format's single source of truth (importing
+    it here avoids duplicating offsets, per TDD §04.6).
 
 DESIGN RULES (TDD §03, project encapsulation standard)
     - Fields are private (`_name`); behaviour is exposed through methods and

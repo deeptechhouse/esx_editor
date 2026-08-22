@@ -6,13 +6,12 @@ PART TYPES (TDD §2.2 / §3.1)
         Drum x9 (34 B), Keyboard x2 (274 B), StretchSlice x3 (32 B),
         AudioIn x1 (156 B), Accent x1 (18 B).
     Only the fields the model edits are decoded; the rest of each part
-    round-trips verbatim (TDD §4.1).
-
-SEQUENCE DATA
-    Per-step note/gate arrays, up to 128 steps (LastStep x PatternLength).
+    round-trips verbatim (TDD §4.1). WF2 keeps every part byte-exact.
 """
 
 from __future__ import annotations
+
+from core.errors import InvariantError
 
 
 # Part kinds (used by the operation table's target picker, TDD §8.5).
@@ -37,7 +36,7 @@ class SequenceData:
         return bytes(self._steps)
 
     def is_active(self, step: int) -> bool:
-        """True if the given step triggers."""
+        """True if the given step triggers. (Decode deferred to a later WF.)"""
         raise NotImplementedError
 
     def set_active(self, step: int, active: bool) -> None:
@@ -68,16 +67,18 @@ class Part:
 
     @property
     def sample_number(self) -> int:
-        """Which sample slot this part plays (where applicable)."""
+        """Which sample slot this part plays. (Decode deferred to a later WF.)"""
         raise NotImplementedError
 
     def sequence(self) -> SequenceData:
-        """The part's step sequence data."""
+        """The part's step sequence data. (Decode deferred to a later WF.)"""
         raise NotImplementedError
 
     def to_bytes(self) -> bytes:
-        raise NotImplementedError
+        return bytes(self._raw)
 
     @classmethod
     def from_bytes(cls, kind: str, index: int, raw: bytes) -> "Part":
-        raise NotImplementedError
+        if not raw:
+            raise InvariantError("part raw bytes must be non-empty")
+        return cls(kind, index, raw)

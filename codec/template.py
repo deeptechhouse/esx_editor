@@ -16,6 +16,8 @@ HOW THE TEMPLATE IS MADE
 
 from __future__ import annotations
 
+import os
+
 from core.bank import Bank
 
 # The blank template ships alongside this module as a data file.
@@ -27,10 +29,32 @@ class BankTemplate:
 
     __slots__ = ()
 
+    def _candidate_paths(self) -> tuple[str, ...]:
+        """Where to look for the bundled blank template, in priority order.
+
+        Bundled next to this module in a shipped build; falls back to the
+        spike_a copy in a dev checkout. (.esx files are gitignored, so the
+        template is bundled as build data rather than committed source.)
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        project = os.path.dirname(here)
+        return (
+            os.path.join(here, TEMPLATE_FILENAME),
+            os.path.join(project, "spike_a", TEMPLATE_FILENAME),
+        )
+
     def blank_bytes(self) -> bytes:
         """Return the raw bytes of the bundled blank template."""
-        raise NotImplementedError
+        for path in self._candidate_paths():
+            if os.path.exists(path):
+                with open(path, "rb") as f:
+                    return f.read()
+        from codec.errors import CodecError
+        raise CodecError(
+            f"blank template {TEMPLATE_FILENAME!r} not found in "
+            f"{self._candidate_paths()}")
 
     def new_bank(self) -> Bank:
         """Parse the bundled template into a fresh, editable Bank."""
-        raise NotImplementedError
+        from codec.reader import BankReader
+        return BankReader().read_auto(self.blank_bytes())

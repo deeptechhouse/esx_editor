@@ -40,30 +40,40 @@ class ByteReader:
 
     def seek(self, pos: int) -> None:
         """Move the cursor to an absolute offset. Raises on out-of-range."""
-        raise NotImplementedError
+        if not (0 <= pos <= len(self._data)):
+            raise ValueError(f"seek {pos} out of range 0..{len(self._data)}")
+        self._pos = pos
 
     def read(self, n: int) -> bytes:
         """Read `n` raw bytes and advance the cursor."""
-        raise NotImplementedError
+        if n < 0 or self._pos + n > len(self._data):
+            raise ValueError(
+                f"read {n} at {self._pos} exceeds size {len(self._data)}")
+        out = self._data[self._pos:self._pos + n]
+        self._pos += n
+        return out
 
     def read_at(self, pos: int, n: int) -> bytes:
         """Read `n` bytes at an absolute offset WITHOUT moving the cursor."""
-        raise NotImplementedError
+        if pos < 0 or n < 0 or pos + n > len(self._data):
+            raise ValueError(
+                f"read_at {n} at {pos} exceeds size {len(self._data)}")
+        return self._data[pos:pos + n]
 
     def read_u8(self) -> int:
-        raise NotImplementedError
+        return self.read(1)[0]
 
     def read_u16(self) -> int:
         """Read a big-endian unsigned 16-bit integer."""
-        raise NotImplementedError
+        return int.from_bytes(self.read(2), "big")
 
     def read_u32(self) -> int:
         """Read a big-endian unsigned 32-bit integer."""
-        raise NotImplementedError
+        return int.from_bytes(self.read(4), "big")
 
     def read_ascii(self, n: int) -> bytes:
         """Read a fixed-width raw name field (no decoding, no terminator)."""
-        raise NotImplementedError
+        return self.read(n)
 
 
 class ByteWriter:
@@ -79,22 +89,28 @@ class ByteWriter:
 
     def write(self, data: bytes) -> None:
         """Append raw bytes."""
-        raise NotImplementedError
+        self._buf += data
 
     def write_u8(self, value: int) -> None:
-        raise NotImplementedError
+        if not (0 <= value <= 0xFF):
+            raise ValueError(f"u8 {value} out of range")
+        self._buf.append(value)
 
     def write_u16(self, value: int) -> None:
         """Append a big-endian unsigned 16-bit integer."""
-        raise NotImplementedError
+        if not (0 <= value <= 0xFFFF):
+            raise ValueError(f"u16 {value} out of range")
+        self._buf += value.to_bytes(2, "big")
 
     def write_u32(self, value: int) -> None:
         """Append a big-endian unsigned 32-bit integer."""
-        raise NotImplementedError
+        if not (0 <= value <= 0xFFFFFFFF):
+            raise ValueError(f"u32 {value} out of range")
+        self._buf += value.to_bytes(4, "big")
 
     def write_ascii(self, raw: bytes, width: int, pad: int = 0x20) -> None:
         """Append a fixed-width name field, right-padding/truncating to `width`."""
-        raise NotImplementedError
+        self._buf += raw[:width].ljust(width, bytes([pad]))
 
     def getvalue(self) -> bytes:
         """Return an immutable copy of everything written so far."""

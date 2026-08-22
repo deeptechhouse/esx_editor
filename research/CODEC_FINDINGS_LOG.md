@@ -51,3 +51,55 @@ with populated stereo samples AND pitch motion.
   layout must be pinned against a known-good stereo sample.
 - REASONING: never "fix" a decoder to a value that also fails; confirm the field
   first. For now, `validate`'s stereo-rate warning is a known false-ish positive.
+
+---
+
+## 2026-08-22 — WF2 (codec + core bodies implemented)
+
+Implemented the real `codec` + `core` packages against the frozen WF1 contracts
+and proved the primary gate.
+
+### RESULT — Round-trip gate PASS through real codec/core (not just the spike)
+- `BankWriter().write(BankReader().read_auto(b)) == b`, byte-for-byte, on all
+  four available banks: `Chronic-Interactive.esx` (8.5 MB), `e4.esx` (4.5 MB),
+  `e5.esx` (14.7 MB), `spike_a/default.esx` (2.4 MB).
+- Mechanism: reader decomposes the image into contiguous spans
+  (pre | patterns | mid | mono-hdrs | stereo-hdrs | tail | pcm); everything not
+  modelled is held on `Bank.raw_regions` and replayed verbatim by the writer.
+  Identity is structural, not incidental. Test: `tests/test_roundtrip.py`.
+
+### DESIGN DECISION 1 — `core` imports `codec.layout` (only)
+- `core.pattern` / `core.bank` read structural offsets from `codec.layout`.
+- REASONING: layout.py is pure declarative data and the format's single source
+  of truth (TDD §04.6). Duplicating offsets in `core` would violate DRY and risk
+  drift. No codec *logic* is imported, so there is no behavioural coupling and no
+  import cycle (`codec.reader` -> `core` -> `codec.layout`; layout is a leaf).
+- The `core/__init__` note was updated to document this.
+
+### DESIGN DECISION 2 — songs & PSG kept verbatim for now
+- Song area lives inside the `mid` raw region (not yet decoded); `Bank.songs()`
+  returns empty but no song byte is lost. Full PSG layout is retained under a
+  `psg_image` raw region. Both decode in later workflows; round-trip is safe now.
+
+### CONFIRMATION — validate() catches incoherence that round-trips fine (item 6 / stale headers)
+- `e4.esx` round-trips byte-identically YET `BankValidator.validate` reports
+  **17 `offset_past_eof` errors**: sample slots 2..N have header end-offsets
+  (e.g. 0x5343E0) far beyond the file's PCM length (0x1FC398).
+- This is the exact scenario the TDD predicts ("a bank round-trips perfectly yet
+  has headers pointing outside the file") and is consistent with the **stale
+  sample-header** hardware question (HARDWARE_CHECKLIST item 6 / item 4): a card
+  save can leave header records referencing PCM that is no longer present.
+- CONCLUSION: the parse/validate separation is working as designed. `e4.esx` is a
+  useful negative fixture for a future validator test.
+- ACTION: `Chronic-Interactive.esx` and `e5.esx` validate clean (0 errors,
+  0 warnings) — the mono-only rate check (stereo rate skipped per BUG 1) produced
+  no false positives on these banks.
+
+### DEFERRED (documented as NotImplementedError, not silently dropped)
+- Semantic field decoders (pattern tempo/length, part sample#/steps, global MIDI
+  channel, sample tune) — land with the view workflows.
+- `Bank.commit_sample`/`clear_sample` — capacity guard active; full PCM
+  allocation lands with the staging workflow.
+- `OperationTable.targets_for_part` — picker rules land with the motion editor.
+  Domain resolution (id -> kind/options) is currently best-effort suffix-match;
+  `is_known`/`get` (all the validator needs) are exact (313 targets loaded).

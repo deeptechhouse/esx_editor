@@ -26,6 +26,8 @@ PLAYBACK MODE (TDD §8.4)
 
 from __future__ import annotations
 
+import struct
+
 from core.errors import InvariantError
 
 
@@ -38,6 +40,11 @@ class MotionDomain:
     """
 
     __slots__ = ("_kind", "_option_count", "_forced_trig")
+
+    CONTINUOUS = "continuous"
+    BIPOLAR = "bipolar"
+    BOOLEAN = "boolean"
+    ENUM = "enum"
 
     def __init__(self, kind: str, option_count: int, forced_trig: bool):
         self._kind = kind
@@ -52,6 +59,12 @@ class MotionDomain:
     def forced_trig(self) -> bool:
         return self._forced_trig
 
+    def _step(self) -> int:
+        """Byte spacing per option for a discrete kind: ceil(128 / N)."""
+        if self._option_count < 1:
+            raise InvariantError("discrete domain needs option_count >= 1")
+        return -(-128 // self._option_count)
+
     def encode(self, value: int) -> int:
         """Musical/option value -> stored byte (0-127).
 
@@ -60,16 +73,28 @@ class MotionDomain:
         range and returns the byte unchanged. Raises InvariantError on an
         out-of-domain value.
         """
-        raise NotImplementedError
+        if self._kind in (self.BOOLEAN, self.ENUM):
+            if not (0 <= value < self._option_count):
+                raise InvariantError(
+                    f"option index {value} out of range 0..{self._option_count-1}")
+            return value * self._step()
+        # continuous / bipolar are stored as a raw 0..127 byte
+        if not (0 <= value <= 127):
+            raise InvariantError(f"continuous value {value} out of range 0..127")
+        return value
 
     def decode(self, stored: int) -> int:
         """Stored byte -> musical/option value (inverse of encode)."""
-        raise NotImplementedError
+        if self._kind in (self.BOOLEAN, self.ENUM):
+            return stored // self._step()
+        return stored
 
     def legal_values(self) -> tuple[int, ...]:
-        """The stored bytes this domain permits (for snapping/UI). Continuous
-        returns the full 0-127 range; enum/boolean return only knob positions."""
-        raise NotImplementedError
+        """The stored bytes this domain permits (for snapping/UI)."""
+        if self._kind in (self.BOOLEAN, self.ENUM):
+            step = self._step()
+            return tuple(i * step for i in range(self._option_count))
+        return tuple(range(128))
 
 
 class MotionSlot:
@@ -85,11 +110,14 @@ class MotionSlot:
     DISABLED = 0x80          # per-step "do not update" sentinel
     EMPTY_TARGET = 0xFFFF    # slot is unused
     NUM_STEPS = 128
+    CHUNK_SIZE = 130         # 2-byte target + 128 values
 
     def __init__(self, target: int, values: bytes):
         if len(values) != self.NUM_STEPS:
             raise InvariantError(
                 f"motion needs exactly {self.NUM_STEPS} values, got {len(values)}")
+        if not (0 <= target <= 0xFFFF):
+            raise InvariantError(f"motion target {target} out of uint16 range")
         self._target = target
         self._values = bytearray(values)
 
@@ -114,24 +142,33 @@ class MotionSlot:
         cannot write 1 into a Filter Type field that only accepts 0/32/64/96.
         Raises InvariantError if step is out of range.
         """
-        raise NotImplementedError
+        if not (0 <= step < self.NUM_STEPS):
+            raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS-1}")
+        self._values[step] = self.DISABLED if value is None else domain.encode(value)
 
     def get_step(self, step: int) -> int:
         """Return the raw stored byte at a step (may be the Disabl sentinel)."""
-        raise NotImplementedError
+        if not (0 <= step < self.NUM_STEPS):
+            raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS-1}")
+        return self._values[step]
 
     def is_disabled(self, step: int) -> bool:
-        raise NotImplementedError
+        return self.get_step(step) == self.DISABLED
 
     def clear(self) -> None:
         """Mark the slot unused and fill every step with Disabl."""
-        raise NotImplementedError
+        self._target = self.EMPTY_TARGET
+        self._values = bytearray([self.DISABLED] * self.NUM_STEPS)
 
     def to_bytes(self) -> bytes:
         """Serialize to the 130-byte on-disk form (uint16 target + 128 values)."""
-        raise NotImplementedError
+        return struct.pack(">H", self._target) + bytes(self._values)
 
     @classmethod
     def from_bytes(cls, raw: bytes) -> "MotionSlot":
         """Parse the 130-byte on-disk form."""
-        raise NotImplementedError
+        if len(raw) != cls.CHUNK_SIZE:
+            raise InvariantError(
+                f"motion chunk must be {cls.CHUNK_SIZE} bytes, got {len(raw)}")
+        (target,) = struct.unpack_from(">H", raw, 0)
+        return cls(target, raw[2:])

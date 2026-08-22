@@ -5,32 +5,39 @@ FORMAT (TDD §2.3, VERIFIED)
     Offsets are BYTE offsets relative to ADDR_SAMPLE_DATA, not frame counts.
     Empty slot sentinel: offset fields == 0xFFFFFFFF.
 
-SAMPLE TUNE (TDD §2.3 / §5.4, VERIFIED)
-    A packed 16-bit field carrying TWO concerns at once:
-        bit 15    : sign
-        bits 8..14: whole semitones (0..127)
-        bits 0..7 : hundredths (0..99)
-    Stored tune = rate compensation + musical transposition. The UI must show
-    MUSICAL tune (0.00 for an untransposed sample at any storage rate):
-        musical_tune = stored_tune - 12 * log2(rate / 44100)
-
 INVARIANTS (TDD §3.2)
     Sample names are exactly 8 bytes (the setter pads/truncates).
+
+WF2 NOTE
+    The header round-trips byte-exact (raw retained). Only the fields the
+    validator and budget need are decoded here. The STEREO sample-rate field
+    offset is unconfirmed (see research/CODEC_FINDINGS_LOG.md); `sample_rate`
+    is only trustworthy for mono slots for now.
 """
 
 from __future__ import annotations
 
+import struct
+
+from core.errors import InvariantError
+
+EMPTY_OFFSET = 0xFFFFFFFF
+NAME_LEN = 8
+MONO_SIZE = 40
+STEREO_SIZE = 44
+
 
 class SampleSlot:
-    """One sample header. `stereo` selects the 44-byte layout and slot pool.
-
-    Undecoded header bytes are retained verbatim so the slot round-trips even
-    though not every field is interpreted yet (TDD §4.1).
-    """
+    """One sample header. `stereo` selects the 44-byte layout and slot pool."""
 
     __slots__ = ("_raw", "_stereo", "_index")
 
     def __init__(self, raw: bytes, stereo: bool, index: int):
+        expected = STEREO_SIZE if stereo else MONO_SIZE
+        if len(raw) != expected:
+            raise InvariantError(
+                f"{'stereo' if stereo else 'mono'} sample header must be "
+                f"{expected} bytes, got {len(raw)}")
         self._raw = bytearray(raw)
         self._stereo = stereo
         self._index = index
@@ -45,49 +52,53 @@ class SampleSlot:
 
     @property
     def empty(self) -> bool:
-        """True if the slot's offset fields hold the empty sentinel."""
-        raise NotImplementedError
-
-    @property
-    def name(self) -> str:
-        """The 8-byte name decoded for display (raw bytes, trailing pad stripped)."""
-        raise NotImplementedError
-
-    def set_name(self, value: str) -> None:
-        """Set the slot name; pads/truncates to exactly 8 bytes (invariant)."""
-        raise NotImplementedError
+        """True if the slot's channel-1 offset holds the empty sentinel."""
+        return struct.unpack_from(">I", self._raw, 8)[0] == EMPTY_OFFSET
 
     @property
     def name_bytes(self) -> bytes:
-        raise NotImplementedError
+        return bytes(self._raw[:NAME_LEN])
+
+    @property
+    def name(self) -> str:
+        return self.name_bytes.decode("ascii", "replace").rstrip("\x00 ")
+
+    def set_name(self, value: str) -> None:
+        """Set the slot name; pads/truncates to exactly 8 bytes (invariant)."""
+        raw = value.encode("ascii", "replace")[:NAME_LEN].ljust(NAME_LEN, b" ")
+        if len(raw) != NAME_LEN:
+            raise InvariantError("sample name must encode to exactly 8 bytes")
+        self._raw[:NAME_LEN] = raw
 
     @property
     def offset_start(self) -> int:
         """Start byte offset of channel 1 PCM, relative to ADDR_SAMPLE_DATA."""
-        raise NotImplementedError
+        return struct.unpack_from(">I", self._raw, 8)[0]
 
     @property
     def offset_end(self) -> int:
-        raise NotImplementedError
+        return struct.unpack_from(">I", self._raw, 12)[0]
 
     @property
     def sample_rate(self) -> int:
-        """The sample's ORIGINAL rate as stored in the header."""
-        raise NotImplementedError
+        """The sample's ORIGINAL rate (mono header, offset 28).
+
+        Trustworthy for mono only; the stereo rate offset is unconfirmed.
+        """
+        return struct.unpack_from(">I", self._raw, 28)[0]
 
     @property
     def stored_tune(self) -> float:
-        """The raw packed tune value (compensation + transposition)."""
+        """The raw packed tune value. (Full decode deferred to a later WF.)"""
         raise NotImplementedError
 
     def musical_tune(self) -> float:
-        """Transposition with rate-compensation removed (0.00 = untransposed)."""
+        """Transposition with rate-compensation removed (deferred to a later WF)."""
         raise NotImplementedError
 
     def to_bytes(self) -> bytes:
-        """Serialize to the 40- or 44-byte on-disk header."""
-        raise NotImplementedError
+        return bytes(self._raw)
 
     @classmethod
     def from_bytes(cls, raw: bytes, stereo: bool, index: int) -> "SampleSlot":
-        raise NotImplementedError
+        return cls(raw, stereo, index)

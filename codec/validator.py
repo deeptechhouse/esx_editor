@@ -69,13 +69,20 @@ class ValidationReport:
     @property
     def ok(self) -> bool:
         """True if there are no error-severity findings."""
-        raise NotImplementedError
+        return not self.errors()
 
     def errors(self) -> tuple[Finding, ...]:
-        raise NotImplementedError
+        return tuple(f for f in self._findings if f.severity == "error")
 
     def warnings(self) -> tuple[Finding, ...]:
-        raise NotImplementedError
+        return tuple(f for f in self._findings if f.severity == "warning")
+
+    def __len__(self) -> int:
+        return len(self._findings)
+
+
+import codec.layout as L
+from core.bank import SAVE_PSG
 
 
 class BankValidator:
@@ -83,9 +90,88 @@ class BankValidator:
 
     __slots__ = ("_ops",)
 
-    def __init__(self, operation_table: OperationTable):
+    def __init__(self, operation_table: OperationTable | None = None):
         self._ops = operation_table
 
     def validate(self, bank: Bank) -> ValidationReport:
         """Return a report of every coherence problem found. Never mutates."""
-        raise NotImplementedError
+        findings: list[Finding] = []
+        if bank.save_type == SAVE_PSG:
+            # A PSG save has no sample area; only motion coherence is checkable.
+            self._check_motion(bank, findings)
+            return ValidationReport(findings)
+
+        self._check_samples(bank, findings)
+        self._check_motion(bank, findings)
+        return ValidationReport(findings)
+
+    def _check_samples(self, bank: Bank, findings: list[Finding]) -> None:
+        n_mono_hdr, n_stereo_hdr, current_offset = bank.sample_area_header()
+        pcm_len = len(bank.pcm)
+        samples = bank.samples()
+        mono = samples[:L.NUM_SAMPLES_MONO]
+        stereo = samples[L.NUM_SAMPLES_MONO:]
+
+        occ_mono = sum(1 for s in mono if not s.empty)
+        occ_stereo = sum(1 for s in stereo if not s.empty)
+        if occ_mono != n_mono_hdr:
+            findings.append(Finding(
+                "warning", "mono_count_mismatch",
+                f"header says {n_mono_hdr} mono samples but {occ_mono} slots occupied"))
+        if occ_stereo != n_stereo_hdr:
+            findings.append(Finding(
+                "warning", "stereo_count_mismatch",
+                f"header says {n_stereo_hdr} stereo samples but {occ_stereo} slots occupied"))
+
+        highest_end = 0
+        for s in samples:
+            if s.empty:
+                continue
+            start, end = s.offset_start, s.offset_end
+            highest_end = max(highest_end, end)
+            if end < start:
+                findings.append(Finding(
+                    "error", "reversed_offsets",
+                    f"sample slot {s.index} ({'stereo' if s.stereo else 'mono'}) "
+                    f"end 0x{end:X} < start 0x{start:X}"))
+            if end > pcm_len:
+                findings.append(Finding(
+                    "error", "offset_past_eof",
+                    f"sample slot {s.index} ({'stereo' if s.stereo else 'mono'}) "
+                    f"end 0x{end:X} exceeds PCM length 0x{pcm_len:X}"))
+            # Sample-rate range is only trustworthy for mono (stereo rate offset
+            # is unconfirmed -- see research/CODEC_FINDINGS_LOG.md).
+            if not s.stereo:
+                rate = s.sample_rate
+                if not (L.MIN_IMPORT_RATE_HZ <= rate <= L.MAX_IMPORT_RATE_HZ):
+                    findings.append(Finding(
+                        "warning", "rate_out_of_range",
+                        f"sample slot {s.index} rate {rate} Hz outside "
+                        f"{L.MIN_IMPORT_RATE_HZ}-{L.MAX_IMPORT_RATE_HZ} Hz"))
+
+        if current_offset < highest_end:
+            findings.append(Finding(
+                "error", "current_offset_low",
+                f"currentOffset 0x{current_offset:X} below highest sample end "
+                f"0x{highest_end:X}"))
+        if current_offset > pcm_len:
+            findings.append(Finding(
+                "warning", "current_offset_past_eof",
+                f"currentOffset 0x{current_offset:X} exceeds PCM length 0x{pcm_len:X}"))
+        if pcm_len > L.MAX_SAMPLE_BYTES:
+            findings.append(Finding(
+                "error", "pcm_over_capacity",
+                f"PCM {pcm_len:,} B exceeds capacity {L.MAX_SAMPLE_BYTES:,} B"))
+
+    def _check_motion(self, bank: Bank, findings: list[Finding]) -> None:
+        if self._ops is None:
+            return
+        for p_idx, pattern in enumerate(bank.patterns()):
+            for slot in pattern.motion_slots():
+                if not slot.in_use:
+                    continue
+                if not self._ops.is_known(slot.target):
+                    findings.append(Finding(
+                        "warning", "unknown_motion_target",
+                        f"pattern {p_idx} uses unknown motion target "
+                        f"0x{slot.target:04X}"))

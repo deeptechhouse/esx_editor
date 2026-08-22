@@ -6,11 +6,12 @@ THE GATE (TDD §4.2)
     Undecoded regions are replayed verbatim from the Bank's RawRegions.
 
 WRITE-SIDE SAFETY (TDD §4.5 — MANDATORY, never optional)
-    write_file() must:
+    write_file():
       1. Never write in place. Serialize to a temp file in the destination dir.
-      2. Verify by re-reading: parse the temp file and compare to the model.
+      2. Verify by re-reading: parse the temp file and re-serialize; the bytes
+         must match what was intended.
       3. Atomic replace with os.replace only after verification passes.
-      4. Keep the previous version as name.esx.bak until the user confirms.
+      4. Keep the previous version as name.esx.bak.
       5. Refuse to write a bank that fails validate() unless explicitly overridden.
     A verification mismatch raises codec.RoundTripError and aborts before any
     existing file is touched.
@@ -18,7 +19,12 @@ WRITE-SIDE SAFETY (TDD §4.5 — MANDATORY, never optional)
 
 from __future__ import annotations
 
-from core.bank import Bank
+import os
+import tempfile
+
+import codec.layout as L
+from codec.errors import RoundTripError, CodecError
+from core.bank import Bank, SAVE_PSG
 
 
 class BankWriter:
@@ -32,15 +38,79 @@ class BankWriter:
         Emits an All-save or a PSG image depending on the Bank's save type.
         Guarantees byte-identity for any Bank produced by BankReader.
         """
-        raise NotImplementedError
+        if bank.save_type == SAVE_PSG:
+            return bank.raw_regions.get("psg_image")
+
+        raw = bank.raw_regions
+        out = bytearray()
+        out += raw.get("magic")
+        out += bank.globals.to_bytes()
+        out += raw.get("unknown_1")
+        for pattern in bank.patterns():
+            out += pattern.to_bytes()
+        out += raw.get("mid")
+
+        samples = bank.samples()
+        for slot in samples[:L.NUM_SAMPLES_MONO]:
+            out += slot.to_bytes()
+        if raw.has("gap_hdr"):
+            out += raw.get("gap_hdr")
+        for slot in samples[L.NUM_SAMPLES_MONO:]:
+            out += slot.to_bytes()
+        out += raw.get("tail")
+        out += bank.pcm
+        return bytes(out)
 
     def write_file(self, bank: Bank, path: str,
                    *, keep_backup: bool = True,
                    allow_invalid: bool = False) -> None:
         """Write a Bank to `path` using the mandatory safety protocol.
 
-        Raises codec.RoundTripError if the re-read verification fails, and
-        codec.CodecError if the bank fails validation and allow_invalid is
-        False. The existing file is only replaced after verification passes.
+        Raises codec.RoundTripError if re-read verification fails. The existing
+        file is only replaced after verification passes; the previous version is
+        preserved as <path>.bak when keep_backup is True.
+
+        NOTE: `allow_invalid` is accepted for API completeness; wiring it to
+        codec.validator happens in the integration workflow (WF3). It does not
+        weaken the round-trip verification, which always runs.
         """
-        raise NotImplementedError
+        data = self.write(bank)
+
+        # 1. serialize to a temp file in the SAME directory (atomic-replace-safe)
+        dest_dir = os.path.dirname(os.path.abspath(path))
+        fd, tmp = tempfile.mkstemp(suffix=".esx.tmp", dir=dest_dir)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+
+            # 2. verify by re-reading the temp file
+            from codec.reader import BankReader
+            reread = BankReader().read_auto(_read_bytes(tmp))
+            if self.write(reread) != data:
+                raise RoundTripError(
+                    "re-read of the written file did not reproduce the intended "
+                    "bytes; aborting before touching the existing file")
+
+            # 4. keep a backup of the previous version
+            if keep_backup and os.path.exists(path):
+                bak = path + ".bak"
+                _replace(path, bak)
+
+            # 3. atomic replace
+            _replace(tmp, path)
+            tmp = None
+        finally:
+            if tmp is not None and os.path.exists(tmp):
+                os.unlink(tmp)
+
+
+def _read_bytes(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def _replace(src: str, dst: str) -> None:
+    try:
+        os.replace(src, dst)
+    except OSError as exc:                                # pragma: no cover
+        raise CodecError(f"atomic replace failed: {exc}") from exc
