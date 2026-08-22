@@ -144,3 +144,31 @@ PLUS >=98% line coverage on `codec/`. Both met.
 - `writer._replace` carries `# pragma: no cover` for its `os.replace` OSError
   branch (platform/FS-dependent, not reproducible in a unit test). This is the
   only intentionally-excluded line; coverage is otherwise total.
+
+---
+
+## 2026-08-22 — WF4 (UI foundation + workspace bodies)
+
+The forked WF4 worker died at a usage-limit before writing any code; implementation
+continued in the parent session on branch `feat/wf4-ui-foundation`.
+
+### RESULT
+- `workspace/`: budget (exact align_up cost model), limits (fit/analyse/warn +
+  mute policy), naming (TDD §5.3 packed 8-byte + staging filename), staging
+  (crash-safe session dir + PID lockfile + orphan sweep + fake-able StagingBank).
+- `ui/`: token-driven theme (ESX chassis/amber LCD, WCAG AA contrast), reusable
+  widgets (BudgetMeter, KnobDial, StepGrid, WaveformView), MainWindow shell with
+  6 placeholder tabs, BankSession composition root (the only UI object that
+  imports codec/).
+- PySide6 **6.9.3** installed into `~/.venvs/esx` (pinned; 6.10+ will not install
+  on macOS 12). Offscreen QApplication + QPainter grab() smoke-tested.
+- `pytest tests/` = **78 passed**. No lint errors.
+
+### DESIGN DECISIONS
+- UI widgets never import codec/; BankSession is the composition root (TDD §10.2).
+- View tabs are placeholders on purpose — WF6 fills Bank/Staging/Pattern/Song/Global,
+  WF5 fills Motion. Shell menus (New/Open/Save) already work against BankSession.
+- StagingBank.add re-encodes via the AudioConverter port from the ORIGINAL path
+  (TDD §7.3); tests use fakes so no ffmpeg/librosa in this workflow.
+- Naming defaults to short classical; unknown Camelot raises ValueError rather
+  than packing a garbage slot name.

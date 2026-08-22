@@ -13,7 +13,9 @@ Ported in contract form from spike_a/budget.py; bodies land in a later workflow.
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Callable, Sequence
+
+import codec.layout as L
 
 
 # The quality ladder offered in the UI (label, rate). TDD §6.3.
@@ -25,6 +27,7 @@ TIERS: tuple[tuple[str, int], ...] = (
     ("Telephone", 11025),
 )
 DEFAULT_RATE = 44100
+CAPACITY = L.MAX_SAMPLE_BYTES          # 25,165,824 bytes
 
 
 class BudgetItem:
@@ -59,17 +62,33 @@ class BudgetCalculator:
 
     @staticmethod
     def align_up(n: int, boundary: int) -> int:
-        raise NotImplementedError
+        if boundary <= 0:
+            raise ValueError(f"alignment boundary must be > 0, got {boundary}")
+        return ((n + boundary - 1) // boundary) * boundary
 
     def cost_bytes(self, duration_s: float, rate: int, channels: int = 1) -> int:
         """Exact bytes a sample occupies at a rate: align_up(frames*2*ch + 2, 4)."""
-        raise NotImplementedError
+        if duration_s < 0 or rate <= 0 or channels < 1:
+            raise ValueError(
+                f"invalid cost inputs: duration={duration_s} rate={rate} ch={channels}")
+        frames = int(round(duration_s * rate))
+        raw = frames * 2 * channels
+        return self.align_up(raw + 2, 4)
 
     def total_cost(self, items: Sequence[BudgetItem],
-                   rate_for=None) -> int:
+                   rate_for: Callable[[str], int] | None = None) -> int:
         """Sum the cost of every item; rate_for(name)->rate overrides the default."""
-        raise NotImplementedError
+        lookup = rate_for or (lambda _name: DEFAULT_RATE)
+        return sum(
+            self.cost_bytes(item.duration_s, lookup(item.name), item.channels)
+            for item in items)
 
     def seconds_available(self, rate: int, channels: int = 1) -> float:
         """Seconds of audio that fit in an empty bank at this rate."""
-        raise NotImplementedError
+        if rate <= 0 or channels < 1:
+            raise ValueError(f"invalid rate/channels: {rate}/{channels}")
+        return CAPACITY / (rate * 2 * channels)
+
+    def remaining_bytes(self, used: int) -> int:
+        """Bytes still free given a currently-used total (may be negative)."""
+        return CAPACITY - used

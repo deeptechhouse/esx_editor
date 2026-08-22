@@ -58,3 +58,18 @@ Running log of user prompts for this chat session.
    - **Adversarial suite** (`tests/test_codec_gate.py`): malformed-input rejection (→ `FormatError`), surgical-edit proofs (only intended bytes change + re-reads), write-safety proofs (temp cleanup, `.bak`, `RoundTripError` on verify-mismatch never touches the destination), and every validator finding code via byte-level fixtures.
    - **Result**: `pytest tests/` → **52 passed**; **100% line coverage on `codec/`** (473 stmts, 0 missed) — exceeds the 98% bar. No lint errors.
    - Logged the barrier result in `research/CODEC_FINDINGS_LOG.md`.
+
+---
+
+## Prompt 7 — 2026-08-22
+
+> begin wf4  /  Start multitasking  /  (forked worker died at usage limit; continue in parent)
+
+**Action taken:**
+1. Forked worker [WF4 UI foundation] died immediately (Other Models usage limit) after reading workspace stubs; no code written.
+2. Continued WF4 on branch `feat/wf4-ui-foundation`:
+   - Installed **PySide6 6.9.3** into `~/.venvs/esx` (pinned; last installable on macOS 12).
+   - Implemented `workspace/` bodies: budget, limits, naming (TDD §5.3), staging session (PID lockfile + orphan sweep) + StagingBank against audio ports.
+   - Created `ui/`: theme tokens + QSS, BudgetMeter/KnobDial/StepGrid/WaveformView, MainWindow shell (6 placeholder tabs), BankSession composition root.
+   - `pytest tests/` → **78 passed** (offscreen Qt). No lint errors.
+   - Logged in `research/CODEC_FINDINGS_LOG.md`.
