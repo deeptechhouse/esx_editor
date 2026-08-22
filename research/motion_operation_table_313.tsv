@@ -1,0 +1,313 @@
+0	Unknown
+4	Drum1 Pitch
+5	Drum1 Filter Type
+6	Drum1 Filter Cutoff
+7	Drum1 Filter Resonance
+8	Drum1 Filter EG Int
+9	Drum1 Start Point
+10	Drum1 Level
+11	Drum1 Pan
+12	Drum1 EG Time
+13	Drum1 Amp EG
+14	Drum1 Roll
+15	Drum1 Reverse
+16	Drum1 Effect Send
+17	Drum1 Effect Select
+18	Drum1 Modulation Type
+19	Drum1 Modulation Depth
+20	Drum1 Modulation Speed
+21	Drum1 Modulation Destination
+22	Drum1 Modulation BPM Sync
+23	Drum1 Motion Seq Type
+36	Drum2 Pitch
+37	Drum2 Filter Type
+38	Drum2 Filter Cutoff
+39	Drum2 Filter Resonance
+40	Drum2 Filter EG Int
+41	Drum2 Start Point
+42	Drum2 Level
+43	Drum2 Pan
+44	Drum2 EG Time
+45	Drum2 Amp EG
+46	Drum2 Roll
+47	Drum2 Reverse
+48	Drum2 Effect Send
+49	Drum2 Effect Select
+50	Drum2 Modulation Type
+51	Drum2 Modulation Depth
+52	Drum2 Modulation Speed
+53	Drum2 Modulation Destination
+54	Drum2 Modulation BPM Sync
+55	Drum2 Motion Seq Type
+68	Drum3 Pitch
+69	Drum3 Filter Type
+70	Drum3 Filter Cutoff
+71	Drum3 Filter Resonance
+72	Drum3 Filter EG Int
+73	Drum3 Start Point
+74	Drum3 Level
+75	Drum3 Pan
+76	Drum3 EG Time
+77	Drum3 Amp EG
+78	Drum3 Roll
+79	Drum3 Reverse
+80	Drum3 Effect Send
+81	Drum3 Effect Select
+82	Drum3 Modulation Type
+83	Drum3 Modulation Depth
+84	Drum3 Modulation Speed
+85	Drum3 Modulation Destination
+86	Drum3 Modulation BPM Sync
+87	Drum3 Motion Seq Type
+100	Drum4 Pitch
+101	Drum4 Filter Type
+102	Drum4 Filter Cutoff
+103	Drum4 Filter Resonance
+104	Drum4 Filter EG Int
+105	Drum4 Start Point
+106	Drum4 Level
+107	Drum4 Pan
+108	Drum4 EG Time
+109	Drum4 Amp EG
+110	Drum4 Roll
+111	Drum4 Reverse
+112	Drum4 Effect Send
+113	Drum4 Effect Select
+114	Drum4 Modulation Type
+115	Drum4 Modulation Depth
+116	Drum4 Modulation Speed
+117	Drum4 Modulation Destination
+118	Drum4 Modulation BPM Sync
+119	Drum4 Motion Seq Type
+132	Drum5 Pitch
+133	Drum5 Filter Type
+134	Drum5 Filter Cutoff
+135	Drum5 Filter Resonance
+136	Drum5 Filter EG Int
+137	Drum5 Start Point
+138	Drum5 Level
+139	Drum5 Pan
+140	Drum5 EG Time
+141	Drum5 Amp EG
+142	Drum5 Roll
+143	Drum5 Reverse
+144	Drum5 Effect Send
+145	Drum5 Effect Select
+146	Drum5 Modulation Type
+147	Drum5 Modulation Depth
+148	Drum5 Modulation Speed
+149	Drum5 Modulation Destination
+150	Drum5 Modulation BPM Sync
+151	Drum5 Motion Seq Type
+164	Drum6A Pitch
+165	Drum6A Filter Type
+166	Drum6A Filter Cutoff
+167	Drum6A Filter Resonance
+168	Drum6A Filter EG Int
+169	Drum6A Start Point
+170	Drum6A Level
+171	Drum6A Pan
+172	Drum6A EG Time
+173	Drum6A Amp EG
+174	Drum6A Roll
+175	Drum6A Reverse
+176	Drum6A Effect Send
+177	Drum6A Effect Select
+178	Drum6A Modulation Type
+179	Drum6A Modulation Depth
+180	Drum6A Modulation Speed
+181	Drum6A Modulation Destination
+182	Drum6A Modulation BPM Sync
+183	Drum6A Motion Seq Type
+196	Drum6B Pitch
+197	Drum6B Filter Type
+198	Drum6B Filter Cutoff
+199	Drum6B Filter Resonance
+200	Drum6B Filter EG Int
+201	Drum6B Start Point
+202	Drum6B Level
+203	Drum6B Pan
+204	Drum6B EG Time
+205	Drum6B Amp EG
+206	Drum6B Roll
+207	Drum6B Reverse
+208	Drum6B Effect Send
+209	Drum6B Effect Select
+210	Drum6B Modulation Type
+211	Drum6B Modulation Depth
+212	Drum6B Modulation Speed
+213	Drum6B Modulation Destination
+214	Drum6B Modulation BPM Sync
+215	Drum6B Motion Seq Type
+228	Drum7A Pitch
+229	Drum7A Filter Type
+230	Drum7A Filter Cutoff
+231	Drum7A Filter Resonance
+232	Drum7A Filter EG Int
+233	Drum7A Start Point
+234	Drum7A Level
+235	Drum7A Pan
+236	Drum7A EG Time
+237	Drum7A Amp EG
+238	Drum7A Roll
+239	Drum7A Reverse
+240	Drum7A Effect Send
+241	Drum7A Effect Select
+242	Drum7A Modulation Type
+243	Drum7A Modulation Depth
+244	Drum7A Modulation Speed
+245	Drum7A Modulation Destination
+246	Drum7A Modulation BPM Sync
+247	Drum7A Motion Seq Type
+260	Drum7B Pitch
+261	Drum7B Filter Type
+262	Drum7B Filter Cutoff
+263	Drum7B Filter Resonance
+264	Drum7B Filter EG Int
+265	Drum7B Start Point
+266	Drum7B Level
+267	Drum7B Pan
+268	Drum7B EG Time
+269	Drum7B Amp EG
+270	Drum7B Roll
+271	Drum7B Reverse
+272	Drum7B Effect Send
+273	Drum7B Effect Select
+274	Drum7B Modulation Type
+275	Drum7B Modulation Depth
+276	Drum7B Modulation Speed
+277	Drum7B Modulation Destination
+278	Drum7B Modulation BPM Sync
+279	Drum7B Motion Seq Type
+291	Keyboard1 Glide
+293	Keyboard1 Filter Type
+294	Keyboard1 Filter Cutoff
+295	Keyboard1 Filter Resonance
+296	Keyboard1 Filter EG Int
+297	Keyboard1 Start Point
+298	Keyboard1 Level
+299	Keyboard1 Pan
+300	Keyboard1 EG Time
+301	Keyboard1 Amp EG
+302	Keyboard1 Roll
+303	Keyboard1 Reverse
+304	Keyboard1 Effect Send
+305	Keyboard1 Effect Select
+306	Keyboard1 Modulation Type
+307	Keyboard1 Modulation Depth
+308	Keyboard1 Modulation Speed
+309	Keyboard1 Modulation Destination
+310	Keyboard1 Modulation BPM Sync
+311	Keyboard1 Motion Seq Type
+323	Keyboard2 Glide
+325	Keyboard2 Filter Type
+326	Keyboard2 Filter Cutoff
+327	Keyboard2 Filter Resonance
+328	Keyboard2 Filter EG Int
+329	Keyboard2 Start Point
+330	Keyboard2 Level
+331	Keyboard2 Pan
+332	Keyboard2 EG Time
+333	Keyboard2 Amp EG
+334	Keyboard2 Roll
+335	Keyboard2 Reverse
+336	Keyboard2 Effect Send
+337	Keyboard2 Effect Select
+338	Keyboard2 Modulation Type
+339	Keyboard2 Modulation Depth
+340	Keyboard2 Modulation Speed
+341	Keyboard2 Modulation Destination
+342	Keyboard2 Modulation BPM Sync
+343	Keyboard2 Motion Seq Type
+356	Stretch1 Pitch
+357	Stretch1 Filter Type
+358	Stretch1 Filter Cutoff
+359	Stretch1 Filter Resonance
+360	Stretch1 Filter EG Int
+361	Stretch1 Start Point
+362	Stretch1 Level
+363	Stretch1 Pan
+364	Stretch1 EG Time
+365	Stretch1 Amp EG
+366	Stretch1 Roll
+367	Stretch1 Reverse
+368	Stretch1 Effect Send
+369	Stretch1 Effect Select
+370	Stretch1 Modulation Type
+371	Stretch1 Modulation Depth
+372	Stretch1 Modulation Speed
+373	Stretch1 Modulation Destination
+374	Stretch1 Modulation BPM Sync
+375	Stretch1 Motion Seq Type
+388	Stretch2 Pitch
+389	Stretch2 Filter Type
+390	Stretch2 Filter Cutoff
+391	Stretch2 Filter Resonance
+392	Stretch2 Filter EG Int
+393	Stretch2 Start Point
+394	Stretch2 Level
+395	Stretch2 Pan
+396	Stretch2 EG Time
+397	Stretch2 Amp EG
+398	Stretch2 Roll
+399	Stretch2 Reverse
+400	Stretch2 Effect Send
+401	Stretch2 Effect Select
+402	Stretch2 Modulation Type
+403	Stretch2 Modulation Depth
+404	Stretch2 Modulation Speed
+405	Stretch2 Modulation Destination
+406	Stretch2 Modulation BPM Sync
+407	Stretch2 Motion Seq Type
+420	Slice Pitch
+421	Slice Filter Type
+422	Slice Filter Cutoff
+423	Slice Filter Resonance
+424	Slice Filter EG Int
+425	Slice Start Point
+426	Slice Level
+427	Slice Pan
+428	Slice EG Time
+429	Slice Amp EG
+430	Slice Roll
+431	Slice Reverse
+432	Slice Effect Send
+433	Slice Effect Select
+434	Slice Modulation Type
+435	Slice Modulation Depth
+436	Slice Modulation Speed
+437	Slice Modulation Destination
+438	Slice Modulation BPM Sync
+439	Slice Motion Seq Type
+453	AudioIn Filter Type
+454	AudioIn Filter Cutoff
+455	AudioIn Filter Resonance
+456	AudioIn Filter EG Int
+458	AudioIn Level
+459	AudioIn Pan
+460	AudioIn EG Time
+461	AudioIn Amp EG
+462	AudioIn Roll
+464	AudioIn Effect Send
+465	AudioIn Effect Select
+466	AudioIn Modulation Type
+467	AudioIn Modulation Depth
+468	AudioIn Modulation Speed
+469	AudioIn Modulation Destination
+470	AudioIn Modulation BPM Sync
+471	AudioIn Motion Seq Type
+480	Accent Level
+481	Accent Motion Seq SW
+484	FX1 Type
+485	FX1 Edit1
+486	FX1 Edit2
+487	FX1 Motion Seq SW
+488	FX2 Type
+489	FX2 Edit1
+490	FX2 Edit2
+491	FX2 Motion Seq SW
+492	FX3 Type
+493	FX3 Edit1
+494	FX3 Edit2
+495	FX3 Motion Seq SW
+501	FX Chain

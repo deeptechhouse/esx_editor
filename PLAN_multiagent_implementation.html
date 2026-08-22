@@ -1,0 +1,218 @@
+<meta charset="utf-8">
+<title>ESX Bank Studio — Multi-Agent Implementation Plan</title>
+<style>
+  :root{
+    --bg:#12100d; --panel:#1b1814; --panel2:#231f19; --line:#3a332a;
+    --amber:#ff9d2e; --amber-dim:#c9761b; --lcd:#ffb454; --green:#7fd68a;
+    --red:#ff6b5e; --blue:#6fb6ff; --txt:#e8e0d4; --muted:#9d9384;
+    --sonnet:#8fd0ff; --opus:#ffb454;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:0 0 90px}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+  header{border-bottom:2px solid var(--amber);background:linear-gradient(180deg,#1f1a13,#12100d);padding:46px 0 30px;margin-bottom:8px}
+  h1{margin:0 0 8px;font-size:31px;letter-spacing:-.4px}
+  h1 span{color:var(--amber)}
+  .sub{color:var(--muted);font-size:15px;margin:0;max-width:780px}
+  .meta{margin-top:16px;font-family:var(--mono);font-size:12px;color:var(--amber-dim);letter-spacing:.5px;line-height:1.9}
+  h2{margin:48px 0 6px;font-size:21px;color:var(--lcd);border-left:3px solid var(--amber);padding-left:13px}
+  h2 .n{font-family:var(--mono);font-size:13px;color:var(--amber-dim);margin-right:9px}
+  h3{margin:28px 0 8px;font-size:16px;color:var(--txt);border-bottom:1px solid var(--line);padding-bottom:5px}
+  h4{margin:20px 0 6px;font-size:14px;color:var(--lcd);font-family:var(--mono)}
+  p{margin:10px 0}
+  code{font-family:var(--mono);font-size:.88em;background:var(--panel2);padding:1px 6px;border-radius:3px;color:var(--lcd)}
+  pre{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber-dim);
+    padding:14px 16px;border-radius:5px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--lcd);font-weight:600;white-space:nowrap}
+  tr:nth-child(even) td{background:rgba(255,255,255,.018)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:18px 20px;margin:16px 0}
+  .flag{border-left:4px solid var(--red);background:#241715}
+  .win{border-left:4px solid var(--green);background:#15201a}
+  .note{border-left:4px solid var(--blue);background:#141b24}
+  .warn{border-left:4px solid var(--amber);background:#241d13}
+  .card h4{margin-top:0}
+  .flag h4{color:var(--red)} .win h4{color:var(--green)}
+  .note h4{color:var(--blue)} .warn h4{color:var(--amber)}
+  ul,ol{margin:10px 0;padding-left:22px} li{margin:5px 0}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:10px;
+    border:1px solid var(--amber-dim);color:var(--lcd);margin-right:6px;vertical-align:middle}
+  .O{color:var(--opus);font-weight:600;font-family:var(--mono);font-size:12.5px}
+  .S{color:var(--sonnet);font-weight:600;font-family:var(--mono);font-size:12.5px}
+  .kv{font-family:var(--mono);font-size:12.5px}
+  .yes{color:var(--green);font-weight:600}.no{color:var(--red);font-weight:600}
+  footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+</style>
+
+<header><div class="wrap">
+  <h1>ESX Bank Studio — <span>Multi-Agent Implementation Plan</span></h1>
+  <p class="sub">Executing <code>TDD_esx_bank_studio.html</code> on <b>this machine</b> — a 2-agent concurrency ceiling, with an <span class="O">Opus&nbsp;5</span> / <span class="S">Sonnet&nbsp;5</span> model mix.</p>
+  <p class="meta">
+    REV 2 — RECONFIGURED FOR LOCAL EXECUTION &nbsp;·&nbsp; 2026-08-18<br>
+    macOS 12.7.6 · x86_64 · 4 cores → <b>ceiling 2</b> &nbsp;·&nbsp; 19 AGENTS / 7 WORKFLOWS
+  </p>
+</div></header>
+
+<div class="wrap">
+
+<h2><span class="n">00</span>What changed, and why it is not just a rescale</h2>
+
+<p>Dropping from a ceiling of 8 to 2 does not simply make the same plan slower. It inverts which decisions matter. Five things change:</p>
+
+<table>
+  <tr><th>#</th><th>Change</th><th>Reason</th></tr>
+  <tr><td>1</td><td><b>Consolidate agents</b>: 22 → 19, with tasks merged into larger units</td><td>At 2 slots, splitting work into many small agents adds startup and context-establishment overhead without buying throughput. Fewer, larger agents win.</td></tr>
+  <tr><td>2</td><td><b>Queue order becomes the critical path</b> — longest task first</td><td>At 8 slots everything starts at once and order is irrelevant. At 2 slots, whatever starts first determines when the last thing finishes.</td></tr>
+  <tr><td>3</td><td><span class="S">Sonnet 5</span> is now a <b>throughput lever</b>, not just a cost lever</td><td>Wall-clock ≈ total agent-time ÷ 2. A faster agent frees its slot sooner, so the model mix directly shortens the schedule. At 8 slots this was purely economic.</td></tr>
+  <tr><td>4</td><td><b>Barriers get 4× more expensive</b> — only the gate keeps one</td><td>Idling one of two slots wastes 50% of capacity; at 8 slots it wastes 12.5%. Everything else uses <code>pipeline()</code>.</td></tr>
+  <tr><td>5</td><td><b>More, smaller workflows</b> (7 instead of 5)</td><td>Each is only 1–3 rounds at this ceiling, so finer checkpointing is free rather than costly.</td></tr>
+</table>
+
+<div class="card note">
+  <h4>The honest cost: about 1.5×, not 4×</h4>
+  <p>Intuition says a 4× lower ceiling means 4× the wall-clock. It doesn't, because the plan was never able to use 8 slots — the <b>dependency graph</b> was the binding constraint, not available capacity. The widest genuinely-parallel wave is 5 tasks.</p>
+  <p>At a ceiling of 8 the schedule is dependency-bound at roughly 7 rounds. At 2 it is work-bound at roughly 10–11 rounds. <b>The real penalty is ~1.5×</b>, and the model mix claws back part of that.</p>
+</div>
+
+<h2><span class="n">01</span>This machine is viable — verified, not assumed</h2>
+
+<div class="card win">
+  <h4>Correction to Rev 1</h4>
+  <p>Rev 1 said this machine "cannot run current PySide6" and treated that as a hard wall for the UI waves. The first half is true; the conclusion was too strong. <b>PySide6 6.9.3 installs and works here</b> — it was already present in a Python 3.13 venv, and a live test constructed a <code>QApplication</code> and drew with <code>QPainter</code> offscreen. That is precisely the drawing path the motion canvas needs.</p>
+</div>
+
+<table>
+  <tr><th>Component</th><th>Status here</th><th>Note</th></tr>
+  <tr><td>Python</td><td class="yes">3.13.12</td><td>project venv at <code>~/.venvs/esx</code></td></tr>
+  <tr><td>PySide6</td><td class="yes">6.9.3 — verified drawing</td><td><b>pinned</b>; 6.10+ is macosx_13_0-only and cannot install on macOS 12</td></tr>
+  <tr><td>numpy / scipy / numba / llvmlite</td><td class="yes">cp313 x86_64 wheels exist</td><td>no source builds — checked against PyPI directly</td></tr>
+  <tr><td>librosa / soundfile</td><td class="yes">pure-Python wheels</td><td>full tree resolves cleanly</td></tr>
+  <tr><td>ffmpeg</td><td class="yes">8.1.1</td><td>already installed</td></tr>
+  <tr><td>Corpus + gate</td><td class="yes">3 banks, round-trip passing</td><td>codec is stdlib-only, runs anywhere</td></tr>
+</table>
+
+<div class="card warn">
+  <h4>The one real constraint: PySide6 is pinned to 6.9.3</h4>
+  <p>Pinned deliberately in <code>deploy/requirements-local.txt</code>. The Qt APIs this project uses — widgets, <code>QPainter</code>, <code>QGraphicsView</code>, file dialogs — are stable across 6.9 → 6.11, so code written here runs unchanged on the M4 mini (6.11.1). <b>The contract-freeze agent must not use any API introduced after 6.9</b>, and CI should pin the same version so drift is caught immediately rather than at the machine boundary.</p>
+</div>
+
+<h2><span class="n">02</span>Scheduling model</h2>
+
+<p>With two slots, the schedule is a pipeline, not a fan-out. <code>pipeline()</code> keeps both slots busy: as each task finishes, the next queued one starts immediately, with no barrier.</p>
+
+<pre>slot 1 ██████████ codec-io (XL, Opus) ██████████▶
+slot 2 ███ op-table ▶███ audio ▶█████ validator ▶█████ core-domain ▶
+       └─ short Sonnet tasks churn while the long Opus task occupies slot 1</pre>
+
+<h4>Three ordering rules</h4>
+<ol>
+  <li><b>Longest first.</b> The XL task must start in round 1 or it becomes the tail.</li>
+  <li><b>Pair long-Opus with short-Sonnet.</b> While a big correctness-critical task holds one slot, the other churns through cheap mechanical work.</li>
+  <li><b>Never barrier except at the gate.</b> One barrier is justified; it protects everything downstream from an unverified codec.</li>
+</ol>
+
+<h2><span class="n">03</span>Task list and model assignment</h2>
+
+<p><span class="O">Opus 5</span> takes correctness-critical and architecturally hard work. <span class="S">Sonnet 5</span> takes mechanical transcription, boilerplate, and well-specified UI — near-Opus coding quality at ~60% the cost and faster per task.</p>
+
+<table>
+  <tr><th>#</th><th>Task</th><th>Model</th><th>Effort</th><th>Size</th><th>Needs</th></tr>
+  <tr><td>0</td><td><b>Contract freeze</b> — every public signature</td><td class="O">Opus</td><td><code>max</code></td><td>M</td><td>—</td></tr>
+  <tr><td>1</td><td><b>codec reader + writer</b></td><td class="O">Opus</td><td><code>xhigh</code></td><td>XL</td><td>0</td></tr>
+  <tr><td>2</td><td>operation_table — 313 targets, 26 domains</td><td class="S">Sonnet</td><td><code>low</code></td><td>S</td><td>0</td></tr>
+  <tr><td>3</td><td>core domain model + invariants</td><td class="O">Opus</td><td><code>high</code></td><td>L</td><td>0</td></tr>
+  <tr><td>4</td><td>audio adapters, camelot, naming</td><td class="S">Sonnet</td><td><code>medium</code></td><td>M</td><td>0</td></tr>
+  <tr><td>5</td><td>codec validator + template</td><td class="O">Opus</td><td><code>high</code></td><td>M</td><td>0</td></tr>
+  <tr><td>6</td><td>workspace — staging, temp lifecycle, budget, limits</td><td class="S">Sonnet</td><td><code>medium</code></td><td>M</td><td>0,3</td></tr>
+  <tr><td>7</td><td><b>integrate + corpus gate</b></td><td class="O">Opus</td><td><code>xhigh</code></td><td>M</td><td>1,3,5</td></tr>
+  <tr><td>8</td><td>adversarial codec review</td><td class="O">Opus</td><td><code>xhigh</code></td><td>M</td><td>7</td></tr>
+  <tr><td>9</td><td>theme + shell + reusable widgets</td><td class="O">Opus</td><td><code>high</code></td><td>L</td><td>3</td></tr>
+  <tr><td>10</td><td>views: bank + staging + scoreboard</td><td class="S">Sonnet</td><td><code>medium</code></td><td>L</td><td>9</td></tr>
+  <tr><td>11</td><td>views: pattern + song + global</td><td class="S">Sonnet</td><td><code>medium</code></td><td>L</td><td>9</td></tr>
+  <tr><td>12</td><td><b>motion canvas</b></td><td class="O">Opus</td><td><code>xhigh</code></td><td>XL</td><td>2,3,9</td></tr>
+  <tr><td>13</td><td>motion tools + target picker</td><td class="S">Sonnet</td><td><code>medium</code></td><td>M</td><td>12</td></tr>
+  <tr><td>14</td><td>motion byte-verify (adversarial)</td><td class="O">Opus</td><td><code>xhigh</code></td><td>M</td><td>12,13</td></tr>
+  <tr><td>15</td><td>wizard — 11 screens</td><td class="S">Sonnet</td><td><code>medium</code></td><td>L</td><td>9–11</td></tr>
+  <tr><td>16</td><td>tests — property, golden, integration</td><td class="S">Sonnet</td><td><code>medium</code></td><td>L</td><td>all</td></tr>
+  <tr><td>17</td><td>CI, pre-commit, README, NAVIGATION</td><td class="S">Sonnet</td><td><code>low</code></td><td>S</td><td>all</td></tr>
+</table>
+<p class="kv">Split: <span class="O">Opus 8 tasks</span> (the XL/critical ones) · <span class="S">Sonnet 10 tasks</span>. Roughly 60/40 by agent-time, 45/55 by count.</p>
+
+<h2><span class="n">04</span>The seven workflows</h2>
+
+<h3>WF1 — Contract freeze <span class="pill">1 agent · 1 round</span></h3>
+<p><span class="O">Opus · max</span>. Runs alone; everything depends on it. Writes every public signature, type hint, docstring, invariant and exception across <code>core/</code>, <code>codec/</code>, <code>audio/ports.py</code>, <code>workspace/</code>, with bodies raising <code>NotImplementedError</code>. Must target the <b>PySide6 6.9</b> API surface.</p>
+<p class="kv">CHECKPOINT — review the frozen API before anything is built against it.</p>
+
+<h3>WF2 — Foundation <span class="pill">5 agents · ~3 rounds</span></h3>
+<p>Queue order matters. Longest first, Sonnet interleaved so slot 2 turns over repeatedly:</p>
+<pre>1. codec reader+writer   Opus  xhigh  XL   ← starts immediately, holds slot 1
+2. operation_table       Sonnet low   S    ← quick, frees slot 2 fast
+3. audio adapters        Sonnet med   M
+4. codec validator+tmpl  Opus  high   M
+5. core domain model     Opus  high   L</pre>
+<p>All five depend only on WF1, so they never block each other. File ownership is disjoint — <b>no worktrees needed</b>.</p>
+
+<h3>WF3 — The gate <span class="pill">2 agents · barrier</span></h3>
+<table>
+  <tr><td>integrate + run the corpus gate</td><td class="O">Opus · xhigh</td></tr>
+  <tr><td>adversarial review — prompted to <i>break</i> the writer</td><td class="O">Opus · xhigh</td></tr>
+</table>
+<p class="no"><b>Hard exit:</b> byte-identical round-trip on all three banks, plus ≥98% line coverage on <code>codec/</code>. Nothing downstream starts otherwise.</p>
+
+<h3>WF4 — UI foundation <span class="pill">2 agents · 1 round</span></h3>
+<pre>1. theme + shell + widgets   Opus   high  L   ← everything visual depends on this
+2. workspace                 Sonnet med   M   ← independent, fills slot 2</pre>
+
+<h3>WF5 — Motion editor <span class="pill">3 agents · ~2 rounds</span></h3>
+<pre>1. motion canvas             Opus   xhigh XL  ← three-state steps, domain snapping,
+                                                forced-TRIG rendering, length masking
+2. motion tools + picker     Sonnet med   M
+3. motion byte-verify        Opus   xhigh M   ← asserts drawn curves produce the
+                                                verified encodings (i x ceil(128/N), 0x80)</pre>
+
+<h3>WF6 — Views + wizard <span class="pill">3 agents · ~2 rounds</span></h3>
+<pre>1. views: pattern+song+global   Sonnet med  L
+2. views: bank+staging          Sonnet med  L
+3. wizard — 11 screens          Sonnet med  L</pre>
+<p class="kv">All <span class="S">Sonnet</span>: well-specified UI against a frozen model and an existing theme.</p>
+
+<h3>WF7 — Tests, CI, docs <span class="pill">3 agents · ~2 rounds</span></h3>
+<pre>1. tests: property + golden + integration   Sonnet med  L
+2. CI + pre-commit + lint config            Sonnet low  S
+3. README.html + NAVIGATION.md + annotated  Sonnet med  M</pre>
+
+<h2><span class="n">05</span>How accuracy is protected</h2>
+<table>
+  <tr><th>Failure mode</th><th>Mitigation</th></tr>
+  <tr><td>Interface drift across agents</td><td>WF1 contract freeze — signatures exist before any implementation</td></tr>
+  <tr><td>Agents colliding on files</td><td>Strictly disjoint file ownership; shared inputs read-only. No worktrees needed.</td></tr>
+  <tr><td>Plausible-but-wrong codec</td><td>Dedicated adversarial agent told to break it, plus byte-identity on three real banks</td></tr>
+  <tr><td>Motion encodings silently wrong</td><td>Byte-verify agent asserting against encodings proven in Spike A</td></tr>
+  <tr><td>Building on an unverified foundation</td><td>WF3 barrier — the only barrier in the plan</td></tr>
+  <tr><td>Qt API drift vs the mini</td><td>PySide6 pinned to 6.9.3 in requirements and CI</td></tr>
+  <tr><td>Sonnet asked to do Opus-grade work</td><td>Model assignment is per-task and fixed in the plan, not left to the agent</td></tr>
+</table>
+
+<h2><span class="n">06</span>Trade-offs</h2>
+<table>
+  <tr><th>Decision</th><th>Chosen</th><th>Rejected</th><th>Why</th></tr>
+  <tr><td>Machine</td><td>This one (ceiling 2)</td><td>M4 mini (ceiling 8)</td><td>User preference; verified viable. Costs ~1.5× wall-clock, not 4×, because the dependency graph was already the binding constraint.</td></tr>
+  <tr><td>Agent count</td><td>19, consolidated</td><td>22 fine-grained</td><td>At 2 slots, more agents add overhead without throughput</td></tr>
+  <tr><td>Model mix</td><td>Opus for critical, Sonnet for mechanical</td><td>Opus throughout</td><td>At this ceiling Sonnet shortens the schedule as well as the bill</td></tr>
+  <tr><td>Scheduling</td><td><code>pipeline()</code>, longest-first</td><td><code>parallel()</code> waves</td><td>Barriers idle 50% of capacity at 2 slots</td></tr>
+  <tr><td>Qt version</td><td>Pin 6.9.3</td><td>Track latest</td><td>6.10+ cannot install on macOS 12; pinning makes the constraint explicit and portable</td></tr>
+</table>
+
+<h2><span class="n">07</span>Ready to start</h2>
+<p>No decisions outstanding. WF1 is one agent, <span class="O">Opus 5</span> at <code>max</code> effort, producing the frozen API for review.</p>
+
+<footer>
+  <p>Companion to <code>TDD_esx_bank_studio.html</code> (specification), <code>PLAN_technical_design_document.html</code> (research trail), and <code>research/HARDWARE_CHECKLIST.md</code> (deferred device work).</p>
+  <p>The M4 mini remains fully provisioned and verified as a fallback — <code>deploy/transfer_to_mini.sh</code> keeps it in sync.</p>
+</footer>
+
+</div>

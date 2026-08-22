@@ -1,0 +1,665 @@
+<meta charset="utf-8">
+<title>ESX Bank Studio — Technical Design Document</title>
+<style>
+  :root{
+    --bg:#12100d; --panel:#1b1814; --panel2:#231f19; --line:#3a332a;
+    --amber:#ff9d2e; --amber-dim:#c9761b; --lcd:#ffb454; --green:#7fd68a;
+    --red:#ff6b5e; --blue:#6fb6ff; --txt:#e8e0d4; --muted:#9d9384;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:0 0 90px}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+  header{border-bottom:2px solid var(--amber);background:linear-gradient(180deg,#1f1a13,#12100d);padding:48px 0 32px;margin-bottom:10px}
+  h1{margin:0 0 8px;font-size:33px;letter-spacing:-.5px}
+  h1 span{color:var(--amber)}
+  .sub{color:var(--muted);font-size:15.5px;margin:0;max-width:760px}
+  .meta{margin-top:18px;font-family:var(--mono);font-size:12px;color:var(--amber-dim);letter-spacing:.5px;line-height:1.9}
+  h2{margin:52px 0 6px;font-size:22px;color:var(--lcd);border-left:3px solid var(--amber);padding-left:13px;scroll-margin-top:18px}
+  h2 .n{font-family:var(--mono);font-size:13px;color:var(--amber-dim);margin-right:9px}
+  h3{margin:30px 0 8px;font-size:16.5px;color:var(--txt);border-bottom:1px solid var(--line);padding-bottom:5px}
+  h4{margin:22px 0 6px;font-size:14px;color:var(--lcd);font-family:var(--mono);letter-spacing:.3px}
+  p{margin:10px 0}
+  code{font-family:var(--mono);font-size:.88em;background:var(--panel2);padding:1px 6px;border-radius:3px;color:var(--lcd)}
+  pre{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber-dim);
+    padding:15px 17px;border-radius:5px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6}
+  pre code{background:none;padding:0;color:var(--txt)}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--lcd);font-weight:600;white-space:nowrap}
+  tr:nth-child(even) td{background:rgba(255,255,255,.018)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:18px 20px;margin:16px 0}
+  .flag{border-left:4px solid var(--red);background:#241715}
+  .win{border-left:4px solid var(--green);background:#15201a}
+  .note{border-left:4px solid var(--blue);background:#141b24}
+  .warn{border-left:4px solid var(--amber);background:#241d13}
+  .card h4{margin-top:0}
+  .flag h4{color:var(--red)} .win h4{color:var(--green)}
+  .note h4{color:var(--blue)} .warn h4{color:var(--amber)}
+  ul,ol{margin:10px 0;padding-left:22px} li{margin:5px 0}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:10px;
+    border:1px solid var(--amber-dim);color:var(--lcd);margin-right:6px;vertical-align:middle}
+  .pill.v{border-color:var(--green);color:var(--green)}
+  .pill.o{border-color:var(--red);color:var(--red)}
+  .kv{font-family:var(--mono);font-size:12.5px}
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:18px 24px;margin:26px 0 8px}
+  .toc ol{columns:2;column-gap:36px;margin:8px 0}
+  .toc a{color:var(--txt);text-decoration:none;border-bottom:1px dotted var(--amber-dim)}
+  .toc a:hover{color:var(--amber)}
+  footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+  .yes{color:var(--green);font-weight:600}.no{color:var(--red);font-weight:600}
+  .lede{font-size:16px;color:var(--txt);border-left:3px solid var(--amber-dim);padding-left:14px;margin:18px 0}
+</style>
+
+<header><div class="wrap">
+  <h1>ESX Bank Studio — <span>Technical Design Document</span></h1>
+  <p class="sub">An offline creator and editor for Korg Electribe SX (ESX-1) <code>.esx</code> banks: sample conversion with key analysis, per-sample quality budgeting, full pattern and song editing, and a drawable motion-sequence editor.</p>
+  <p class="meta">
+    VERSION 1.0 &nbsp;·&nbsp; 2026-08-09 &nbsp;·&nbsp; STATUS: READY TO IMPLEMENT<br>
+    PYTHON 3.10 + PySide6 &nbsp;·&nbsp; PERSONAL USE, NEVER COMMERCIAL &nbsp;·&nbsp; SPIKE A PASSED ON 3 REAL BANKS
+  </p>
+</div></header>
+
+<div class="wrap">
+
+<div class="toc">
+  <b style="color:var(--lcd)">Contents</b>
+  <ol>
+    <li><a href="#overview">Overview, goals, non-goals</a></li>
+    <li><a href="#format">Format specification</a></li>
+    <li><a href="#domain">Domain model</a></li>
+    <li><a href="#codec">Codec design</a></li>
+    <li><a href="#audio">Audio pipeline</a></li>
+    <li><a href="#budget">Quality budget &amp; limits</a></li>
+    <li><a href="#staging">Staging bank &amp; lifecycle</a></li>
+    <li><a href="#motion">Motion sequencing</a></li>
+    <li><a href="#wizard">Wizard flows</a></li>
+    <li><a href="#ui">UI architecture</a></li>
+    <li><a href="#test">Test strategy</a></li>
+    <li><a href="#risks">Risks &amp; open questions</a></li>
+    <li><a href="#roadmap">Implementation roadmap</a></li>
+  </ol>
+</div>
+
+<p class="kv" style="color:var(--muted)">Throughout, <span class="pill v">VERIFIED</span> marks a fact observed directly in real bank data; <span class="pill">DOCUMENTED</span> comes from the Korg Owner's Manual; <span class="pill o">OPEN</span> is not yet settled.</p>
+
+<!-- ================================================================= -->
+<h2 id="overview"><span class="n">01</span>Overview, goals, non-goals</h2>
+
+<p class="lede">Build banks on a computer that the ESX-1 loads from card — with the sample preparation, memory budgeting, and motion authoring that the hardware's two-line display makes impractical.</p>
+
+<h3>Goals</h3>
+<table>
+  <tr><th>#</th><th>Goal</th><th>Success looks like</th></tr>
+  <tr><td>G1</td><td>Read and write <code>.esx</code> banks without ever corrupting one</td><td>Byte-identical round-trip across a corpus; writes verified by re-reading before replacing anything</td></tr>
+  <tr><td>G2</td><td>Prepare samples automatically</td><td>Drop any format in; it is converted, key-analysed, renamed, and slotted with no manual steps</td></tr>
+  <tr><td>G3</td><td>Make the 25 MB budget legible</td><td>A live scoreboard showing what any configuration costs, computed without re-encoding</td></tr>
+  <tr><td>G4</td><td>Draw motion sequences</td><td>A 128-step envelope canvas per slot, honouring each target's real value domain and playback mode</td></tr>
+  <tr><td>G5</td><td>Edit everything else in the file</td><td>Patterns, parts, songs, global settings — the app is the authority on the whole bank</td></tr>
+  <tr><td>G6</td><td>Guide a first-time user</td><td>A wizard that walks every setting with the reasoning stated</td></tr>
+</table>
+
+<h3>Non-goals for v1</h3>
+<ul>
+  <li><b>ES-1 / EMX-1 support.</b> Different formats; roughly doubles codec work. Revisit after v1.</li>
+  <li><b>Real-time audio engine.</b> Motion preview is offline render only (see §08).</li>
+  <li><b>MIDI / SysEx communication with the hardware.</b> Card-based workflow only.</li>
+  <li><b>Bit-exact effect emulation.</b> Explicitly out of reach; previews are approximations, labelled as such.</li>
+  <li><b>Multi-user, networking, cloud.</b> Local, offline, single user.</li>
+</ul>
+
+<h3>Decisions already settled</h3>
+<table>
+  <tr><th>Decision</th><th>Choice</th><th>Consequence</th></tr>
+  <tr><td>Language / UI</td><td>Python 3.10 + PySide6 (Qt)</td><td>Matches existing key-detection work; Qt gives a real drawable canvas; <code>ffmpeg</code>, <code>librosa</code>, <code>numpy</code>, <code>scipy</code>, <code>soundfile</code> all verified installed</td></tr>
+  <tr><td>Distribution</td><td>Personal use; possibly open-source later; never commercial</td><td>EPL-1.0 and GPLv3 dependencies are both acceptable</td></tr>
+  <tr><td>Motion preview</td><td>Visual first, audio in phase 2</td><td>Highest-risk component off the v1 critical path</td></tr>
+  <tr><td>Scope</td><td>Full editor — every region of the file</td><td>Raises the stakes on the round-trip gate and write-side safety</td></tr>
+  <tr><td>Verification</td><td>ESX-1 + card available</td><td>Remaining unknowns close by hardware diff, not inference</td></tr>
+</table>
+
+<!-- ================================================================= -->
+<h2 id="format"><span class="n">02</span>Format specification</h2>
+
+<p>A <code>.esx</code> bank is a <b>fixed-layout image</b>, not a container format. Regions live at absolute offsets; nothing is length-prefixed or tagged. All multi-byte integers are <b>big-endian</b>.</p>
+
+<h3>2.1 Top-level regions <span class="pill v">VERIFIED</span></h3>
+<table>
+  <tr><th>Offset</th><th>Region</th><th>Size</th><th>Notes</th></tr>
+  <tr><td><code>0x00000000</code></td><td>Magic 1</td><td>32 B</td><td><code>"KORG" 00 00 00 71 "ESX" 00</code></td></tr>
+  <tr><td><code>0x00000020</code></td><td>Global parameters</td><td>192 B</td><td></td></tr>
+  <tr><td><code>0x000000E0</code></td><td class="no">unknown_1</td><td>288 B</td><td>preserve verbatim</td></tr>
+  <tr><td><code>0x00000200</code></td><td><b>Patterns</b></td><td>256 × 4280 B</td><td>1 095 680 B</td></tr>
+  <tr><td><code>0x0010BA00</code></td><td class="no">unknown_2</td><td>148 992 B</td><td>preserve verbatim</td></tr>
+  <tr><td><code>0x00130000</code></td><td>Songs</td><td>64 × 528 B</td><td></td></tr>
+  <tr><td><code>0x00138400</code></td><td>Song events</td><td>8 B each</td><td>max 20 000</td></tr>
+  <tr><td><code>0x0015F500</code></td><td class="no">unknown_3</td><td>330 496 B</td><td>preserve verbatim</td></tr>
+  <tr><td><code>0x001B0000</code></td><td>Magic 2 + counts</td><td>256 B</td><td><code>"KORG" 00 00 00 71 "BPS "</code> — note trailing <b>space</b>, not null</td></tr>
+  <tr><td><code>0x001B0020</code></td><td>Mono sample count</td><td>4 B</td><td></td></tr>
+  <tr><td><code>0x001B0024</code></td><td>Stereo sample count</td><td>4 B</td><td></td></tr>
+  <tr><td><code>0x001B0028</code></td><td><code>currentOffset</code></td><td>4 B</td><td>next free PCM write position</td></tr>
+  <tr><td><code>0x001B0100</code></td><td>Mono sample headers</td><td>256 × 40 B</td><td></td></tr>
+  <tr><td><code>0x001B2900</code></td><td>Stereo sample headers</td><td>128 × 44 B</td><td></td></tr>
+  <tr><td><code>0x001B3F00</code></td><td class="no">unknown_4</td><td>768 B</td><td>preserve verbatim</td></tr>
+  <tr><td><code>0x001B4200</code></td><td>Slice data</td><td>256 × 2048 B</td><td></td></tr>
+  <tr><td><code>0x00234200</code></td><td class="no">unknown_5</td><td>114 176 B</td><td><b>Undocumented gap</b> found in Spike A — absent from all prior references</td></tr>
+  <tr><td><code>0x00250000</code></td><td>Raw PCM</td><td>to EOF</td><td>16-bit signed, big-endian</td></tr>
+</table>
+<p class="kv">SIZE_FILE_MIN = <code>0x250010</code> (base + a 16-byte trailer, confirmed on all three banks). Max sample memory = <code>0xC00000</code> frames = 25 165 824 B ≈ 285.3 s at 44.1 kHz mono.</p>
+
+<h3>2.2 Pattern chunk (4280 B) <span class="pill v">VERIFIED</span></h3>
+<table>
+  <tr><th>Offset</th><th>Contents</th><th>Layout</th></tr>
+  <tr><td>0</td><td>Pattern name</td><td>8 B, space-padded (<code>0x20</code>)</td></tr>
+  <tr><td>8</td><td>Header — tempo, length, beat, last step, swing, roll</td><td>16 B</td></tr>
+  <tr><td>24</td><td>Drum parts</td><td>9 × 34 B</td></tr>
+  <tr><td>330</td><td>Keyboard parts</td><td>2 × 274 B</td></tr>
+  <tr><td>878</td><td>Stretch / slice parts</td><td>3 × 32 B</td></tr>
+  <tr><td>974</td><td>Audio-in part</td><td>1 × 156 B</td></tr>
+  <tr><td>1130</td><td>Accent part</td><td>1 × 18 B</td></tr>
+  <tr><td>1148</td><td>FX parameters</td><td>3 × 4 B — <code>{type, edit1, edit2, motionSW}</code></td></tr>
+  <tr><td><b>1160</b></td><td><b>Motion sequences</b></td><td><b>24 × 130 B</b> → ends exactly at 4280</td></tr>
+</table>
+
+<h3>2.3 Sample header <span class="pill v">VERIFIED</span></h3>
+<pre>MONO (40 bytes)                      STEREO (44 bytes)
+  0..7   name, 8 raw bytes             0..7   name
+  8..11  offsetChannel1Start           8..11  offsetChannel1Start
+ 12..15  offsetChannel1End            12..15  offsetChannel1End
+ 16..19  start                        16..19  offsetChannel2Start
+ 20..23  end                          20..23  offsetChannel2End
+ 24..27  loopStart                    24..27  start
+ 28..31  sampleRate (ORIGINAL rate)   28..31  end
+ 32..33  sampleTune (packed)          32..35  loopStart
+ 34      playLevel                    36..39  sampleRate
+ 35      (unknown)                    40..41  sampleTune
+ 36      stretchStep                  42..43  playLevel + (unknown)
+ 37..39  (unknown)</pre>
+<p><b>Empty slot sentinel:</b> offset fields = <code>0xFFFFFFFF</code>.</p>
+<p><b>Offsets are byte offsets</b> relative to <code>ADDR_SAMPLE_DATA</code>, not frame counts. Proven: reading them as frames overshoots the PCM region by 2× on every bank tested.</p>
+
+<h4>Allocation rule <span class="pill v">VERIFIED</span></h4>
+<p>Measured across 200 factory + 79 user samples: every length even, every start offset 4-byte aligned (279/279), gaps always exactly 2 or 4 bytes. One rule explains all three:</p>
+<pre>next_start = align_up(previous_end + 2, 4)
+cost(sample) = align_up(frames × 2 × channels + 2, 4)
+currentOffset = highest_end + 2</pre>
+
+<h4>Sample tune encoding <span class="pill v">VERIFIED</span></h4>
+<pre>bit 15    : sign
+bits 8..14: whole semitones (0..127)
+bits 0..7 : hundredths (0..99)
+
+value = 12 × log₂(rate / 44100) + musical_offset      # SEMITONES, not cents</pre>
+<p>Confirmed against factory data: the minimum tune observed at each stored rate equals the predicted compensation to the hundredth (24 000 Hz → all six samples exactly <code>−10.53</code>). The field carries <b>two concerns at once</b>, which §05 addresses.</p>
+
+<h3>2.4 What the hardware accepts on import <span class="pill">DOCUMENTED</span> <span class="pill v">VERIFIED</span></h3>
+<table>
+  <tr><th>Property</th><th>Accepted</th><th>Evidence</th></tr>
+  <tr><td>Container</td><td>WAV (import + export), AIFF (<b>import only</b>)</td><td>Manual p.88</td></tr>
+  <tr><td>Bit depth</td><td>8 or 16-bit; 8-bit is zero-expanded to 16-bit on import</td><td>Manual p.88</td></tr>
+  <tr><td>Sample rate</td><td><b>11 025 – 96 000 Hz</b>, a range not a list</td><td>Factory bank ships 8 distinct rates: 22050, 23810, 24000, 31250, 32000, 33000, 44100, <b>48000</b></td></tr>
+  <tr><td>Channels</td><td>Mono → 256 slots, stereo → 128 slots</td><td>Separate header tables</td></tr>
+  <tr><td><code>smpl</code> chunk</td><td>First loop imported; <b>overwrites the sample's End parameter</b></td><td>Manual p.88</td></tr>
+</table>
+<div class="card flag">
+  <h4>The hardware does NOT require 44.1 kHz / 16-bit</h4>
+  <p>It accepts off-rate material and compensates pitch via Sample Tune. Korg's own factory content includes 48 kHz samples. Any design that presents 44.1 kHz as a hardware requirement is wrong. Pre-conversion is still the right default — for memory, for keeping Tune at 0.00, and for better offline resampling — but it is an <b>optimisation</b>, and the UI must say so.</p>
+</div>
+
+<h3>2.5 Two save types <span class="pill">DOCUMENTED</span></h3>
+<p>Manual p.85: Save <b>All</b> writes patterns + songs + global + samples. Save <b>PSG</b> writes pattern/song/global only, producing a shorter file with no sample area. The reader must detect and handle both; a naive minimum-size check rejects valid PSG files.</p>
+
+<!-- ================================================================= -->
+<h2 id="domain"><span class="n">03</span>Domain model</h2>
+
+<p>Pure Python objects with no I/O. Everything here is unit-testable without touching a file. Per the encapsulation standard, fields are private with behaviour exposed through methods; collections are returned as immutable views.</p>
+
+<h3>3.1 Class map</h3>
+<pre>Bank
+ ├── GlobalParameters
+ ├── Pattern × 256
+ │    ├── PatternHeader   (name, tempo, length, beat, lastStep, swing, roll)
+ │    ├── Part × 16       (Drum×9, Keyboard×2, StretchSlice×3, AudioIn, Accent)
+ │    │    └── SequenceData  (note/gate arrays, 128 steps)
+ │    ├── FxUnit × 3      (type, edit1, edit2, motionSW)
+ │    └── MotionSlot × 24 (target + 128 steps)
+ ├── Song × 64
+ │    └── SongEvent × n   (max 20 000 total)
+ ├── SampleSlot × 384     (256 mono + 128 stereo)
+ └── RawRegions           (the five unknown regions + anything undecoded)</pre>
+
+<h3>3.2 Core invariants</h3>
+<table>
+  <tr><th>Invariant</th><th>Enforced where</th></tr>
+  <tr><td>A pattern always holds exactly 24 motion slots</td><td><code>Pattern.__init__</code>; slots are replaced, never appended</td></tr>
+  <tr><td>A motion slot always holds exactly 128 values</td><td><code>MotionSlot</code> constructor validates length</td></tr>
+  <tr><td>Total PCM ≤ 25 165 824 B</td><td><code>Bank.commit_sample()</code> raises before mutating</td></tr>
+  <tr><td>No single sample &gt; 80% of sample memory</td><td><code>limits.check_sample()</code> at staging time</td></tr>
+  <tr><td>Sample names are exactly 8 bytes</td><td><code>SampleSlot.name</code> setter pads / truncates</td></tr>
+  <tr><td>Motion values are 0–127 or the <code>Disabl</code> sentinel</td><td><code>MotionSlot.set_step()</code>, domain-aware</td></tr>
+  <tr><td>Unknown regions are never modified</td><td><code>RawRegions</code> exposes bytes read-only; no setter exists</td></tr>
+</table>
+
+<h3>3.3 Representative interface</h3>
+<pre><code>class MotionSlot:
+    """One motion sequence: a target parameter + one value per step."""
+
+    __slots__ = ("_target", "_values")
+
+    DISABLED = 0x80          # per-step "do not update" sentinel
+    EMPTY_TARGET = 0xFFFF    # slot is unused
+
+    def __init__(self, target: int, values: bytes):
+        if len(values) != 128:
+            raise ValueError(f"motion needs exactly 128 values, got {len(values)}")
+        self._target = target
+        self._values = bytearray(values)
+
+    @property
+    def target(self) -> int:
+        return self._target
+
+    @property
+    def values(self) -> bytes:
+        return bytes(self._values)        # defensive copy -- callers cannot mutate
+
+    @property
+    def in_use(self) -> bool:
+        return self._target != self.EMPTY_TARGET
+
+    def set_step(self, step: int, value: int | None, domain: "MotionDomain") -> None:
+        """Set one step. `value=None` means Disabl.
+
+        The domain snaps discrete targets to legal knob positions, so a caller
+        cannot write 1 into a Filter Type field that only accepts 0/32/64/96.
+        """
+        self._values[step] = self.DISABLED if value is None else domain.encode(value)
+
+    def clear(self) -> None:
+        self._target = self.EMPTY_TARGET
+        self._values = bytearray([self.DISABLED] * 128)</code></pre>
+
+<!-- ================================================================= -->
+<h2 id="codec"><span class="n">04</span>Codec design</h2>
+
+<h3>4.1 The governing principle</h3>
+<div class="card win">
+  <h4>Anything not decoded is preserved verbatim</h4>
+  <p>Not just the five documented unknown regions — <b>any</b> field the implementation has not yet decoded is stored as raw bytes and written back untouched. This is what makes byte-identical round-tripping achievable before the format is fully understood, and it is why partial decoding is safe to ship.</p>
+</div>
+
+<h3>4.2 Read / write contract</h3>
+<pre>bytes ──reader──► Bank ──writer──► bytes
+
+CONTRACT: writer(reader(b)) == b   for every valid bank, byte for byte.</pre>
+<p><span class="pill v">VERIFIED</span> This gate already passes on three real banks: 4 974 396 B (79 mono samples), 20 721 848 B (200 samples, 297 motion slots), 22 960 884 B (233 samples).</p>
+
+<h3>4.3 "New bank" loads a template, never zeroes</h3>
+<p>Five regions are undecoded. Synthesising a bank from zeros risks a file the hardware rejects or silently misreads. <b>New = load an embedded blank template and edit it</b>, so unknown bytes always originate from a bank the hardware itself wrote.</p>
+
+<h3>4.4 Validation is a separate layer from parsing</h3>
+<div class="card flag">
+  <h4>Round-tripping does not mean the file is coherent</h4>
+  <p>One of the test banks round-trips perfectly yet has <b>80 of 233 sample headers pointing outside the file</b> — offsets up to 57 498 852 in a 22 960 884-byte file, exceeding even the hardware's maximum sample memory. A bank can be self-contradictory and still pass the byte-identity gate.</p>
+  <p>So <code>validate()</code> is separate from <code>read()</code> and checks the claims a file makes about itself:</p>
+  <ul>
+    <li>header sample counts vs. occupied slots</li>
+    <li>every sample's start/end inside the PCM region, and end ≥ start</li>
+    <li><code>currentOffset</code> ≥ highest sample end</li>
+    <li>sample rates within 11 025 – 96 000 Hz</li>
+    <li>motion targets within the known operation table</li>
+  </ul>
+  <p>Findings are reported, never auto-repaired. Repair is an explicit user action with a preview of what would change.</p>
+</div>
+
+<h3>4.5 Write-side safety <span class="pill">MANDATORY</span></h3>
+<ol>
+  <li><b>Never write in place.</b> Serialize to a temp file in the destination directory.</li>
+  <li><b>Verify by re-reading.</b> Parse the temp file and compare the model against what was intended.</li>
+  <li><b>Atomic replace</b> only after verification passes (<code>os.replace</code>).</li>
+  <li><b>Keep the previous version</b> as <code>name.esx.bak</code> until the user confirms the bank loads.</li>
+  <li><b>Refuse to write</b> a bank that fails <code>validate()</code> unless the user explicitly overrides.</li>
+</ol>
+
+<h3>4.6 Module layout</h3>
+<pre>codec/
+  layout.py          # every offset, size, count -- single source of truth
+  byte_buffer.py     # big-endian cursor over bytes
+  reader.py          # bytes  -> Bank      (preserves undecoded regions)
+  writer.py          # Bank   -> bytes     (replays them verbatim)
+  validator.py       # coherence checks, independent of parsing
+  operation_table.py # 313 motion targets + value domains
+  template.py        # embedded blank bank; "New" loads this</pre>
+
+<!-- ================================================================= -->
+<h2 id="audio"><span class="n">05</span>Audio pipeline</h2>
+
+<h3>5.1 Ports and adapters</h3>
+<p>Every external capability sits behind an interface so it can be swapped without touching the UI or codec.</p>
+<table>
+  <tr><th>Port</th><th>v1 adapter</th><th>Alternate</th><th>Why swappable</th></tr>
+  <tr><td><code>AudioConverter</code></td><td>ffmpeg subprocess</td><td><code>soundfile</code> + <code>soxr</code></td><td>ffmpeg reads everything and is installed; the wheel path removes the binary dependency if ever distributed</td></tr>
+  <tr><td><code>KeyDetector</code></td><td>librosa (chroma CQT + Krumhansl-Schmuckler)</td><td>libkeyfinder</td><td>librosa installs from wheels on this macOS 12 Intel machine; libkeyfinder needs an hours-long source build here but is already compiled on the M4 mini</td></tr>
+  <tr><td><code>FxRenderer</code></td><td><i>none — v1 is silent</i></td><td>Pedalboard / scipy</td><td>Keeps the riskiest component off the v1 critical path</td></tr>
+</table>
+<pre><code>class KeyDetector(Protocol):
+    def detect(self, path: str, max_seconds: float | None = None) -> KeyResult | None:
+        """Return the estimated key, or None if the material is not tonal enough.
+
+        Returning None is a legitimate, expected outcome -- percussive one-shots
+        have no key, and guessing one would mislabel the file permanently.
+        """</code></pre>
+
+<h3>5.2 Conversion rules</h3>
+<table>
+  <tr><th>Step</th><th>Rule</th></tr>
+  <tr><td>Decode</td><td>Any format ffmpeg reads. Originals are never modified.</td></tr>
+  <tr><td>Resample</td><td>To the sample's chosen tier (default 44 100 Hz), with proper low-pass anti-aliasing. Naive decimation would alias and make the quality feature sound broken.</td></tr>
+  <tr><td>Bit depth</td><td>Always 16-bit. Dither on reduction from 24/32-bit.</td></tr>
+  <tr><td>Channels</td><td>Default mono. Stereo is a deliberate choice — it costs 2× the bytes and one of only 128 stereo slots.</td></tr>
+  <tr><td><code>smpl</code> chunk</td><td><b>Strip inherited chunks.</b> The hardware overwrites the sample's End with the chunk's Loop End, so a stray <code>smpl</code> silently redefines where the sample ends. Loop points are written deliberately from the staging UI or not at all.</td></tr>
+</table>
+
+<h3>5.3 Key detection and naming</h3>
+<p>Camelot and classical notation are a bijection, so one is always derived from the other and they cannot disagree.</p>
+<h4>Slot-name convention</h4>
+<pre>  [a|b]  [NN]   [classical]   [tail of basename, uppercased]
+    │      │          │              └─ as many chars as still fit, taken from the END
+    │      │          └─ classical key, short form (C, Am, F#m)
+    │      └─ Camelot number, zero-padded to 2
+    └─ Camelot letter FIRST (a = minor, b = major)
+  total = 8 bytes, hard limit</pre>
+<table>
+  <tr><th>Camelot</th><th>Long form</th><th class="yes">Short form (default)</th><th>Camelot only</th></tr>
+  <tr><td>8B — C major</td><td><code>b08CmajM</code> · 1 char</td><td><code>b08CDRUM</code> · 4</td><td><code>b08KDRUM</code> · 5</td></tr>
+  <tr><td>8A — A minor</td><td><code>a08AminM</code> · 1 char</td><td><code>a08AmRUM</code> · 3</td><td><code>a08KDRUM</code> · 5</td></tr>
+  <tr><td>12A — C♯ minor</td><td class="no"><code>a12C#min</code> · 0</td><td><code>a12C#mUM</code> · 2</td><td><code>a12KDRUM</code> · 5</td></tr>
+</table>
+<p>Long-form classical leaves at most one character of the name and <b>nothing</b> for any sharp or flat key — 10 of the 24 Camelot positions. Short form is therefore the default. Taking the name from the <b>tail</b> is deliberate: trailing characters distinguish numbered variants (<code>kick01</code> / <code>kick02</code>).</p>
+<div class="card note">
+  <h4>Two namespaces</h4>
+  <p>The <b>staging filename on disk</b> carries the full both-notation name (<code>kickdrum_Am_8A.wav</code>) — no length limit, and that is where both notations are actually useful for browsing. The <b>8-byte slot name</b> carries the packed form. Live preview shows exactly what the hardware will display before commit.</p>
+</div>
+
+<h3>5.4 Displaying tune correctly</h3>
+<div class="card warn">
+  <h4>Show musical tune, not stored tune</h4>
+  <p>The Tune field mixes rate compensation with musical transposition. A 22 050 Hz sample at its natural pitch stores as <code>−12.00</code> and would read as "detuned" when it is not. The UI must display:</p>
+  <pre>musical_tune = stored_tune − 12 × log₂(rate / 44100)</pre>
+  <p>so an untransposed sample always shows <code>0.00</code> whatever its storage rate, with the compensation shown separately as a derived, read-only value.</p>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="budget"><span class="n">06</span>Quality budget &amp; limits</h2>
+
+<h3>6.1 The scoreboard is exact arithmetic, not an estimate</h3>
+<p>The format stores uncompressed PCM — no codec, no variable bitrate. So cost is closed-form, and only the <b>duration</b> is needed, read from the file header without decoding audio.</p>
+<pre>frames = round(duration_seconds × target_rate)
+cost   = align_up(frames × 2 × channels + 2, 4)</pre>
+<p class="kv"><span class="pill v">MEASURED</span> 194 real WAVs probed in 0.38 s, no audio decoded. Uncertainty is ±1 frame of resampler rounding — ±2 bytes against 25 MB.</p>
+
+<h3>6.2 Three levers, and rate is the least valuable</h3>
+<table>
+  <tr><th>#</th><th>Lever</th><th>Saving</th><th>Audible cost</th></tr>
+  <tr><td>1</td><td><b>Duration</b> — trim before import</td><td>Unbounded. In a real 194-file folder the top 5 files were <b>59% of the total</b></td><td>None, if trimming to the useful part</td></tr>
+  <tr><td>2</td><td><b>Channels</b> — fold stereo to mono</td><td>Exactly 2×, <i>and</i> frees a scarce stereo slot (128 vs 256)</td><td>Usually low for drums and bass</td></tr>
+  <tr><td>3</td><td><b>Rate</b> — the quality tier</td><td>2× per halving</td><td>Highest — it is the bandwidth itself</td></tr>
+</table>
+<p>Folding 96 stereo sources to mono at full CD quality frees the <b>identical bytes</b> as dropping every sample to 22 kHz, and for most material is far less audible. The scoreboard therefore presents <b>rate × channels as a matrix</b>, and the fit-assistant proposes trimming and mono-folding before degrading bandwidth.</p>
+
+<h3>6.3 The quality ladder</h3>
+<table>
+  <tr><th>Tier</th><th>Rate</th><th>Seconds in a full bank</th><th>Gain</th><th>Tune cost</th><th>Max single sample</th></tr>
+  <tr><td><b>CD — default</b></td><td>44 100</td><td>285.3</td><td>1.00×</td><td class="yes">0.00 st</td><td>228.3 s</td></tr>
+  <tr><td>Broadcast</td><td>32 000</td><td>393.2</td><td>1.38×</td><td>−5.55 st</td><td>314.6 s</td></tr>
+  <tr><td>Radio</td><td>22 050</td><td>570.7</td><td>2.00×</td><td>−12.00 st</td><td>456.5 s</td></tr>
+  <tr><td>Lo-fi</td><td>16 000</td><td>786.4</td><td>2.76×</td><td>−17.55 st</td><td>629.1 s</td></tr>
+  <tr><td>Telephone</td><td>11 025</td><td>1141.3</td><td>4.00×</td><td>−24.00 st</td><td>913.0 s</td></tr>
+</table>
+<p class="kv">Bit depth is <b>not</b> a quality axis: the file stores 16-bit always and 8-bit input is zero-expanded, so it saves nothing while sounding worse. Bit-crushing remains available as an aesthetic effect only.</p>
+
+<h3>6.4 Oversize policy</h3>
+<p>A single sample may occupy up to <b>80% of sample memory</b> (20 132 659 B), leaving 20% free. Long samples are a legitimate technique — assign a long recording to a part and motion-sequence its Start Point to scrub slowly through it.</p>
+<table>
+  <tr><th>Level</th><th>Meaning</th><th>Dismissible</th></tr>
+  <tr><td><code>BLOCK</code></td><td>Exceeds the single-sample cap, or exceeds remaining free space</td><td class="no">No — ignoring it produces an unwritable bank</td></tr>
+  <tr><td><code>WARN</code></td><td><code>large_sample</code>, <code>large_source</code>, <code>dominant_sample</code></td><td>Yes — grouped, so one "ignore all size warnings" click covers the family</td></tr>
+  <tr><td><code>NOTICE</code></td><td><code>analysis_skipped</code></td><td>Yes</td></tr>
+</table>
+<p>"Ignore for all" mutes a <b>code</b>, not an individual sample, so dismissing once silences it for every subsequent oversized sample. <code>BLOCK</code> is never mutable.</p>
+<p><code>BLOCK</code> messages name the fixes that would actually work rather than saying "make it smaller":</p>
+<pre>484.7s at 44100 Hz needs 42,748,780 B. One sample may use at most 80% of
+sample memory (20,132,659 B), leaving 20% free.
+Options: drop to Lo-fi (16000 Hz) mono; trim to 228s at CD mono.</pre>
+
+<h3>6.5 Why analysis is skipped on long files</h3>
+<div class="card note">
+  <h4>Not for speed — for correctness</h4>
+  <p>Key analysis costs ~11 ms per second of audio; even a 485-second recording finishes in 5.5 s. Speed is not the issue. The issue is that a global key for a long multi-section recording is <b>musically meaningless</b>, and because the key is appended to the filename, a bogus estimate permanently mislabels the file in the user's library. Above <code>ANALYSIS_MAX_SECONDS</code> (default 30 s — 8 bars at 60 BPM) the sample is marked "not analysed" and <b>no key is appended</b>.</p>
+  <p>"Analyse the first 30 s" is offered as an <b>explicit action</b>, never automatic — silently analysing a fragment and presenting it as the file's key is the same mislabelling problem in a subtler form.</p>
+</div>
+
+<!-- ================================================================= -->
+<h2 id="staging"><span class="n">07</span>Staging bank &amp; lifecycle</h2>
+
+<h3>7.1 Workflow</h3>
+<pre>  [1] DROP        any format, any rate, any depth
+        │
+  [2] PROBE       duration + rate + channels from the header (no decode)
+        │         -> scoreboard updates instantly
+        │         -> limits.check_sample() -> BLOCK / WARN / NOTICE
+  [3] CONVERT     -> chosen tier, 16-bit, mono by default
+        │            copy written to the session temp dir; ORIGINAL UNTOUCHED
+  [4] ANALYSE     key -> classic + Camelot   (skipped if over the length limit)
+        │
+  [5] RENAME      staging file gets the full  name_Am_8A.wav
+        │
+  [6] DISPLAY     waveform, key, duration, memory cost, tier
+        │
+  [7] ASSIGN      target slot; 8-char machine name via the naming policy
+        │
+  [8] COMMIT      PCM appended at currentOffset; header written; counts updated
+        │
+  [9] CLEAR       temp dir removed on close, on "Clear", or swept at next launch</pre>
+
+<h3>7.2 Temp lifecycle must survive a crash</h3>
+<div class="card warn">
+  <h4>"Delete on close" is not sufficient</h4>
+  <p>It does nothing if the process is killed. Design:</p>
+  <ul>
+    <li>Session directory named <code>esxstudio-&lt;pid&gt;-&lt;timestamp&gt;/</code> under the OS temp dir.</li>
+    <li>A lockfile inside it holding the owning PID.</li>
+    <li><b>Orphan sweep at startup:</b> any session dir whose PID is no longer alive is removed.</li>
+    <li>Explicit "Clear" button removes the current session's converted copies and resets the staging bank.</li>
+  </ul>
+  <p>Without the sweep, a tool like this quietly fills a disk with converted WAVs.</p>
+</div>
+
+<h3>7.3 Re-encoding from source, always</h3>
+<p>Changing a sample's tier re-encodes from the <b>original file</b>, never from an already-downgraded copy. Tiers are therefore freely revisable with no generation loss — a user can try Telephone, dislike it, and return to CD with nothing lost.</p>
+
+<!-- ================================================================= -->
+<h2 id="motion"><span class="n">08</span>Motion sequencing</h2>
+
+<p class="lede">The centrepiece. A motion sequence is a 128-step, 8-bit envelope bound to a named target — which makes drawing one a solved UI problem rather than a research problem.</p>
+
+<h3>8.1 Data model <span class="pill v">VERIFIED</span></h3>
+<pre>struct MotionSlot {          // 130 bytes, 24 per pattern, at pattern offset 1160
+    uint16_be target;        // 0xFFFF = slot unused
+    uint8     value[128];    // one per step; 0x80 = Disabl
+}</pre>
+<p>128 steps is exactly the maximum: <code>LastStep</code> (1–16) × <code>PatternLength</code> (1–8 bars) = 128.</p>
+
+<h3>8.2 The three states of a step</h3>
+<div class="card win">
+  <h4><code>Disabl</code> = 128 (0x80) — proven in factory data</h4>
+  <pre>pattern 3, slot 0, target 102 (Drum4 Filter Cutoff):
+steps  0..5     128 128 128 128 128 128          ← disabled, motion has not started
+steps  6..63     35  31  33 ... 117 126 127      ← a real filter sweep
+steps 64..127   128 128 128 ... 128 128 128      ← disabled: pattern is 64 steps long</pre>
+  <p>The trailing block begins exactly at the pattern's length. So each step is <b>a value</b>, <b>Disabl</b>, or <b>beyond the pattern length</b> — three states, not two. The canvas renders Disabl as a <b>gap</b>, never as zero: drawing zero is musically the opposite of leaving a parameter alone.</p>
+</div>
+
+<h3>8.3 Value domains <span class="pill v">VERIFIED</span></h3>
+<div class="card flag">
+  <h4>Discrete parameters store knob positions, not option indices</h4>
+  <p>Writing <code>0,1,2,3</code> into a Filter Type field would produce banks that load fine and behave wrongly. The real encoding divides the 0–127 knob range into N zones:</p>
+  <table>
+    <tr><th>Kind</th><th>N</th><th>Stored bytes</th><th>Rule</th></tr>
+    <tr><td>Roll, Effect Send, Amp EG, Reverse</td><td>2</td><td><code>{0, 64}</code></td><td><code>i × 64</code></td></tr>
+    <tr><td>Effect Select (Fx1/Fx2/Fx3)</td><td>3</td><td><code>{0, 43, 86}</code></td><td><code>i × 43</code></td></tr>
+    <tr><td>Filter Type (LPF/HPF/BPF/BPF+)</td><td>4</td><td><code>{0, 32, 64, 96}</code></td><td><code>i × 32</code></td></tr>
+  </table>
+  <p>General rule: <b><code>value = i × ceil(128 / N)</code></b>; decode with <code>i = value // ceil(128 / N)</code>. Observed option counts match the manual's enum lists exactly.</p>
+  <p class="yes">This also resolved a manual erratum: <code>REVERSE</code> shows exactly two values <code>{0, 64}</code> — boolean, confirming the parameter reference and confirming that p.71's "Disabl, 0...127" is a typo.</p>
+</div>
+<p>Continuous targets store 0–127 directly. Full table in <code>research/motion_byte_encodings.md</code>.</p>
+
+<h3>8.4 Playback modes drive rendering</h3>
+<table>
+  <tr><th>Scope</th><th>Rule</th></tr>
+  <tr><td>Effects (FX1–3 Edit1/Edit2)</td><td>Always SMOOTH — the part setting does not apply</td></tr>
+  <tr><td>Accent part</td><td>Always TRIG HOLD; <code>LEVEL</code> is its only automatable parameter</td></tr>
+  <tr><td>AMP EG, ROLL, REVERSE, FX SELECT, FX SEND, MOD TYPE, MOD DEST, BPM SYNC, FILTER TYPE</td><td>Always TRIG HOLD even when SMOOTH is selected</td></tr>
+  <tr><td>Everything else</td><td>Follows the part's SMOOTH / TRIG HOLD setting</td></tr>
+</table>
+<p>The canvas must draw forced-TRIG targets as latched staircases regardless of the part setting, or it shows curves the hardware will never produce.</p>
+
+<h3>8.5 Canvas specification</h3>
+<table>
+  <tr><th>Aspect</th><th>Design</th></tr>
+  <tr><td>Axes</td><td>X = step <code>1…N</code> where <code>N = lastStep × patternLength ≤ 128</code>; Y = the target's own domain, not raw 0–127</td></tr>
+  <tr><td>Tools</td><td>Pencil, line, ramp, LFO shapes (sine/tri/saw/square), sample &amp; hold, invert, scale, smooth, randomise, clear — plus a distinct <b>eraser</b> that writes Disabl</td></tr>
+  <tr><td>Snapping</td><td>Domain-driven: continuous draws freely, bipolar centres at zero, enum/boolean snap to legal knob positions only</td></tr>
+  <tr><td>Masking</td><td>Steps beyond the pattern length are dimmed and read-only</td></tr>
+  <tr><td>Target picker</td><td>Filtered by part type — accent offers only LEVEL; audio-in hides Pitch/Start/Reverse; keyboard swaps Pitch for Glide and adds OSC EDIT 1/2. Grouped as Part Common / Filter / Modulation / Effects, mirroring how the hardware groups motion data</td></tr>
+  <tr><td>Slot budget</td><td>Persistent "n/24 used"; a full pattern refuses loudly rather than dropping silently</td></tr>
+  <tr><td>Overwrite guard</td><td>Re-assigning a populated target erases it on the hardware — warn before replacing</td></tr>
+  <tr><td>Start Point helper</td><td>For long samples, show seconds-per-step (<code>duration / 128</code>) so the scrub resolution is visible while drawing</td></tr>
+</table>
+
+<h3>8.6 Preview — phase 2 only</h3>
+<p>Offline render to a buffer, then play. Not a real-time audio callback: that invites buffer-underrun and threading bugs, which is precisely the risk to avoid. Approximate models of the 16 FX types behind an explicit toggle, labelled "approximate" in the UI. Phase 1 ships silent.</p>
+
+<!-- ================================================================= -->
+<h2 id="wizard"><span class="n">09</span>Wizard flows</h2>
+
+<p>The wizard exists because the ESX-1's own display makes these decisions opaque. Each screen states the decision and the reasoning, and every screen is skippable by an experienced user.</p>
+<table>
+  <tr><th>#</th><th>Screen</th><th>Decision it asks for</th></tr>
+  <tr><td>1</td><td>Start</td><td>New bank from template, or open an existing <code>.esx</code></td></tr>
+  <tr><td>2</td><td>Card check</td><td>Back up the existing card contents first — offered before anything is written</td></tr>
+  <tr><td>3</td><td>Add samples</td><td>Drop files; shows the scoreboard filling as they land</td></tr>
+  <tr><td>4</td><td>Quality budget</td><td>If over capacity, propose trims and mono-folds before rate drops; otherwise confirm CD default</td></tr>
+  <tr><td>5</td><td>Key analysis</td><td>Confirm detected keys; override or suppress for percussive material</td></tr>
+  <tr><td>6</td><td>Naming</td><td>Choose the slot-name policy with a live 8-character preview</td></tr>
+  <tr><td>7</td><td>Slot assignment</td><td>Auto-assign or place manually; mono vs stereo slot pools shown separately</td></tr>
+  <tr><td>8</td><td>Part setup</td><td>Assign samples to drum/keyboard/stretch/slice parts</td></tr>
+  <tr><td>9</td><td>Pattern basics</td><td>Tempo, length, beat, last step</td></tr>
+  <tr><td>10</td><td>Motion (optional)</td><td>Pick a target, draw a curve, see the slot budget</td></tr>
+  <tr><td>11</td><td>Validate &amp; write</td><td>Run <code>validate()</code>, show findings, write with backup</td></tr>
+</table>
+
+<!-- ================================================================= -->
+<h2 id="ui"><span class="n">10</span>UI architecture</h2>
+
+<h3>10.1 Structure</h3>
+<pre>ui/
+  main_window.py     # shell, menus, session state
+  staging_view.py    # drop zone, per-sample analysis, scoreboard
+  bank_view.py       # 384 slots, usage meters, mono/stereo pools
+  pattern_view.py    # parts, sequence grid, FX
+  motion_editor.py   # the drawable canvas
+  song_view.py       # song arrangement + events
+  global_view.py     # global parameters, MIDI settings
+  wizard/            # the guided flow
+  widgets/           # reusable: WaveformView, BudgetMeter, KnobDial, StepGrid
+  theme.py           # config-driven palette, fonts, spacing</pre>
+
+<h3>10.2 Separation rules</h3>
+<ul>
+  <li>UI never touches <code>codec/</code> directly — it goes through the domain model.</li>
+  <li>No business logic in widgets. A widget renders state and emits intent.</li>
+  <li>All long operations (conversion, analysis) run on Qt worker threads with progress and cancellation; the model is only mutated on the main thread.</li>
+</ul>
+
+<h3>10.3 Theme</h3>
+<p>An ESX-1-inspired motif: dark chassis, amber backlit-LCD accents, orange step-key highlights. Defined entirely in <code>theme.py</code> as tokens (colours, fonts, spacing, radii) so the whole look is editable in one file. Accessibility target WCAG 2.1 AA: 4.5:1 contrast on normal text, full keyboard navigation, visible focus, usable at 200% zoom.</p>
+
+<!-- ================================================================= -->
+<h2 id="test"><span class="n">11</span>Test strategy</h2>
+
+<h3>11.1 The corpus gate</h3>
+<p>The single most important test: <b>every bank in the corpus must round-trip byte-identically.</b> Runs in CI on every commit. Currently 3 real banks; grows as more are collected.</p>
+
+<h3>11.2 Layers</h3>
+<table>
+  <tr><th>Layer</th><th>Framework</th><th>What it covers</th></tr>
+  <tr><td>Unit</td><td>pytest</td><td>Domain invariants, encodings (<code>encode_discrete</code>/<code>decode_discrete</code> round-trip for N=2,3,4), naming policy, cost model, limits policy</td></tr>
+  <tr><td>Property</td><td>hypothesis</td><td>Arbitrary <code>Bank</code> → write → read → equals original; arbitrary motion values survive encode/decode</td></tr>
+  <tr><td>Golden file</td><td>pytest</td><td>Known bank + known edit → expected byte diff, so an accidental change to an unrelated region fails loudly</td></tr>
+  <tr><td>Integration</td><td>pytest</td><td>Full staging workflow against real WAVs, including temp cleanup and orphan sweep</td></tr>
+  <tr><td>UI</td><td>pytest-qt</td><td>Motion canvas edits produce the expected byte arrays; wizard navigation</td></tr>
+</table>
+<p>Coverage target <b>90%</b> line coverage, measured in CI. Target 98% for <code>codec/</code> specifically — it is the layer that can destroy a user's work.</p>
+
+<h3>11.3 Hardware-in-the-loop</h3>
+<p>Not automatable, but decisive. Procedure: change one thing on the ESX-1, save to card, <code>diff</code> against the previous save. The single changed byte range answers the question. This is how the remaining open items close.</p>
+
+<!-- ================================================================= -->
+<h2 id="risks"><span class="n">12</span>Risks &amp; open questions</h2>
+
+<table>
+  <tr><th>Risk</th><th>Severity</th><th>Mitigation</th></tr>
+  <tr><td>Writing a malformed bank damages a working card</td><td class="no">High</td><td>Never write in place; verify by re-reading; keep <code>.bak</code>; wizard offers a card backup before first write</td></tr>
+  <tr><td>Undecoded regions silently corrupted</td><td class="no">High</td><td>Verbatim passthrough + the corpus round-trip gate in CI</td></tr>
+  <tr><td>Full-scope editing means a codec bug can destroy patterns and songs, not just samples</td><td class="no">High</td><td>98% coverage target on <code>codec/</code>; golden-file tests; validation before write</td></tr>
+  <tr><td>Pitch encoding still unknown</td><td>Medium</td><td>Treat as raw 0–255, never clamp; resolve by hardware knob sweep before exposing Pitch in the motion editor</td></tr>
+  <tr><td>Stereo header path untested</td><td>Medium</td><td>All three corpus banks are mono-only. Do not ship stereo import until a stereo bank is round-tripped</td></tr>
+  <tr><td>Key detection wrong on atonal material</td><td>Medium</td><td>Return <code>None</code> rather than guessing; confidence score; manual override; suppress suffix for percussion</td></tr>
+  <tr><td>Approximate FX preview misleads</td><td>Low</td><td>Phase 2, behind a toggle, labelled approximate</td></tr>
+  <tr><td>24-slot motion limit frustrates mid-edit</td><td>Low</td><td>Continuous budget display; refuse loudly, never drop silently</td></tr>
+</table>
+
+<h3>Open questions <span class="pill o">OPEN</span></h3>
+<ol>
+  <li><b>Pitch value mapping.</b> Observed bands 0–115 and 167–222 with nothing between; the manual's <code>−63…+63</code> does not map onto this. One hardware knob-sweep recording settles it.</li>
+  <li><b>Stereo second channel-offset pair.</b> Structure inferred from blank slots; no populated stereo sample has been seen.</li>
+  <li><b>Displayable character set.</b> Lowercase round-trips in the file, but whether the dial can enter it and the LCD render it — and whether <code>#</code> exists — is unconfirmed.</li>
+  <li><b>PSG save variant.</b> Shorter no-sample-area file; not yet obtained.</li>
+  <li><b>Do "unknown" regions vary between identical saves?</b> If so they are scratch, not state, and can be relaxed.</li>
+  <li><b>Does the hardware tolerate stale sample headers?</b> One corpus bank has 80. If it loads, repair; if not, prune.</li>
+</ol>
+
+<!-- ================================================================= -->
+<h2 id="roadmap"><span class="n">13</span>Implementation roadmap</h2>
+
+<table>
+  <tr><th>Phase</th><th>Deliverable</th><th>Exit criterion</th></tr>
+  <tr><td><b>0</b> <span class="yes">done</span></td><td>Format spike — <code>layout.py</code>, <code>esx_probe.py</code>, <code>budget.py</code>, <code>limits.py</code></td><td class="yes">Round-trip passes on 3 real banks</td></tr>
+  <tr><td>1</td><td><code>codec/</code> — full reader, writer, validator, template</td><td>Corpus gate green in CI; 98% coverage on codec</td></tr>
+  <tr><td>2</td><td><code>core/</code> domain model with invariants</td><td>Property tests pass; no public mutable state</td></tr>
+  <tr><td>3</td><td><code>audio/</code> + <code>workspace/</code> — conversion, key detection, staging, temp lifecycle</td><td>Drop 100 files, all converted/analysed/named; crash leaves no orphans</td></tr>
+  <tr><td>4</td><td>UI shell — bank view, sample list, scoreboard</td><td>Open a bank, add samples, write a valid bank</td></tr>
+  <tr><td>5</td><td><b>Motion editor</b> — canvas, domains, playback-mode rendering</td><td>Draw a curve, write it, verify byte-exact on hardware</td></tr>
+  <tr><td>6</td><td>Pattern / song / global editing</td><td>Every region editable; golden-file tests pass</td></tr>
+  <tr><td>7</td><td>Wizard</td><td>A first-time user builds a bank without documentation</td></tr>
+  <tr><td>8</td><td>Phase 2 — approximate FX preview</td><td>Toggleable, labelled, never blocks other work</td></tr>
+</table>
+
+<footer>
+  <p><b>Supporting artifacts</b></p>
+  <ul>
+    <li><code>PLAN_technical_design_document.html</code> — research trail and how each decision was reached</li>
+    <li><code>spike_a/</code> — <code>layout.py</code>, <code>esx_probe.py</code>, <code>budget.py</code>, <code>limits.py</code>, <code>make_fixture.py</code></li>
+    <li><code>research/motion_operation_table_313.tsv</code> — all 313 motion targets</li>
+    <li><code>research/motion_target_domains.tsv</code> — 26 value domains with playback modes</li>
+    <li><code>research/motion_byte_encodings.md</code> — verified byte encodings</li>
+    <li><code>research/naming.py</code> — slot-name convention reference implementation</li>
+    <li><code>research/ESX1_manual_textlayer.txt</code> — extracted Owner's Manual text</li>
+  </ul>
+  <p><b>Attribution.</b> Binary-format knowledge derives from Jeff / SKRATCHDOT.COM's <code>open-electribe-editor</code> (EPL-1.0, 2009–2013), recovered from git tag <code>v1.2.0</code>. Parameter semantics come from the Korg ESX-1 Owner's Manual, which supersedes the source code where they disagree. All byte encodings marked VERIFIED were established independently against real bank data during Spike A.</p>
+</footer>
+
+</div>

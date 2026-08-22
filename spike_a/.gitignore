@@ -1,0 +1,2 @@
+# Synthetic fixtures are reproducible via make_fixture.py -- don't commit them.
+*.esx

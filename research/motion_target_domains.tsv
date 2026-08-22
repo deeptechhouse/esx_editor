@@ -1,0 +1,54 @@
+# Motion target value domains — ESX Bank Studio
+# Source: Korg ESX-1 Owner's Manual p.71 (MOTION DEST / MOTION VALUE table),
+#         cross-checked against the part-parameter reference (manual p.53-54)
+# Every target additionally accepts the per-step sentinel "Disabl" = do not update at this step.
+#
+# kind:   continuous | bipolar | boolean | enum
+# smooth: Y = honours the part's SMOOTH setting
+#         FORCED_TRIG = always plays back stepped/latched even when SMOOTH is selected (manual p.69)
+#
+# dest	label	kind	min	max	labels	smooth
+Fx1Ed1	FX1 EDIT1	continuous	0	127	-	Y
+Fx1Ed2	FX1 EDIT2	continuous	0	127	-	Y
+Fx2Ed1	FX2 EDIT1	continuous	0	127	-	Y
+Fx2Ed2	FX2 EDIT2	continuous	0	127	-	Y
+Fx3Ed1	FX3 EDIT1	continuous	0	127	-	Y
+Fx3Ed2	FX3 EDIT2	continuous	0	127	-	Y
+Pitch	PITCH	bipolar	-63	63	-	Y
+Glide	GLIDE (keyboard parts only)	continuous	0	127	-	Y
+EGTime	EG TIME	continuous	0	127	-	Y
+Pan	PAN	bipolar	-63	63	L63..R63	Y
+Level	LEVEL	continuous	0	127	-	Y
+SttPoint	START POINT	continuous	0	127	-	Y
+AmpEG	AMP EG	boolean	0	1	Off,On	FORCED_TRIG
+Roll	ROLL	boolean	0	1	Off,On	FORCED_TRIG
+Revers	REVERSE	boolean	0	1	Off,On	FORCED_TRIG
+FxSend	FX SEND	boolean	0	1	Off,On	FORCED_TRIG
+FxSel	FX SELECT	enum	0	2	Fx1,Fx2,Fx3	FORCED_TRIG
+ModSpd	MOD SPEED	continuous	0	127	-	Y
+ModDpt	MOD DEPTH	continuous	0	127	-	Y
+ModTyp	MOD TYPE	enum	0	4	Saw,Squ,Tri,SH,Env	FORCED_TRIG
+ModDst	MOD DEST	enum	0	3	Pitch,Amp,Pan,Cutoff	FORCED_TRIG
+ModBPM	MOD BPM SYNC	boolean	0	1	Off,On	FORCED_TRIG
+Cutoff	FILTER CUTOFF	continuous	0	127	-	Y
+EGInt	FILTER EG INT	bipolar	-63	63	-	Y
+Reso	FILTER RESONANCE	continuous	0	127	-	Y
+FltTyp	FILTER TYPE	enum	0	3	LPF,HPF,BPF,BPF+	FORCED_TRIG
+#
+# KNOWN ERRATUM IN THE KORG MANUAL
+# p.71 prints "Revers(REVERSE)  Disabl, 0...127". This is a typo.
+# The parameter reference (manual p.53) states "REVERSE ... On, Off" and REVERSE appears in the
+# forced-TRIG-HOLD list on p.69, which contains only discrete parameters. Corrected to boolean above.
+# The adjacent FxSend row IS printed correctly: the parameter reference likewise states
+# "FX SEND ... On, Off" (it is a routing switch, not a send amount).
+# Both must be confirmed byte-level in Spike B against a real bank.
+#
+# VALID TARGETS BY PART TYPE (manual p.68)
+# drum 1-7B, stretch 1-2, slice:  Pitch EGTime Pan Level SttPoint AmpEG Roll Revers FxSend FxSel
+#                                 ModSpd ModDpt ModBPM ModTyp ModDst Cutoff EGInt Reso FltTyp
+# keyboard 1-2:                   as above but Glide replaces Pitch, plus OSC EDIT 1 / OSC EDIT 2
+# audio in:                       EGTime Pan Level AmpEG Roll FxSend FxSel
+#                                 ModSpd ModDpt ModBPM ModTyp ModDst Cutoff EGInt Reso FltTyp
+#                                 (no Pitch, no Start Point, no Reverse)
+# accent:                         LEVEL only, and always TRIG HOLD
+# effects FX1/2/3:                Edit1, Edit2 only, and always SMOOTH

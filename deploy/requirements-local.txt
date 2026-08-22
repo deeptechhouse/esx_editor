@@ -1,0 +1,21 @@
+# ESX Bank Studio — pinned deps for the macOS 12 / Intel dev machine.
+#
+# PySide6 IS PINNED TO 6.9.3 ON PURPOSE.
+# 6.10+ ships only macosx_13_0 wheels; this machine is macOS 12.7.6, so 6.9.3 is
+# the last installable release. Verified working here: QApplication + QPainter
+# both construct offscreen, which is the drawing path the motion canvas needs.
+# The Qt APIs this project uses are stable across 6.9 -> 6.11, so code written
+# here runs unchanged on the M4 mini (which has 6.11.1).
+PySide6==6.9.3
+
+numpy
+scipy
+soundfile
+librosa
+mido
+python-rtmidi
+pytest
+pytest-cov
+hypothesis
+black
+ruff
