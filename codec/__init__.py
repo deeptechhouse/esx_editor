@@ -18,8 +18,10 @@ THE CONTRACT (TDD §4.2)
     writer(reader(b)) == b   for every valid bank, byte for byte.
 
 STATUS
-    WF1 contract freeze: signatures, docstrings, invariants, and exceptions are
-    frozen; bodies raise NotImplementedError. Implementation is a later workflow.
+    WF2/WF3: reader, writer, byte_buffer, operation_table, validator, and
+    template are implemented. The round-trip gate (writer(reader(b)) == b) is
+    green on the corpus and covered by tests. Some semantic field decoders and
+    the sample-commit path remain deferred (documented as NotImplementedError).
 """
 
 from .errors import CodecError, FormatError, RoundTripError

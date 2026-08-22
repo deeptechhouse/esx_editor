@@ -44,3 +44,17 @@ Running log of user prompts for this chat session.
 - **codec**: `reader` (All + PSG + auto-detect), `writer` (byte-identical + mandatory write-side safety: temp → re-read verify → atomic replace → `.bak`), `byte_buffer` (big-endian cursors), `operation_table` (313 targets from TSVs), `validator` (coherence findings), `template` (bundled blank bank loader).
 - **Gate proven**: `writer(reader(b)) == b` byte-for-byte on all 4 corpus banks; `pytest tests/test_roundtrip.py` → 7 passed; no lint errors. `validate()` flags `e4.esx` (17 offset-past-EOF errors) while it still round-trips — confirming the parse/validate split and the stale-header hardware signal.
 - Logged findings/decisions in `research/CODEC_FINDINGS_LOG.md`.
+
+---
+
+## Prompt 6 — 2026-08-22
+
+> commit wf2 & move to WF3  /  proceed with the commit of wf2 and continue on to wf3
+
+**Action taken:**
+1. **Committed WF2** as `542c406` ("feat(WF2): implement codec + core bodies; round-trip gate green").
+2. **WF3 — the gate barrier** (the plan's only barrier). Hard exit = byte-identical round-trip + ≥98% line coverage on `codec/`.
+   - **Integration**: wired `allow_invalid` into `writer.write_file` — it now refuses to write a bank with error-severity validator findings unless overridden (proven on `e4.esx`).
+   - **Adversarial suite** (`tests/test_codec_gate.py`): malformed-input rejection (→ `FormatError`), surgical-edit proofs (only intended bytes change + re-reads), write-safety proofs (temp cleanup, `.bak`, `RoundTripError` on verify-mismatch never touches the destination), and every validator finding code via byte-level fixtures.
+   - **Result**: `pytest tests/` → **52 passed**; **100% line coverage on `codec/`** (473 stmts, 0 missed) — exceeds the 98% bar. No lint errors.
+   - Logged the barrier result in `research/CODEC_FINDINGS_LOG.md`.

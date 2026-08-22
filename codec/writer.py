@@ -66,14 +66,26 @@ class BankWriter:
                    allow_invalid: bool = False) -> None:
         """Write a Bank to `path` using the mandatory safety protocol.
 
-        Raises codec.RoundTripError if re-read verification fails. The existing
-        file is only replaced after verification passes; the previous version is
-        preserved as <path>.bak when keep_backup is True.
-
-        NOTE: `allow_invalid` is accepted for API completeness; wiring it to
-        codec.validator happens in the integration workflow (WF3). It does not
-        weaken the round-trip verification, which always runs.
+        Refuses to write a bank that fails coherence validation unless
+        `allow_invalid=True` (TDD §4.5). Raises codec.RoundTripError if re-read
+        verification fails. The existing file is only replaced after both checks
+        pass; the previous version is preserved as <path>.bak when keep_backup
+        is True.
         """
+        # 0. refuse to write an incoherent bank unless explicitly overridden.
+        #    (Motion-target coherence needs an OperationTable and is checked by
+        #    callers that have one; the sample/offset coherence checked here does
+        #    not, so the default guard is meaningful on its own.)
+        if not allow_invalid:
+            from codec.validator import BankValidator
+            report = BankValidator().validate(bank)
+            if not report.ok:
+                codes = ", ".join(sorted({f.code for f in report.errors()}))
+                raise CodecError(
+                    f"refusing to write an incoherent bank "
+                    f"({len(report.errors())} error(s): {codes}); "
+                    f"pass allow_invalid=True to override")
+
         data = self.write(bank)
 
         # 1. serialize to a temp file in the SAME directory (atomic-replace-safe)

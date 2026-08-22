@@ -103,3 +103,44 @@ and proved the primary gate.
 - `OperationTable.targets_for_part` — picker rules land with the motion editor.
   Domain resolution (id -> kind/options) is currently best-effort suffix-match;
   `is_known`/`get` (all the validator needs) are exact (313 targets loaded).
+
+---
+
+## 2026-08-22 — WF3 (the gate barrier)
+
+The only barrier in the plan. Hard exit: byte-identical round-trip on the corpus
+PLUS >=98% line coverage on `codec/`. Both met.
+
+### RESULT — gate PASSED
+- Round-trip byte-identical on all 4 banks (re-proven through the real packages).
+- **Coverage: 100% of `codec/`** (473 stmts, 0 missed) — exceeds the 98% bar.
+  `pytest tests/` = **52 passed**. Suite: `tests/test_codec_gate.py` (+ the WF2
+  `tests/test_roundtrip.py`).
+
+### INTEGRATION — `allow_invalid` wired into `writer.write_file`
+- `write_file` now runs `BankValidator().validate(bank)` first and RAISES
+  `CodecError` if the bank has error-severity findings, unless
+  `allow_invalid=True` (TDD §4.5 "refuse to write an invalid file").
+- Proven: opening `e4.esx` (17 offset-past-EOF errors) and calling `write_file`
+  is refused by default and succeeds with `allow_invalid=True`.
+- The round-trip re-read verification still always runs regardless of the flag.
+
+### ADVERSARIAL — attempts to break the writer/reader (all now covered)
+- Malformed input -> `FormatError` (never a corrupt write): short file, bad head
+  magic, missing "ESX" tag, missing sample-area "KORG..BPS" magic, PSG bad magic.
+- Surgical-edit proof: mutating one motion slot changes ONLY bytes inside that
+  slot's region (target-name area excluded) and the result re-reads identically;
+  same for a sample-name edit (only the 8 name bytes change).
+- Write-safety proof: temp file is cleaned up on success AND on failure; `.bak`
+  is created on overwrite (and skipped with `keep_backup=False`); a forced
+  verify-mismatch (mocked re-read) raises `RoundTripError` and NEVER creates or
+  replaces the destination file.
+- Validator coverage: every finding code exercised via byte-level fixtures
+  (reversed_offsets, offset_past_eof, rate_out_of_range, mono/stereo count
+  mismatch, current_offset_low, current_offset_past_eof, pcm_over_capacity,
+  unknown_motion_target) plus the clean-bank and PSG paths.
+
+### NOTE — `_replace` OSError path
+- `writer._replace` carries `# pragma: no cover` for its `os.replace` OSError
+  branch (platform/FS-dependent, not reproducible in a unit test). This is the
+  only intentionally-excluded line; coverage is otherwise total.
