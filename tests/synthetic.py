@@ -32,6 +32,14 @@ SEED = b"esx-bank-studio-synthetic-v1"
 #: Sample rate written into every synthetic slot (inside the legal range).
 RATE_HZ = 44100
 
+#: The 16-byte pattern header a real machine writes for an untouched pattern,
+#: observed identically on the blank template, on e5.esx, and on 204 of the 256
+#: patterns in Chronic-Interactive.esx. Bytes 0..1 are tempo at 1/128 BPM:
+#: 0x3C00 / 128 = 120.0, the machine's default.
+DEFAULT_PATTERN_HEADER = bytes.fromhex(
+    "3c00000000 0f003c 00007fff7fff7fff".replace(" ", "")
+)
+
 #: Motion targets used by pattern 0. Both exist in the 313-target table, so the
 #: validator's unknown_motion_target check passes.
 MOTION_TARGET_FX1_EDIT1 = 485
@@ -83,6 +91,12 @@ def build(
     for p in range(L.NUM_PATTERNS):
         base = L.ADDR_PATTERN_DATA + p * L.CHUNK_PATTERN
         buf[base : base + L.PATTERN_NAME_LEN] = f"PAT{p:05d}"[:8].encode("ascii")
+        # Use the machine's own default header rather than filler: a fixture
+        # that does not look like a real bank is a weaker fixture.
+        header_at = base + L.PATTERN_NAME_LEN
+        buf[header_at : header_at + len(DEFAULT_PATTERN_HEADER)] = (
+            DEFAULT_PATTERN_HEADER
+        )
         # Every motion slot starts unused: target 0xFFFF, all values Disabl.
         for s in range(L.NUM_PARAMETERS_MOTION):
             off = base + L.PAT_OFF_PARAMETERS_MOTION + s * L.CHUNK_PARAMETERS_MOTION

@@ -325,8 +325,12 @@ def test_pattern_basics_shows_header_hex_only(qapp, opened) -> None:
     pat = opened.bank.patterns()[0]
     assert page.header.toPlainText() == pat.header.to_bytes().hex(" ")
     assert f"/{L.NUM_PARAMETERS_MOTION} motion" in page.motion.text()
-    with pytest.raises(NotImplementedError):
-        _ = pat.header.tempo  # the page must never call this
+    # Tempo IS decoded now; length/beat/last-step are still unproven and the
+    # page must never call them.
+    assert page.tempo.value() == pytest.approx(pat.header.tempo, abs=0.05)
+    for field in ("length_bars", "last_step", "playable_steps"):
+        with pytest.raises(NotImplementedError):
+            getattr(pat.header, field)
 
 
 def test_pattern_basics_rename_marks_dirty(qapp, opened) -> None:
@@ -625,3 +629,23 @@ def test_slot_page_refuses_when_there_are_too_few_free_slots(qapp, tmp_path) -> 
     assert page.commit() == 0
     assert "Only 1 free mono slot" in page.status.text()
     assert bank.sample_area_header()[0] == L.NUM_SAMPLES_MONO - 1
+
+
+def test_pattern_basics_edits_the_tempo(qapp, opened) -> None:
+    hits = []
+    wiz = SetupWizard(opened, on_changed=lambda: hits.append(1))
+    page = wiz.page_at(8)
+    page.refresh()
+    page.tempo.setValue(137.5)
+    page.apply_tempo(137.5)
+    assert opened.bank.patterns()[0].header.tempo == pytest.approx(137.5, abs=0.01)
+    assert opened.dirty is True
+    assert hits
+
+
+def test_pattern_basics_refresh_does_not_count_as_an_edit(qapp, opened) -> None:
+    """Loading a pattern into the spinbox must not mark the bank modified."""
+    wiz = build(opened)
+    page = wiz.page_at(8)
+    page.refresh()
+    assert opened.dirty is False

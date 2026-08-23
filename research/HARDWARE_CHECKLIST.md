@@ -30,18 +30,30 @@ and whether the two bands are a signed encoding or simply unused values.
 
 ---
 
-## 2. Stereo sample header — GATES stereo import
+## 2. Stereo sample header — ~~GATES stereo import~~ **CLOSED 2026-08-23 (reading)**
 
-**Why:** All three corpus banks are mono-only, so the 44-byte stereo header's
-second channel-offset pair is completely untested. The layout is inferred from
-blank slots only. **Do not ship stereo import until a stereo bank round-trips.**
+**Closed without hardware.** The premise was wrong: `corpus/Chronic-Interactive.esx`
+contains **40 populated stereo slots**. It was added to the corpus after this
+checklist was written and item 2 was never re-evaluated against it.
 
-**Do:**
-1. Get at least one **stereo** sample into the machine — either sample in stereo
-   from the audio input, or load a stereo WAV from card.
-2. Save All to card.
-3. Verify: `python3 spike_a/esx_probe.py inspect BANK.esx` should report a
-   non-zero stereo count, then `verify` must still round-trip byte-identically.
+The layout is now VERIFIED from those slots, and it **corrects TDD §2.3** — there
+is no `loopStart` in the stereo header; the rate is at 32 and the tune at 36:
+
+```
+ 0..7  name                16..19 offsetChannel2Start   28..31 end
+ 8..11 offsetChannel1Start  20..23 offsetChannel2End     32..35 sampleRate
+12..15 offsetChannel1End    24..27 start                 36..37 sampleTune
+```
+
+40/40 on every predicted property; 0/40 for the TDD's claimed rate position.
+See `research/CODEC_FINDINGS_LOG.md` (WF8) and `codec/layout.py`.
+
+**Still open — WRITING a stereo sample.** Reading a layout is weaker evidence
+than writing one and having the machine accept it. `SampleSlot.set_stereo_ranges`
+exists but `commit_sample` refuses stereo until this is done:
+
+1. Commit a stereo sample with the app, Save All, load it on the ESX-1.
+2. Confirm it plays in stereo and the machine does not reject the bank.
 
 ---
 

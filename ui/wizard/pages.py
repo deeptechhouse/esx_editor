@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -40,6 +41,7 @@ from PySide6.QtWidgets import (
 import codec.layout as L
 from codec.errors import CodecError
 from core.errors import InvariantError
+from core.pattern import MAX_TEMPO, MIN_TEMPO
 from ui.theme import PALETTE, TYPE
 from ui.views.staging_view import StagingView
 from ui.widgets.budget_meter import BudgetMeter
@@ -87,6 +89,7 @@ class SkippablePage(QWizardPage):
     def __init__(self, ctx, parent=None):
         super().__init__(parent)
         self._ctx = ctx
+        self._loading = False
         self.setTitle(self.TITLE)
         self.setSubTitle(self.SUBTITLE)
         self.layout = QVBoxLayout(self)
@@ -575,27 +578,49 @@ class PatternBasicsPage(SkippablePage):
 
     def build(self) -> None:
         self.reason(
-            "The 16-byte pattern header carries tempo, length, beat, last step, "
-            "swing and roll — but which byte holds which is not settled, and "
-            "PatternHeader.tempo raises NotImplementedError. Writing a wrong byte "
-            "into a pattern is exactly the corruption this project exists to "
-            "avoid, so the header is shown as hex until a hardware diff pins it."
+            "Tempo is decoded and editable: it is a big-endian u16 at header "
+            "offset 0 in units of 1/128 BPM, established against 1,024 real "
+            "pattern headers where 19 of 20 distinct values land on exact "
+            "integer BPMs and the default is exactly 120.0. Length, beat and "
+            "last step are NOT decoded — every named pattern in the corpus "
+            "shares those bytes, so there is nothing to correlate against, and "
+            "writing a wrong byte into a pattern is the corruption this project "
+            "exists to avoid. They wait on a hardware diff."
         )
         self.name = QLineEdit()
         self.name.setMaxLength(L.PATTERN_NAME_LEN)
         self.name.editingFinished.connect(self.apply_name)
+        self.tempo = QDoubleSpinBox()
+        self.tempo.setDecimals(1)
+        self.tempo.setSingleStep(0.1)
+        self.tempo.setRange(MIN_TEMPO, MAX_TEMPO)
+        self.tempo.setSuffix(" BPM")
+        self.tempo.setKeyboardTracking(False)
+        self.tempo.valueChanged.connect(self.apply_tempo)
         self.header = _mono(QPlainTextEdit())
         self.header.setMaximumHeight(70)
         self.motion = _lcd("")
         row = QHBoxLayout()
         row.addWidget(QLabel("Name"))
         row.addWidget(self.name)
+        row.addWidget(QLabel("Tempo"))
+        row.addWidget(self.tempo)
         row.addStretch(1)
         self.layout.addLayout(row)
-        self.layout.addWidget(QLabel("Header (16 B, undecoded)"))
+        self.layout.addWidget(QLabel("Header (16 B; only tempo is decoded)"))
         self.layout.addWidget(self.header)
         self.layout.addWidget(self.motion)
         self.layout.addStretch(1)
+
+    def apply_tempo(self, value: float) -> None:
+        pat = self._ctx.first_pattern()
+        if pat is None or self._loading:
+            return
+        if abs(pat.header.tempo - value) < 0.001:
+            return
+        pat.header.set_tempo(value)
+        self._ctx.session.mark_dirty()
+        self._ctx.notify_changed()
 
     def apply_name(self) -> None:
         pat = self._ctx.first_pattern()
@@ -609,13 +634,20 @@ class PatternBasicsPage(SkippablePage):
 
     def refresh(self) -> None:
         pat = self._ctx.first_pattern()
-        if pat is None:
-            self.name.setText("")
-            self.header.setPlainText("")
-            self.motion.setText("No bank open — nothing to show.")
-            return
-        self.name.setText(pat.name)
-        self.header.setPlainText(pat.header.to_bytes().hex(" "))
+        self._loading = True
+        try:
+            if pat is None:
+                self.name.setText("")
+                self.tempo.setEnabled(False)
+                self.header.setPlainText("")
+                self.motion.setText("No bank open — nothing to show.")
+                return
+            self.name.setText(pat.name)
+            self.tempo.setEnabled(True)
+            self.tempo.setValue(pat.header.tempo)
+            self.header.setPlainText(pat.header.to_bytes().hex(" "))
+        finally:
+            self._loading = False
         self.motion.setText(
             f"{pat.motion_slots_used()}/{L.NUM_PARAMETERS_MOTION} motion slots used"
         )

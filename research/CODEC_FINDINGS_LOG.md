@@ -460,3 +460,59 @@ source build and needs an LLVM toolchain. librosa **1.0.0** resolves to numba
 a note to install `--only-binary=:all:`. This contradicts PLAN Rev 2's claim
 that "numba / llvmlite cp313 x86_64 wheels exist" — true only for recent
 versions, not for the ones librosa 0.11 pins.
+
+---
+
+## 2026-08-23 — WF10 (pattern tempo decoded; the rest proven undeterminable)
+
+### DISCOVERY — tempo is a big-endian u16 at header offset 0, scaled by 128
+
+`PatternHeader.tempo` no longer raises. Established across **1,024 pattern
+headers in four banks**:
+
+- 19 of 20 distinct values decode to **exact integer BPMs**: 69, 72, 80, 82, 84,
+  85, 86, 89, 90, 91, 92, 95, 98, 100, 120, 124, 128, 134, 144. All inside the
+  documented 20.0-300.0 range.
+- The default header — on the blank template, on e5.esx, and on 204 of Chronic's
+  256 patterns — is `3c 00 ...` = 15360/128 = **exactly 120.0**, the machine's
+  own default.
+- The competing reading (byte 0 doubled) is **ruled out** by the odd tempos: 69,
+  85, 89, 91 and 95 cannot come from doubling a byte. They arise when the low
+  byte is 0x80, i.e. exactly +1.00 BPM at a 1/128 scale.
+
+Stored resolution (1/128 ≈ 0.008 BPM) is finer than the 0.1 BPM the machine
+displays, so a stored value need not land on a tenth. One corpus value
+(144.015625) is exactly that case.
+
+### NEGATIVE RESULT — length, beat, last step and swing are NOT determinable
+
+Worth recording as a result rather than a gap. Across all **52 named patterns in
+the entire corpus**, header bytes 2, 4, 5, 6 and 7 are **constant**:
+
+```
+  byte 2: {0}        byte 5: {15}
+  byte 4: {1}        byte 6: {0}       byte 7: {60}
+```
+
+A field that never varies cannot be distinguished from any other constant. Byte
+3 does vary — {1, 3, 19, 67, 131}, i.e. low bits 1 or 3 plus at most one of bits
+4/6/7 — but five values across two apparent sub-fields is not enough to assign
+meanings.
+
+`length_bars`, `last_step` and `playable_steps` therefore still raise
+`NotImplementedError`, and the message now names exactly which bytes to watch,
+so the hardware session knows what to diff: change ONE setting on ONE pattern,
+Save All, compare. That single experiment closes all of them.
+
+### FIXTURE — the synthetic bank now carries the machine's real default header
+
+`tests/synthetic.py` filled pattern headers with deterministic filler, which
+decoded to a nonsense tempo of 104.02. It now writes the real default
+(`3c 00 00 00 00 0f 00 3c 00 00 7f ff 7f ff 7f ff`), so the fixture looks like
+something an ESX-1 actually wrote. The golden hash moved as a result — that is
+the golden test doing its job, and the change was intended.
+
+### HARDWARE CHECKLIST — item 2 closed for reading
+Updated `research/HARDWARE_CHECKLIST.md`: the stereo-header item was written
+before Chronic-Interactive.esx joined the corpus and was never re-evaluated
+against it. Reading is closed; WRITING a stereo sample still needs the machine.

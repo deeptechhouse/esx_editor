@@ -315,3 +315,72 @@ def test_commit_into_a_real_bank_corrupts_nothing(coherent_bank) -> None:
         )
         == payload
     )
+
+
+# -- the one decoded pattern-header field -------------------------------------
+def test_tempo_decodes_the_machine_default_exactly() -> None:
+    """Every untouched pattern reads exactly 120.0 — the machine's own default."""
+    bank = empty_bank()
+    for pattern in bank.patterns()[:8]:
+        assert pattern.header.tempo == pytest.approx(120.0, abs=0.001)
+
+
+def test_tempo_round_trips_through_the_writer() -> None:
+    bank = empty_bank()
+    bank.patterns()[3].header.set_tempo(137.5)
+    data = BankWriter().write(bank)
+    again = BankReader().read_auto(data)
+    assert again.patterns()[3].header.tempo == pytest.approx(137.5, abs=0.01)
+    assert BankWriter().write(again) == data
+
+
+def test_tempo_refuses_values_the_hardware_cannot_hold() -> None:
+    from core.pattern import MAX_TEMPO, MIN_TEMPO
+
+    header = empty_bank().patterns()[0].header
+    for bad in (0.0, 19.9, 300.1, 10_000.0, -5.0):
+        with pytest.raises(InvariantError, match="tempo"):
+            header.set_tempo(bad)
+    header.set_tempo(MIN_TEMPO)
+    assert header.tempo == pytest.approx(MIN_TEMPO, abs=0.01)
+    header.set_tempo(MAX_TEMPO)
+    assert header.tempo == pytest.approx(MAX_TEMPO, abs=0.01)
+
+
+def test_the_still_undecoded_header_fields_refuse_to_guess() -> None:
+    header = empty_bank().patterns()[0].header
+    for field in ("length_bars", "last_step", "playable_steps"):
+        with pytest.raises(NotImplementedError, match="hardware diff"):
+            getattr(header, field)
+
+
+@pytest.mark.corpus
+def test_real_pattern_tempos_are_musical(bank) -> None:
+    """The evidence for the 1/128 scale: real tempos land on whole BPM.
+
+    19 of the 20 distinct values across the corpus are exact integers in the
+    20-300 range. A wrong scale would not produce that.
+    """
+    from core.pattern import MAX_TEMPO, MIN_TEMPO
+
+    named = [p for p in bank.patterns() if p.name.strip()]
+    tempos = {p.header.tempo for p in (named or bank.patterns()[:16])}
+    assert tempos, "every bank has patterns"
+    for tempo in tempos:
+        assert MIN_TEMPO <= tempo <= MAX_TEMPO, tempo
+    whole = sum(1 for t in tempos if abs(t - round(t)) < 0.001)
+    assert whole >= len(tempos) * 0.9, (
+        f"only {whole}/{len(tempos)} tempos are whole BPM; the 1/128 scale "
+        "may be wrong"
+    )
+
+
+@pytest.mark.corpus
+def test_editing_tempo_leaves_every_other_header_byte_alone(coherent_bank) -> None:
+    """A tempo edit must touch exactly two bytes."""
+    header = coherent_bank.patterns()[0].header
+    before = header.to_bytes()
+    header.set_tempo(111.0)
+    after = header.to_bytes()
+    changed = [i for i in range(len(before)) if before[i] != after[i]]
+    assert changed and set(changed) <= {0, 1}, f"tempo touched bytes {changed}"

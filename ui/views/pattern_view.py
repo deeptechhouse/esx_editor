@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -21,7 +22,7 @@ from PySide6.QtWidgets import (
 
 import codec.layout as L
 from core.bank import Bank
-from core.pattern import Pattern
+from core.pattern import MAX_TEMPO, MIN_TEMPO, Pattern
 from ui.theme import PALETTE
 
 
@@ -33,11 +34,19 @@ class PatternView(QWidget):
         super().__init__(parent)
         self._bank: Bank | None = None
         self._index = 0
+        self._loading = False
         self.list = QListWidget()
         self.list.currentRowChanged.connect(self._on_row)
         self._name = QLineEdit()
         self._name.setMaxLength(8)
         self._name.editingFinished.connect(self._rename)
+        self._tempo = QDoubleSpinBox()
+        self._tempo.setDecimals(1)
+        self._tempo.setSingleStep(0.1)
+        self._tempo.setRange(MIN_TEMPO, MAX_TEMPO)
+        self._tempo.setSuffix(" BPM")
+        self._tempo.setKeyboardTracking(False)
+        self._tempo.valueChanged.connect(self._retempo)
         self._header = QLabel("")
         self._header.setStyleSheet(f"color: {PALETTE.muted};")
         self._motion = QLabel(f"0/{L.NUM_PARAMETERS_MOTION} motion")
@@ -59,6 +68,8 @@ class PatternView(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel("Name"))
         row.addWidget(self._name)
+        row.addWidget(QLabel("Tempo"))
+        row.addWidget(self._tempo)
         row.addWidget(self._motion)
         detail.addLayout(row)
         detail.addWidget(self._header)
@@ -114,18 +125,41 @@ class PatternView(QWidget):
             item.setText(f"{self._index:03d}  {pat.name}")
         self.patternEdited.emit()
 
+    def _retempo(self, value: float) -> None:
+        pat = self.current_pattern()
+        if pat is None or self._loading:
+            return
+        if abs(pat.header.tempo - value) < 0.001:
+            return
+        pat.header.set_tempo(value)
+        self.patternEdited.emit()
+
     def _show(self, pat: Pattern | None) -> None:
         self.parts.setRowCount(0)
         self.fx.setRowCount(0)
+        self._loading = True
+        try:
+            self._populate(pat)
+        finally:
+            self._loading = False
+
+    def _populate(self, pat: Pattern | None) -> None:
         if pat is None:
             self._name.setText("")
+            self._tempo.setEnabled(False)
             self._header.setText("no pattern")
             self._motion.setText(f"0/{L.NUM_PARAMETERS_MOTION} motion")
             return
         self._name.setText(pat.name)
+        self._tempo.setEnabled(True)
+        self._tempo.setValue(pat.header.tempo)
         raw = pat.header.to_bytes()
+        # Tempo is decoded (VERIFIED); length / beat / last step are not, and
+        # every named pattern in the corpus shares the same bytes there, so
+        # there is nothing to correlate a meaning against. Show the raw header
+        # rather than invent them.
         self._header.setText(
-            "header 16 B (tempo/length/beat unread — offsets unproven): "
+            "header 16 B — tempo decoded; length/beat/last-step still unproven: "
             f"{raw.hex(' ')}"
         )
         self._motion.setText(

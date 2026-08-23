@@ -198,6 +198,7 @@ def test_pattern_view_shows_header_as_hex_not_fields(qapp, bank) -> None:
     v.bind_bank(bank)
     text = v._header.text()
     assert "unproven" in text
+    assert v._tempo.value() == pytest.approx(bank.patterns()[0].header.tempo, abs=0.05)
     assert bank.patterns()[0].header.to_bytes().hex(" ") in text
     assert f"/{L.NUM_PARAMETERS_MOTION} motion" in v._motion.text()
 
@@ -571,3 +572,30 @@ def test_passthrough_rejects_a_zero_rate_header(tmp_path) -> None:
     bad.write_bytes(data)
     with pytest.raises(ValueError):
         WavPassthroughConverter().probe_duration(str(bad))
+
+
+# -- tempo, the one decoded header field --------------------------------------
+def test_pattern_view_edits_tempo_and_emits_intent(qapp, bank) -> None:
+    v = PatternView()
+    v.bind_bank(bank)
+    edits = []
+    v.patternEdited.connect(lambda: edits.append(1))
+    v._tempo.setValue(101.5)
+    assert bank.patterns()[0].header.tempo == pytest.approx(101.5, abs=0.01)
+    assert edits
+
+
+def test_pattern_view_binding_does_not_emit_a_spurious_edit(qapp, bank) -> None:
+    """Loading a pattern into the spinbox must not look like a user edit."""
+    v = PatternView()
+    edits = []
+    v.patternEdited.connect(lambda: edits.append(1))
+    v.bind_bank(bank)
+    v.list.setCurrentRow(4)
+    assert edits == []
+
+
+def test_pattern_view_disables_tempo_with_no_bank(qapp) -> None:
+    v = PatternView()
+    v.bind_bank(None)
+    assert not v._tempo.isEnabled()

@@ -23,6 +23,7 @@ NOTE ON LAYOUT CONSTANTS
 
 from __future__ import annotations
 
+import struct
 from collections.abc import Sequence
 
 import codec.layout as L
@@ -60,6 +61,22 @@ _PART_GROUPS = (
 )
 
 
+#: Tempo lives in the first two bytes of the header, scaled by 128.
+TEMPO_OFFSET = 0
+TEMPO_SCALE = 128.0
+MIN_TEMPO = 20.0
+MAX_TEMPO = 300.0
+
+_UNDECODED_MESSAGE = (
+    "{field} is not decoded: every named pattern in the corpus shares the same "
+    "header bytes 2, 4, 5, 6 and 7, so there is no variation to correlate a "
+    "meaning against. Byte 3 varies (1, 3, 19, 67, 131 — low bits 1 or 3 plus "
+    "at most one of bits 4/6/7) but not enough to assign fields. Closing this "
+    "needs a hardware diff: change one setting on one pattern, Save All, and "
+    "compare. See research/HARDWARE_CHECKLIST.md."
+)
+
+
 class PatternHeader:
     """Tempo, length, beat, last step, swing, and roll for one pattern.
 
@@ -78,20 +95,54 @@ class PatternHeader:
 
     @property
     def tempo(self) -> float:
-        raise NotImplementedError
+        """Pattern tempo in BPM (VERIFIED 2026-08-23).
+
+        Stored as a big-endian u16 at header offset 0, in units of 1/128 BPM.
+
+        EVIDENCE
+            Across 1,024 pattern headers in four banks, this reading yields 19
+            of 20 distinct values as EXACT integer BPMs — 69, 72, 80, 82, 84,
+            85, 86, 89, 90, 91, 92, 95, 98, 100, 120, 124, 128, 134, 144 — every
+            one inside the documented 20.0-300.0 range. The default header, on
+            the blank template and on two untouched banks, is exactly 120.0,
+            which is the machine's own default.
+
+            The competing reading (byte 0 doubled) is ruled out by the odd
+            tempos: 69, 85, 89, 91 and 95 cannot be produced by doubling a byte.
+            They come from the low byte being 0x80, i.e. exactly +1.00 BPM at a
+            1/128 scale.
+
+        The stored resolution (1/128 BPM) is finer than the 0.1 BPM the display
+        shows, so a value need not land on a tenth.
+        """
+        raw = struct.unpack_from(">H", self._raw, TEMPO_OFFSET)[0]
+        return raw / TEMPO_SCALE
+
+    def set_tempo(self, bpm: float) -> None:
+        """Set the tempo, clamped to nothing — out of range raises."""
+        if not (MIN_TEMPO <= bpm <= MAX_TEMPO):
+            raise InvariantError(
+                f"tempo {bpm} outside the hardware's {MIN_TEMPO}-{MAX_TEMPO} BPM"
+            )
+        struct.pack_into(">H", self._raw, TEMPO_OFFSET, int(round(bpm * TEMPO_SCALE)))
 
     @property
     def length_bars(self) -> int:
-        raise NotImplementedError
+        """NOT DECODED — see the class docstring. Raises deliberately."""
+        raise NotImplementedError(_UNDECODED_MESSAGE.format(field="length_bars"))
 
     @property
     def last_step(self) -> int:
-        raise NotImplementedError
+        """NOT DECODED — see the class docstring. Raises deliberately."""
+        raise NotImplementedError(_UNDECODED_MESSAGE.format(field="last_step"))
 
     @property
     def playable_steps(self) -> int:
-        """last_step * length_bars, capped at 128 (TDD §8.1)."""
-        raise NotImplementedError
+        """last_step * length_bars, capped at 128 (TDD §8.1).
+
+        Blocked on both of its inputs.
+        """
+        raise NotImplementedError(_UNDECODED_MESSAGE.format(field="playable_steps"))
 
     def to_bytes(self) -> bytes:
         return bytes(self._raw)
