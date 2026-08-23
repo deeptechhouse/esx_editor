@@ -251,3 +251,122 @@ def test_part_edits_do_not_disturb_the_rest_of_a_real_bank(coherent_bank) -> Non
     part.write_sequence(sequence)
     assert [p.to_bytes() for p in coherent_bank.patterns()[1:6]] == others
     assert len(pattern.to_bytes()) == L.CHUNK_PATTERN
+
+
+# -- the no-sample flag -------------------------------------------------------
+def test_sample_number_masks_the_unassigned_flag() -> None:
+    """Bit 15 is a flag, not part of the index — reading it raw gives 32,768."""
+    import struct
+
+    from core.part import SAMPLE_NUMBER_UNASSIGNED
+
+    bank = a_bank()
+    part = bank.patterns()[0].parts()[0]
+    raw = bytearray(part.to_bytes())
+    struct.pack_into(">H", raw, 0, SAMPLE_NUMBER_UNASSIGNED)
+    from core.part import Part
+
+    flagged = Part.from_bytes(part.kind, part.index, bytes(raw))
+    assert flagged.sample_number == 0
+    assert flagged.sample_assigned is False
+
+
+def test_assigning_a_sample_clears_the_unassigned_flag() -> None:
+    bank = a_bank()
+    part = bank.patterns()[0].parts()[0]
+    part.clear_sample_assignment()
+    assert part.sample_assigned is False
+    part.set_sample_number(12)
+    assert part.sample_assigned is True
+    assert part.sample_number == 12
+
+
+@pytest.mark.corpus
+def test_no_part_in_a_real_bank_decodes_past_the_slot_maximum(bank) -> None:
+    """The regression: unmasked, blank patterns decoded as slot 32,768.
+
+    The earlier corpus test only walked NAMED patterns, which never carry the
+    flag, so it passed while every blank pattern was being misread.
+    """
+    for pattern in bank.patterns():
+        for part in pattern.parts():
+            if part.kind not in SAMPLE_PLAYING_KINDS:
+                continue
+            assert 0 <= part.sample_number < L.NUM_SAMPLES
+
+
+@pytest.mark.corpus
+def test_blank_patterns_report_their_parts_as_unassigned(stereo_bank) -> None:
+    blank = [p for p in stereo_bank.patterns() if not p.name.strip()]
+    named = [p for p in stereo_bank.patterns() if p.name.strip()]
+    if not blank or not named:
+        pytest.skip("need both blank and named patterns")
+    for part in blank[0].parts():
+        if part.kind in SAMPLE_PLAYING_KINDS:
+            assert part.sample_assigned is False
+    for part in named[0].parts():
+        if part.kind in SAMPLE_PLAYING_KINDS:
+            assert part.sample_assigned is True
+
+
+# -- pattern clear / copy -----------------------------------------------------
+def test_clear_makes_a_pattern_byte_identical_to_the_blank_form() -> None:
+    bank = a_bank()
+    bank.patterns()[3].set_name("SOMETHING")
+    assert not bank.is_pattern_blank(3)
+    bank.clear_pattern(3)
+    assert bank.is_pattern_blank(3)
+    assert bank.patterns()[3].to_bytes() == bank.blank_pattern_bytes()
+
+
+def test_copy_then_clear_restores_the_original_bytes() -> None:
+    """The strongest check available: the whole bank comes back identical."""
+    bank = a_bank()
+    source = 0
+    destination = next(i for i in range(10, 256) if bank.is_pattern_blank(i))
+    bank.patterns()[source].set_name("COPYME")
+    # Snapshot AFTER the rename: restoring a name to "" would pad to eight
+    # spaces, which is not what the source started as.
+    before = BankWriter().write(bank)
+
+    bank.copy_pattern(source, destination)
+    assert bank.patterns()[destination].name.strip() == "COPYME"
+    assert not bank.is_pattern_blank(destination)
+
+    bank.clear_pattern(destination)
+    assert BankWriter().write(bank) == before
+
+
+def test_copy_is_a_deep_copy() -> None:
+    """Editing the copy must not reach back into the source."""
+    bank = a_bank()
+    bank.copy_pattern(0, 5)
+    bank.patterns()[5].set_name("CHANGED")
+    assert bank.patterns()[0].name.strip() != "CHANGED"
+
+
+def test_pattern_operations_refuse_bad_indices() -> None:
+    bank = a_bank()
+    for bad in (-1, L.NUM_PATTERNS):
+        with pytest.raises(InvariantError, match="out of range"):
+            bank.clear_pattern(bad)
+        with pytest.raises(InvariantError, match="out of range"):
+            bank.copy_pattern(0, bad)
+    with pytest.raises(InvariantError, match="same pattern"):
+        bank.copy_pattern(4, 4)
+
+
+@pytest.mark.corpus
+def test_the_blank_form_is_the_banks_most_common_pattern(stereo_bank) -> None:
+    """Clear replays the machine's own bytes rather than synthesising them."""
+    blank = stereo_bank.blank_pattern_bytes()
+    matches = sum(1 for p in stereo_bank.patterns() if p.to_bytes() == blank)
+    assert matches > len(stereo_bank.patterns()) // 2
+    assert len(blank) == L.CHUNK_PATTERN
+
+
+@pytest.mark.corpus
+def test_clearing_a_real_pattern_leaves_its_neighbours_alone(coherent_bank) -> None:
+    others = [p.to_bytes() for p in coherent_bank.patterns()[1:6]]
+    coherent_bank.clear_pattern(0)
+    assert [p.to_bytes() for p in coherent_bank.patterns()[1:6]] == others

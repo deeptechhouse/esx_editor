@@ -238,6 +238,58 @@ class Bank:
         """MAX_PCM_BYTES minus pcm_used_bytes()."""
         return self.MAX_PCM_BYTES - self.pcm_used_bytes()
 
+    # -- pattern operations -------------------------------------------------
+    def blank_pattern_bytes(self) -> bytes:
+        """This bank's OWN blank pattern chunk, taken from the bank itself.
+
+        WHY NOT A HARDCODED BLANK
+            "Clear" has to produce bytes the machine would produce. Rather than
+            synthesise them, take the most common whole-pattern chunk in this
+            bank: on every corpus bank that is the untouched pattern, appearing
+            204/256 times in the busiest bank and 256/256 in an empty one.
+
+            It also sidesteps a real difference between banks. Chronic's blank
+            patterns set the no-sample flag (0x8000) on every part; the other
+            three leave those bytes zero. Both are machine-written. Copying
+            whichever this bank uses keeps a cleared pattern consistent with its
+            neighbours instead of importing another bank's convention.
+        """
+        counts: dict[bytes, int] = {}
+        for pattern in self._patterns:
+            raw = pattern.to_bytes()
+            counts[raw] = counts.get(raw, 0) + 1
+        return max(counts, key=lambda raw: counts[raw])
+
+    def clear_pattern(self, index: int) -> None:
+        """Reset a pattern to this bank's blank form (the machine's Pattern Clear).
+
+        Note there is no "add a pattern": the ESX-1 always has exactly 256, and
+        making a new one means clearing an unused slot and editing it.
+        """
+        self._require_pattern(index)
+        self._patterns[index] = Pattern.from_bytes(self.blank_pattern_bytes())
+
+    def copy_pattern(self, source: int, destination: int) -> None:
+        """Copy one pattern's 4,280 bytes onto another slot."""
+        self._require_pattern(source)
+        self._require_pattern(destination)
+        if source == destination:
+            raise InvariantError("source and destination are the same pattern")
+        self._patterns[destination] = Pattern.from_bytes(
+            self._patterns[source].to_bytes()
+        )
+
+    def is_pattern_blank(self, index: int) -> bool:
+        """True when the pattern is byte-identical to this bank's blank form."""
+        self._require_pattern(index)
+        return self._patterns[index].to_bytes() == self.blank_pattern_bytes()
+
+    def _require_pattern(self, index: int) -> None:
+        if not (0 <= index < len(self._patterns)):
+            raise InvariantError(
+                f"pattern {index} out of range 0..{len(self._patterns) - 1}"
+            )
+
     def commit_sample(
         self,
         slot_index: int,

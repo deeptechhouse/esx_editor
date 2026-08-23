@@ -38,7 +38,13 @@ from tests.synthetic import SEED, build, sha256
 # triggering on half their steps. The fixture now looks like something an ESX-1
 # actually wrote. This hash moving is the golden test doing its job — the
 # changes were intended.
-GOLDEN_DEFAULT = "022c5b6b2c7bd523a71ff1f3a0dd58e2b5a47ef8f66fc522f31b96a452e711ca"
+#
+# CHANGED again 2026-08-23 (WF13): only the first four patterns are named now.
+# Naming all 256 made every pattern chunk unique, so the fixture had no "blank
+# pattern" — which a real bank very much does (204 of 256 in the busiest corpus
+# bank). Pattern Clear derives its bytes from that, so the fixture had to match
+# reality for it to be testable.
+GOLDEN_DEFAULT = "d214c0f31d135095d03b3eb42eadb2cee4990376e61aa3b627ea8965fbe78ac6"
 GOLDEN_SIZE = 2428928
 
 

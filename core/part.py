@@ -30,6 +30,22 @@ SAMPLE_PLAYING_KINDS = frozenset({KIND_DRUM, KIND_KEYBOARD, KIND_STRETCHSLICE})
 SAMPLE_NUMBER_OFFSET = 0
 NUM_SAMPLE_SLOTS = 384
 
+#: Bit 15 of that u16 marks a part with NO sample assigned.
+#:
+#: VERIFIED 2026-08-23. In corpus/Chronic-Interactive.esx the field reads
+#: exactly 0x8000 — flag set, index bits zero — on all 2,856 sample-playing
+#: parts of the 204 never-used patterns, and never on any of the 728 parts of
+#: the 52 named ones. The other three banks never set it, because every one of
+#: their patterns is untouched in the same way default.esx's are.
+#:
+#: The index therefore has to be masked out of the raw field. Reading it raw
+#: returns 32,768, which is not a slot: there are only 384. Whether the bit
+#: means precisely "no sample" or something adjacent like "part never
+#: initialised" is not settled — what IS settled is that it is a flag and not
+#: part of the index, which is all the mask needs to be right about.
+SAMPLE_NUMBER_UNASSIGNED = 0x8000
+SAMPLE_NUMBER_MASK = 0x3FFF
+
 
 #: Where each part kind's 16-byte trigger bitmap sits inside its chunk, and how
 #: many steps it holds. VERIFIED 2026-08-23 against 468 drum and 156 stretch /
@@ -143,7 +159,21 @@ class Part:
                 f"a {self._kind} part does not play a sample slot; its first "
                 "two bytes are some other field"
             )
+        return self._raw_sample_field() & SAMPLE_NUMBER_MASK
+
+    def _raw_sample_field(self) -> int:
         return struct.unpack_from(">H", self._raw, SAMPLE_NUMBER_OFFSET)[0]
+
+    @property
+    def sample_assigned(self) -> bool:
+        """False when the part carries the no-sample flag (bit 15).
+
+        Every part of a never-used pattern has it set. Reporting the masked
+        index for those would claim the part plays sample 0, which it does not.
+        """
+        if self._kind not in SAMPLE_PLAYING_KINDS:
+            return False
+        return not (self._raw_sample_field() & SAMPLE_NUMBER_UNASSIGNED)
 
     def set_sample_number(self, slot_index: int) -> None:
         """Point this part at a sample slot."""
@@ -155,7 +185,19 @@ class Part:
             raise InvariantError(
                 f"slot {slot_index} out of range 0..{NUM_SAMPLE_SLOTS - 1}"
             )
+        # Assigning a sample necessarily clears the no-sample flag; leaving it
+        # set would write a field no machine has ever produced.
         struct.pack_into(">H", self._raw, SAMPLE_NUMBER_OFFSET, slot_index)
+
+    def clear_sample_assignment(self) -> None:
+        """Mark the part as playing no sample, the way a blank pattern does."""
+        if self._kind not in SAMPLE_PLAYING_KINDS:
+            raise NotImplementedError(
+                f"a {self._kind} part does not play a sample slot"
+            )
+        struct.pack_into(
+            ">H", self._raw, SAMPLE_NUMBER_OFFSET, SAMPLE_NUMBER_UNASSIGNED
+        )
 
     def has_sequence(self) -> bool:
         """Whether this part kind's trigger bitmap has been located."""

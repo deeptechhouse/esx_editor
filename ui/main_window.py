@@ -84,6 +84,7 @@ class MainWindow(QMainWindow):
         self.pattern_view.patternSelected.connect(self._on_pattern_selected)
         self.pattern_view.patternEdited.connect(self._on_bank_edited)
         self.staging_view.samplesChanged.connect(self._on_staging_changed)
+        self.bank_view.sampleEdited.connect(self._on_bank_edited)
 
     def _build_menus(self) -> None:
         # Keep Python references to the menus: PySide does not own the wrappers

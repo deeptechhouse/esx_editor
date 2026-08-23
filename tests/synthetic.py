@@ -62,6 +62,7 @@ def build(
     num_stereo: int = 0,
     pcm_bytes: int = 4096,
     motion_slots: int = 2,
+    named_patterns: int = 4,
 ) -> bytes:
     """Return a complete, coherent Save-All image.
 
@@ -90,7 +91,12 @@ def build(
     # -- patterns ------------------------------------------------------------
     for p in range(L.NUM_PATTERNS):
         base = L.ADDR_PATTERN_DATA + p * L.CHUNK_PATTERN
-        buf[base : base + L.PATTERN_NAME_LEN] = f"PAT{p:05d}"[:8].encode("ascii")
+        # Only the first few patterns are named. A real bank is mostly blank —
+        # 204 of 256 in the busiest corpus bank — and naming all 256 made every
+        # pattern chunk unique, which broke "what does this bank's blank
+        # pattern look like" for anything relying on the fixture.
+        name = f"PAT{p:05d}"[:8] if p < named_patterns else " " * 8
+        buf[base : base + L.PATTERN_NAME_LEN] = name.encode("ascii")
         # Use the machine's own default header rather than filler: a fixture
         # that does not look like a real bank is a weaker fixture.
         header_at = base + L.PATTERN_NAME_LEN

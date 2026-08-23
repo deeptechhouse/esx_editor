@@ -659,3 +659,89 @@ of noise while admitting every real percussive sound.
 For a chord the dominant note is the loudest PARTIAL, not necessarily the root —
 an A minor triad reports E5. That is what "dominant note" means and the label
 says so; the key detector is what answers "what chord is this".
+
+---
+
+## 2026-08-23 — WF13 (feedback from first real launch)
+
+### BUG FOUND AND FIXED — bit 15 of the part sample field is a FLAG
+
+Found while investigating what a "blank pattern" looks like, i.e. by accident.
+
+`Part.sample_number` returned the raw u16. In `Chronic-Interactive.esx` every
+sample-playing part of a never-used pattern reads exactly **0x8000** — flag set,
+index bits zero — which decoded as slot **32,768**. There are only 384 slots.
+
+- 2,856 of 2,856 parts in the 204 unnamed patterns carry it.
+- 0 of 728 parts in the 52 named patterns do.
+- The other three banks never set it, because all their patterns are untouched
+  in the same way `default.esx`'s are.
+
+`sample_number` now masks with `0x3FFF`, and `sample_assigned` exposes the flag.
+Whether the bit means precisely "no sample" or something adjacent is not
+settled; that it is a flag and not part of the index is.
+
+**Why the suite missed it:** `test_every_sample_number_points_at_an_occupied_slot`
+walks only NAMED patterns, which never carry the flag. A corpus test that
+covers every pattern now exists. Worth remembering — a filter added to make a
+test meaningful also narrowed what it could catch.
+
+### FEATURE — Pattern Clear and Copy ("add a new pattern")
+
+There is no "add a pattern" on this machine: it always has exactly 256, and the
+manual's operation is **Pattern Clear** (p.3191). Making a new pattern means
+clearing an unused slot or copying an existing one into it, so those are what
+the Pattern tab now offers, with empty slots marked `— empty —` in the list so
+the free ones are visible.
+
+`Bank.blank_pattern_bytes()` takes the bank's OWN most common pattern chunk
+rather than synthesising a blank. That is 204/256 on the busiest corpus bank and
+256/256 on an empty one. It also sidesteps a real difference: Chronic's blank
+patterns set the no-sample flag on every part while the other three leave those
+bytes zero — both machine-written. Copying whichever the bank already uses keeps
+a cleared pattern consistent with its neighbours.
+
+Verified: copy a pattern into a free slot, clear it again, and the whole bank is
+**byte-identical** to the source.
+
+### FEATURE — sample renaming
+
+`SampleSlot.set_name` had existed since WF1 with no UI at all. The Bank tab's
+name column is now editable in place; every other column is explicitly
+non-editable. The cell is rewritten with what was actually stored, so the table
+can never show a name the file does not have (the field is exactly 8 bytes and
+the model pads or truncates).
+
+### FIX — the font warning
+
+`ui/theme.py` carried a CSS font stack (`-apple-system`, `BlinkMacSystemFont`,
+`ui-monospace`). Qt's stylesheet parser does not resolve CSS generics, so it
+walked every alias looking for names no font database contains and said so:
+"Populating font family aliases took 405 ms." The user paid that on every launch
+and still got a fallback face.
+
+Candidates are now resolved once against the real `QFontDatabase` and the winner
+written into the stylesheet — portable, since the mini and the Linux CI runner
+each pick their own first hit, and anything with no hit omits the declaration
+entirely rather than emitting `font-family: ;`. Resolves to Helvetica Neue /
+Menlo here. Warning gone.
+
+### FIXTURE — the synthetic bank is now mostly blank
+Naming all 256 patterns made every chunk unique, so the fixture had no blank
+pattern — which a real bank very much does. Only the first four are named now.
+Golden hash repinned.
+
+### STILL IMPOSSIBLE — adding patterns to songs
+
+Requested, and it is the one thing here that cannot be built. The manual is
+clear that the machine does it ("You can edit a song by inserting or deleting
+patterns", p.5904), but **all 64 songs in all four corpus banks are
+byte-identical blanks** — zero bytes vary across 256 song blocks. There is no
+signal to decode from, and inventing a song format would write bytes no machine
+has produced into a region the writer currently preserves verbatim.
+
+**One saved song closes it.** Added to the hardware session as the highest-value
+item: build a short song on the ESX-1 with a handful of known patterns in a
+known order, Save All, and the diff against a blank song gives the event format
+almost immediately — the pattern indices are already known, so they can be
+searched for directly.

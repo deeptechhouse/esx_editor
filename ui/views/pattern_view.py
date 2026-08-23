@@ -12,9 +12,12 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
+    QMessageBox,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -39,6 +42,22 @@ class PatternView(QWidget):
         self._loading = False
         self.list = QListWidget()
         self.list.currentRowChanged.connect(self._on_row)
+        # There is no "new pattern" on this machine: all 256 slots always
+        # exist. Making one means clearing an unused slot, or copying an
+        # existing pattern into it — which is what these two do.
+        self.clear_button = QPushButton("Clear pattern")
+        self.clear_button.setToolTip(
+            "Reset this pattern to the bank's own blank form.\n"
+            "The ESX-1 always has exactly 256 patterns, so this is how you "
+            "free one up for new material."
+        )
+        self.clear_button.clicked.connect(self.clear_pattern)
+        self.copy_button = QPushButton("Copy to…")
+        self.copy_button.setToolTip(
+            "Copy this pattern onto another slot — the usual way to start a "
+            "new pattern from an existing one."
+        )
+        self.copy_button.clicked.connect(self.copy_pattern)
         self._name = QLineEdit()
         self._name.setMaxLength(8)
         self._name.editingFinished.connect(self._rename)
@@ -98,8 +117,15 @@ class PatternView(QWidget):
         detail.addWidget(QLabel("FX units"))
         detail.addWidget(self.fx)
 
+        buttons = QHBoxLayout()
+        buttons.addWidget(self.clear_button)
+        buttons.addWidget(self.copy_button)
+        left = QVBoxLayout()
+        left.addWidget(self.list, 1)
+        left.addLayout(buttons)
+
         layout = QHBoxLayout(self)
-        layout.addWidget(self.list, 1)
+        layout.addLayout(left, 1)
         layout.addLayout(detail, 2)
 
     def bind_bank(self, bank: Bank | None) -> None:
@@ -107,8 +133,12 @@ class PatternView(QWidget):
         self.list.blockSignals(True)
         self.list.clear()
         if bank is not None:
+            blank = bank.blank_pattern_bytes()
             for i, p in enumerate(bank.patterns()):
-                label = p.name or f"P{i:03d}"
+                # Marking the empty slots is what makes "add a pattern"
+                # discoverable: they are the ones free to build in.
+                empty = p.to_bytes() == blank
+                label = p.name.strip() or ("— empty —" if empty else f"P{i:03d}")
                 self.list.addItem(f"{i:03d}  {label}")
         self.list.blockSignals(False)
         if self.list.count():
@@ -140,10 +170,78 @@ class PatternView(QWidget):
         if pat is None:
             return
         pat.set_name(self._name.text())
-        item = self.list.currentItem()
-        if item:
-            item.setText(f"{self._index:03d}  {pat.name}")
+        self.refresh_row(self._index)
         self.patternEdited.emit()
+
+    def refresh_row(self, index: int) -> None:
+        """Re-label one row after its pattern changed."""
+        if self._bank is None:
+            return
+        item = self.list.item(index)
+        if item is None:
+            return
+        pattern = self._bank.patterns()[index]
+        empty = self._bank.is_pattern_blank(index)
+        label = pattern.name.strip() or ("— empty —" if empty else f"P{index:03d}")
+        item.setText(f"{index:03d}  {label}")
+
+    def clear_pattern(self) -> None:
+        """Reset the selected pattern to the bank's blank form."""
+        if self._bank is None or self._index < 0:
+            return
+        pattern = self._bank.patterns()[self._index]
+        name = pattern.name.strip() or f"{self._index:03d}"
+        if not self._bank.is_pattern_blank(self._index):
+            reply = QMessageBox.question(
+                self,
+                "Clear pattern",
+                f"Clear pattern {self._index:03d} ({name})?\n\n"
+                "Its parts, steps, FX and motion are all reset to the bank's "
+                "blank pattern. Nothing is written to disk until you save.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        self._bank.clear_pattern(self._index)
+        self.refresh_row(self._index)
+        self._show(self.current_pattern())
+        self.patternEdited.emit()
+
+    def copy_pattern(self) -> None:
+        """Copy the selected pattern onto another slot."""
+        if self._bank is None or self._index < 0:
+            return
+        total = len(self._bank.patterns())
+        # Default to the first empty slot: copying onto occupied material by
+        # accident is the mistake worth designing against.
+        default = next(
+            (i for i in range(total) if self._bank.is_pattern_blank(i)),
+            min(self._index + 1, total - 1),
+        )
+        destination, ok = QInputDialog.getInt(
+            self,
+            "Copy pattern",
+            f"Copy pattern {self._index:03d} to which slot?\n"
+            f"(0-{total - 1}; empty slots are marked in the list)",
+            default,
+            0,
+            total - 1,
+        )
+        if not ok or destination == self._index:
+            return
+        if not self._bank.is_pattern_blank(destination):
+            reply = QMessageBox.question(
+                self,
+                "Overwrite pattern",
+                f"Pattern {destination:03d} is not empty. Overwrite it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        self._bank.copy_pattern(self._index, destination)
+        self.refresh_row(destination)
+        self.patternEdited.emit()
+        self.list.setCurrentRow(destination)
 
     def current_part(self):
         """The selected Part, or None."""

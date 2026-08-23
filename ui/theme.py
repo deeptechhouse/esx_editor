@@ -12,7 +12,8 @@ usable. Keyboard navigation is Qt's default (Tab / Shift-Tab / mnemonics).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Collection, Sequence
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -34,15 +35,85 @@ class Palette:
     lcd_bg: str = "#1a1208"
 
 
+#: Font candidates in preference order. These are QT family names, not a CSS
+#: font stack.
+#:
+#: WHY NOT A CSS STACK
+#:     Qt's stylesheet parser does not resolve CSS generic families. Naming
+#:     "-apple-system" or "ui-monospace" — which no font database contains —
+#:     makes Qt walk every alias looking for them, and it says so on startup:
+#:     "Populating font family aliases took 405 ms." The user pays that on every
+#:     launch and still gets a fallback face.
+#:
+#:     So the stack is resolved ONCE against the real font database and the
+#:     winner is written into the stylesheet. Portable: the mini and the Linux
+#:     CI runner each pick their own first hit, and anything with no hit falls
+#:     back to the application default rather than to a guess.
+UI_FONT_CANDIDATES = (
+    "Helvetica Neue",  # macOS
+    "Segoe UI",  # Windows
+    "Inter",
+    "DejaVu Sans",  # common on Linux
+    "Helvetica",
+    "Arial",
+)
+LCD_FONT_CANDIDATES = (
+    "Menlo",  # macOS
+    "SF Mono",
+    "Consolas",  # Windows
+    "DejaVu Sans Mono",  # common on Linux
+    "Monaco",
+    "Courier New",
+)
+
+
+def resolve_family(candidates: Sequence[str], available: Collection[str]) -> str:
+    """First candidate the font database actually has, else "" for the default.
+
+    Pure so the choice can be tested without a font database, and so a machine
+    with none of the candidates degrades to the application default instead of
+    to an unresolvable name.
+    """
+    for family in candidates:
+        if family in available:
+            return family
+    return ""
+
+
+def _installed_families() -> frozenset[str]:
+    try:
+        from PySide6.QtGui import QFontDatabase
+
+        return frozenset(QFontDatabase.families())
+    except Exception:  # pragma: no cover - no Qt, or no display
+        return frozenset()
+
+
 @dataclass(frozen=True)
 class Type:
-    ui: str = (
-        '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
-    )
-    lcd: str = 'Menlo, "SF Mono", ui-monospace, Consolas, monospace'
+    ui: str = ""
+    lcd: str = ""
     size_body: int = 13
     size_lcd: int = 12
     size_title: int = 16
+
+    @property
+    def ui_rule(self) -> str:
+        """`font-family: X;` or nothing — never `font-family: ;`."""
+        return f"font-family: {self.ui};" if self.ui else ""
+
+    @property
+    def lcd_rule(self) -> str:
+        return f"font-family: {self.lcd};" if self.lcd else ""
+
+    def resolved(self, available: Collection[str] | None = None) -> Type:
+        """A copy with `ui` and `lcd` bound to real installed families."""
+        families = _installed_families() if available is None else available
+        return replace(
+            self,
+            ui=resolve_family(UI_FONT_CANDIDATES, families),
+            lcd=resolve_family(LCD_FONT_CANDIDATES, families),
+        )
 
 
 @dataclass(frozen=True)
@@ -67,7 +138,7 @@ def qss(palette: Palette = PALETTE, typ: Type = TYPE, space: Space = SPACE) -> s
 QWidget {{
     background: {p.bg};
     color: {p.txt};
-    font-family: {t.ui};
+    {t.ui_rule}
     font-size: {t.size_body}px;
 }}
 QMainWindow, QDialog {{
@@ -138,7 +209,7 @@ QPushButton:disabled {{
 QLineEdit, QSpinBox, QComboBox {{
     background: {p.chassis};
     color: {p.lcd};
-    font-family: {t.lcd};
+    {t.lcd_rule}
     border: 1px solid {p.line};
     border-radius: {s.radius}px;
     padding: {s.xs}px {s.sm}px;
@@ -189,7 +260,7 @@ QListWidget:focus, QTableWidget:focus {{
 }}
 QLabel[role="lcd"] {{
     color: {p.lcd};
-    font-family: {t.lcd};
+    {t.lcd_rule}
 }}
 QLabel[role="muted"] {{
     color: {p.muted};
@@ -198,5 +269,9 @@ QLabel[role="muted"] {{
 
 
 def apply(app) -> None:
-    """Apply the theme to a QApplication."""
-    app.setStyleSheet(qss())
+    """Apply the theme to a QApplication.
+
+    Fonts are resolved here, against the live font database, rather than at
+    import time: the database is not populated until a QApplication exists.
+    """
+    app.setStyleSheet(qss(typ=TYPE.resolved()))
