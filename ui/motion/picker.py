@@ -9,11 +9,21 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QBrush, QColor
-from PySide6.QtWidgets import QComboBox, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
-from codec.operation_table import MotionTarget, OperationTable
+from codec.operation_table import OperationTable
 from core.part import (
-    KIND_ACCENT, KIND_AUDIOIN, KIND_DRUM, KIND_KEYBOARD, KIND_STRETCHSLICE,
+    KIND_ACCENT,
+    KIND_AUDIOIN,
+    KIND_DRUM,
+    KIND_KEYBOARD,
+    KIND_STRETCHSLICE,
 )
 from ui.theme import PALETTE
 
@@ -29,7 +39,7 @@ SECTIONS = ("Part Common", "Filter", "Modulation", "Effects")
 
 
 class TargetPicker(QWidget):
-    targetSelected = Signal(object)   # MotionTarget
+    targetSelected = Signal(object)  # MotionTarget
     partKindChanged = Signal(str)
 
     def __init__(self, table: OperationTable, parent=None):
@@ -73,7 +83,7 @@ class TargetPicker(QWidget):
             section = self._table.section_of(t)
             parent = groups.get(section, groups["Part Common"])
             child = QTreeWidgetItem([t.name])
-            child.setData(0, 32, t.target_id)   # Qt.UserRole
+            child.setData(0, 32, t.target_id)  # Qt.UserRole
             parent.addChild(child)
         self._tree.expandAll()
 

@@ -15,22 +15,21 @@ corpus is absent.
 
 from __future__ import annotations
 
-import os
 import glob
+import os
 import struct
-import tempfile
 from unittest import mock
 
 import pytest
 
 import codec.layout as L
-from codec.errors import CodecError, FormatError, RoundTripError
 from codec.byte_buffer import ByteReader, ByteWriter
+from codec.errors import CodecError, FormatError, RoundTripError
+from codec.operation_table import MotionTarget, OperationTable
 from codec.reader import BankReader
-from codec.writer import BankWriter
-from codec.validator import BankValidator, ValidationReport, Finding
-from codec.operation_table import OperationTable, MotionTarget
 from codec.template import BankTemplate
+from codec.validator import BankValidator, Finding, ValidationReport
+from codec.writer import BankWriter
 from core.motion import MotionSlot
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,8 +38,9 @@ CLEAN_BANK = os.path.join(PROJECT_ROOT, "corpus", "Chronic-Interactive.esx")
 
 
 def _corpus_files() -> list[str]:
-    paths = glob.glob(os.path.join(PROJECT_ROOT, "corpus", "**", "*.esx"),
-                      recursive=True)
+    paths = glob.glob(
+        os.path.join(PROJECT_ROOT, "corpus", "**", "*.esx"), recursive=True
+    )
     paths += glob.glob(os.path.join(PROJECT_ROOT, "spike_a", "*.esx"))
     return sorted(set(paths))
 
@@ -60,7 +60,7 @@ def _edit(data: bytes, edits: dict[int, bytes]) -> bytes:
     """Return a copy of `data` with raw byte-slices patched at absolute offsets."""
     buf = bytearray(data)
     for off, raw in edits.items():
-        buf[off:off + len(raw)] = raw
+        buf[off : off + len(raw)] = raw
     return bytes(buf)
 
 
@@ -71,8 +71,13 @@ def _u32(v: int) -> bytes:
 # ---------------------------------------------------------------------------
 # 1. The gate: byte-identical round-trip
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("path", _corpus_files() or [pytest.param(
-    "", marks=pytest.mark.skip(reason="no corpus .esx files present"))])
+@pytest.mark.parametrize(
+    "path",
+    _corpus_files()
+    or [
+        pytest.param("", marks=pytest.mark.skip(reason="no corpus .esx files present"))
+    ],
+)
 def test_gate_roundtrip_byte_identical(path: str) -> None:
     original = _require(path)
     bank = BankReader().read_auto(original)
@@ -108,8 +113,9 @@ def test_edit_sample_name_is_surgical() -> None:
     bank.samples()[0].set_name("HELLO")
     out = BankWriter().write(bank)
     diffs = [i for i in range(len(data)) if out[i] != data[i]]
-    assert all(L.ADDR_SAMPLE_HEADER_MONO <= d < L.ADDR_SAMPLE_HEADER_MONO + 8
-               for d in diffs)
+    assert all(
+        L.ADDR_SAMPLE_HEADER_MONO <= d < L.ADDR_SAMPLE_HEADER_MONO + 8 for d in diffs
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -186,9 +192,9 @@ def test_write_file_verifies_replaces_and_backs_up(tmp_path) -> None:
 
     w.write_file(bank, p)
     assert os.path.exists(p) and not os.path.exists(p + ".bak")
-    assert not glob.glob(str(tmp_path / "*.tmp"))   # temp cleaned up
+    assert not glob.glob(str(tmp_path / "*.tmp"))  # temp cleaned up
 
-    w.write_file(bank, p)                            # second write -> .bak
+    w.write_file(bank, p)  # second write -> .bak
     assert os.path.exists(p + ".bak")
     with open(p, "rb") as f:
         assert f.read() == data
@@ -207,13 +213,13 @@ def test_write_file_no_backup_option(tmp_path) -> None:
 def test_write_file_raises_roundtrip_error_on_verify_mismatch(tmp_path) -> None:
     data = _clean_image()
     bank = BankReader().read_auto(data)
-    other = BankTemplate().new_bank()               # serializes to different bytes
+    other = BankTemplate().new_bank()  # serializes to different bytes
     p = str(tmp_path / "out.esx")
     with mock.patch("codec.reader.BankReader.read_auto", return_value=other):
         with pytest.raises(RoundTripError):
             BankWriter().write_file(bank, p)
-    assert not os.path.exists(p)                     # original never created
-    assert not glob.glob(str(tmp_path / "*.tmp"))    # temp cleaned up
+    assert not os.path.exists(p)  # original never created
+    assert not glob.glob(str(tmp_path / "*.tmp"))  # temp cleaned up
 
 
 def test_write_file_refuses_incoherent_bank(tmp_path) -> None:
@@ -222,8 +228,8 @@ def test_write_file_refuses_incoherent_bank(tmp_path) -> None:
     bank = BankReader().read_auto(data)
     p = str(tmp_path / "out.esx")
     with pytest.raises(CodecError):
-        BankWriter().write_file(bank, p)             # default refuses
-    BankWriter().write_file(bank, p, allow_invalid=True)   # override writes
+        BankWriter().write_file(bank, p)  # default refuses
+    BankWriter().write_file(bank, p, allow_invalid=True)  # override writes
     assert os.path.exists(p)
 
 
@@ -267,10 +273,13 @@ def test_validate_rate_out_of_range() -> None:
 
 
 def test_validate_count_mismatch() -> None:
-    data = _edit(_clean_image(), {
-        L.ADDR_NUM_MONO_SAMPLES: _u32(255),
-        L.ADDR_NUM_STEREO_SAMPLES: _u32(127),
-    })
+    data = _edit(
+        _clean_image(),
+        {
+            L.ADDR_NUM_MONO_SAMPLES: _u32(255),
+            L.ADDR_NUM_STEREO_SAMPLES: _u32(127),
+        },
+    )
     report = BankValidator().validate(BankReader().read_auto(data))
     codes = _codes(report)
     assert "mono_count_mismatch" in codes and "stereo_count_mismatch" in codes
@@ -290,7 +299,7 @@ def test_validate_current_offset_past_eof() -> None:
 
 def test_validate_pcm_over_capacity() -> None:
     bank = BankReader().read_auto(_clean_image())
-    bank._pcm = b"\x00" * (L.MAX_SAMPLE_BYTES + 1)   # force the capacity branch
+    bank._pcm = b"\x00" * (L.MAX_SAMPLE_BYTES + 1)  # force the capacity branch
     report = BankValidator().validate(bank)
     assert "pcm_over_capacity" in _codes(report)
 
@@ -306,13 +315,16 @@ def test_validate_unknown_motion_target() -> None:
 
 def test_validate_psg_bank_skips_sample_checks() -> None:
     bank = BankReader().read_auto(_clean_image()[:0x2000])
-    report = BankValidator().validate(bank)      # PSG: no sample area
+    report = BankValidator().validate(bank)  # PSG: no sample area
     assert report.ok
 
 
 def test_validation_report_helpers() -> None:
-    findings = [Finding("error", "e", "boom"), Finding("warning", "w", "hmm"),
-                Finding("info", "i", "fyi")]
+    findings = [
+        Finding("error", "e", "boom"),
+        Finding("warning", "w", "hmm"),
+        Finding("info", "i", "fyi"),
+    ]
     report = ValidationReport(findings)
     assert len(report) == 3
     assert report.errors()[0].code == "e"
@@ -335,7 +347,7 @@ def test_operation_table_loads_313() -> None:
     t = ops.get(0)
     assert isinstance(t, MotionTarget)
     _ = (t.target_id, t.name, t.group, t.kind, t.option_count, t.forced_trig)
-    assert list(ops)                                # __iter__
+    assert list(ops)  # __iter__
 
 
 def test_operation_table_resolves_discrete_domain() -> None:
@@ -351,13 +363,18 @@ def test_operation_table_targets_for_part_rules() -> None:
     ops = OperationTable.load(RESEARCH_DIR)
     drums = ops.targets_for_part("drum")
     assert drums and all(
-        t.name.startswith("Drum") or t.name.startswith("FX") for t in drums)
+        t.name.startswith("Drum") or t.name.startswith("FX") for t in drums
+    )
     assert not any(t.name.upper().endswith("PITCH") for t in drums)
     accent = ops.targets_for_part("accent")
     assert accent and all(t.name.upper().endswith("LEVEL") for t in accent)
     audio = ops.targets_for_part("audioin")
-    assert not any("PITCH" in t.name.upper() or "START POINT" in t.name.upper()
-                   or t.name.upper().endswith("REVERSE") for t in audio)
+    assert not any(
+        "PITCH" in t.name.upper()
+        or "START POINT" in t.name.upper()
+        or t.name.upper().endswith("REVERSE")
+        for t in audio
+    )
     keys = ops.targets_for_part("keyboard")
     assert any("GLIDE" in t.name.upper() for t in keys)
     assert not any(t.name.upper().endswith("PITCH") for t in keys)
@@ -377,19 +394,21 @@ def test_operation_table_parses_edge_cases(tmp_path) -> None:
         "notanint\tBad Id\n"
         "5\tDrum1 Roll\n"
         "6\tDrum1 FX Select\n"
-        "7\tFx1Ed1 Continuous Thing\n")
+        "7\tFx1Ed1 Continuous Thing\n"
+    )
     domains = tmp_path / "motion_target_domains.tsv"
     domains.write_text(
         "# header comment\n"
         "shortcol\tonly\n"
         "Roll\tROLL\tboolean\t0\t1\tOff,On\tFORCED_TRIG\n"
         "FxSel\tFX SELECT\tenum\t0\t2\tFx1,Fx2,Fx3\tFORCED_TRIG\n"
-        "Bad\tBAD RANGE\tcontinuous\tx\ty\t-\tY\n")
+        "Bad\tBAD RANGE\tcontinuous\tx\ty\t-\tY\n"
+    )
     ops = OperationTable.load(str(tmp_path))
     assert ops.is_known(5) and ops.is_known(6) and ops.is_known(7)
-    assert not ops.is_known(0)                      # "notanint" line skipped
-    assert ops.get(5).option_count == 2             # ROLL boolean
-    assert ops.get(6).option_count == 3             # FX SELECT enum
+    assert not ops.is_known(0)  # "notanint" line skipped
+    assert ops.get(5).option_count == 2  # ROLL boolean
+    assert ops.get(6).option_count == 3  # FX SELECT enum
 
 
 def test_operation_table_empty_raises(tmp_path) -> None:
@@ -430,7 +449,7 @@ def test_byte_reader_all_ops() -> None:
     r.seek(2)
     assert r.pos == 2
     assert r.read_ascii(2) == bytes([0x03, 0x04])
-    assert r.read_at(0, 2) == bytes([0x01, 0x02])   # cursor unaffected
+    assert r.read_at(0, 2) == bytes([0x01, 0x02])  # cursor unaffected
     assert r.pos == 4
 
 
@@ -446,20 +465,22 @@ def test_byte_reader_bounds() -> None:
 
 def test_byte_writer_all_ops() -> None:
     w = ByteWriter()
-    w.write(b"\xAA")
+    w.write(b"\xaa")
     w.write_u8(0x01)
     w.write_u16(0x0203)
     w.write_u32(0x04050607)
-    w.write_ascii(b"HI", 4)                          # right-padded with 0x20
-    assert bytes(w.getvalue()) == (
-        b"\xAA\x01\x02\x03\x04\x05\x06\x07HI  ")
+    w.write_ascii(b"HI", 4)  # right-padded with 0x20
+    assert bytes(w.getvalue()) == (b"\xaa\x01\x02\x03\x04\x05\x06\x07HI  ")
     assert len(w) == 12
 
 
 def test_byte_writer_range_checks() -> None:
     w = ByteWriter()
-    for fn, bad in ((w.write_u8, 0x100), (w.write_u16, 0x10000),
-                    (w.write_u32, 0x100000000)):
+    for fn, bad in (
+        (w.write_u8, 0x100),
+        (w.write_u16, 0x10000),
+        (w.write_u32, 0x100000000),
+    ):
         with pytest.raises(ValueError):
             fn(bad)
 
@@ -488,7 +509,7 @@ def test_layout_region_map_is_ordered_and_covers_file() -> None:
     regions = L.region_map()
     assert regions[0][0] == "magic_1"
     assert regions[-1][0] == "sample_data"
-    assert regions[-1][2] is None                   # runs to EOF
+    assert regions[-1][2] is None  # runs to EOF
     assert len(L.UNKNOWN_REGIONS) == 5
 
 
@@ -507,20 +528,24 @@ def test_audioin_hides_pitch_start_and_reverse_if_a_table_ever_lists_them() -> N
     which is exactly what TDD §12 says must not happen while its encoding is
     OPEN. A synthetic table exercises the guard directly.
     """
-    from codec.operation_table import MotionTarget, OperationTable as OT
+    from codec.operation_table import MotionTarget
+    from codec.operation_table import OperationTable as OT
 
     def target(tid, name):
         return MotionTarget(tid, name, name.split(" ", 1)[0], "continuous", 0, False)
 
-    table = OT({
-        1: target(1, "AudioIn Level"),
-        2: target(2, "AudioIn Pitch"),
-        3: target(3, "AudioIn Start Point"),
-        4: target(4, "AudioIn Reverse"),
-    })
+    table = OT(
+        {
+            1: target(1, "AudioIn Level"),
+            2: target(2, "AudioIn Pitch"),
+            3: target(3, "AudioIn Start Point"),
+            4: target(4, "AudioIn Reverse"),
+        }
+    )
     names = [t.name for t in table.targets_for_part("audioin")]
     assert names == ["AudioIn Level"]
     # Even with the global pitch guard off, audio-in still hides all three.
-    names = [t.name for t in
-             table.targets_for_part("audioin", hide_unverified_pitch=False)]
+    names = [
+        t.name for t in table.targets_for_part("audioin", hide_unverified_pitch=False)
+    ]
     assert names == ["AudioIn Level"]

@@ -7,7 +7,7 @@ place. Every screen is skippable: `isComplete()` is True everywhere, so an
 experienced user can walk straight to Validate & write.
 """
 
-from .wizard import SetupWizard, PAGE_COUNT
 from .context import WizardContext
+from .wizard import PAGE_COUNT, SetupWizard
 
 __all__ = ["SetupWizard", "WizardContext", "PAGE_COUNT"]

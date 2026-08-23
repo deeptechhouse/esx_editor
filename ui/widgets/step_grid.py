@@ -6,8 +6,8 @@ Beyond `length` steps are drawn dimmed (pattern-length masking, TDD §8.1).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal, QRect
-from PySide6.QtGui import QColor, QPainter, QPen, QKeyEvent, QMouseEvent
+from PySide6.QtCore import QRect, Qt, Signal
+from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from ui.theme import PALETTE, SPACE
@@ -85,8 +85,12 @@ class StepGrid(QWidget):
         row, col = divmod(index, COLS)
         cell_w = self.width() / COLS
         cell_h = self.height() / ROWS
-        return QRect(int(col * cell_w) + 1, int(row * cell_h) + 1,
-                     int(cell_w) - 2, int(cell_h) - 2)
+        return QRect(
+            int(col * cell_w) + 1,
+            int(row * cell_h) + 1,
+            int(cell_w) - 2,
+            int(cell_h) - 2,
+        )
 
     def paintEvent(self, event) -> None:  # noqa: N802
         p = QPainter(self)

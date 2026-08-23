@@ -7,11 +7,16 @@ import os
 import pytest
 
 from audio.ports import ConversionSpec, KeyResult
-from workspace.budget import BudgetCalculator, BudgetItem, CAPACITY, DEFAULT_RATE
+from workspace.budget import CAPACITY, BudgetCalculator, BudgetItem
 from workspace.errors import StagingBlockedError
-from workspace.limits import SampleLimitPolicy, Severity, WarningPolicy, SIZE_WARNING_CODES
-from workspace.naming import pack_slot_name, staging_filename, classical
-from workspace.staging import SessionWorkspace, StagingBank, StagingSample
+from workspace.limits import (
+    SIZE_WARNING_CODES,
+    SampleLimitPolicy,
+    Severity,
+    WarningPolicy,
+)
+from workspace.naming import classical, pack_slot_name, staging_filename
+from workspace.staging import SessionWorkspace, StagingBank
 
 
 # ---------------------------------------------------------------------------
@@ -31,8 +36,10 @@ def test_align_up_and_cost_bytes() -> None:
 
 def test_total_cost_honours_rate_for() -> None:
     calc = BudgetCalculator()
-    items = [BudgetItem("kick.wav", 1.0, 44100, 1),
-             BudgetItem("snare.wav", 1.0, 44100, 1)]
+    items = [
+        BudgetItem("kick.wav", 1.0, 44100, 1),
+        BudgetItem("snare.wav", 1.0, 44100, 1),
+    ]
     default = calc.total_cost(items)
     radio = calc.total_cost(items, rate_for=lambda _n: 22050)
     assert radio < default
@@ -90,7 +97,7 @@ def test_ok_sample_and_mute_policy(tmp_path) -> None:
     assert analyse is True
     assert findings[0].level == Severity.OK
     wp = WarningPolicy()
-    assert wp.visible(findings) == ()          # OK findings are hidden
+    assert wp.visible(findings) == ()  # OK findings are hidden
     wp.mute("large_sample")
     wp.mute_size_warnings()
     assert set(wp.muted) == SIZE_WARNING_CODES
@@ -111,8 +118,9 @@ def test_block_exceeds_single_cap(tmp_path) -> None:
     p.write_bytes(b"RIFF")
     # ~285 s at CD is the whole bank; 0.80 cap is ~228 s.
     findings, _ = SampleLimitPolicy().check_sample(str(p), 250.0, 1, 44100)
-    assert any(f.level == Severity.BLOCK and f.code == "exceeds_single_cap"
-               for f in findings)
+    assert any(
+        f.level == Severity.BLOCK and f.code == "exceeds_single_cap" for f in findings
+    )
     assert all(not f.dismissible for f in findings if f.level == Severity.BLOCK)
 
 
@@ -120,7 +128,8 @@ def test_block_exceeds_free_space(tmp_path) -> None:
     p = tmp_path / "mid.wav"
     p.write_bytes(b"RIFF")
     findings, _ = SampleLimitPolicy().check_sample(
-        str(p), 10.0, 1, 44100, used_bytes=CAPACITY - 100)
+        str(p), 10.0, 1, 44100, used_bytes=CAPACITY - 100
+    )
     assert any(f.code == "exceeds_free" for f in findings)
 
 
@@ -198,8 +207,7 @@ def test_staging_add_converts_analyses_renames(tmp_path) -> None:
     src = tmp_path / "kickdrum.wav"
     src.write_bytes(b"RIFF")
     session = SessionWorkspace(temp_root=str(tmp_path / "tmp"))
-    bank = StagingBank(_FakeConverter(), _FakeDetector(),
-                       SampleLimitPolicy(), session)
+    bank = StagingBank(_FakeConverter(), _FakeDetector(), SampleLimitPolicy(), session)
     sample = bank.add(str(src), ConversionSpec(44100, 1))
     assert sample.key is not None
     assert sample.key.camelot == "8A"
@@ -217,9 +225,12 @@ def test_staging_add_converts_analyses_renames(tmp_path) -> None:
 def test_staging_add_blocks_oversize(tmp_path) -> None:
     src = tmp_path / "huge.wav"
     src.write_bytes(b"RIFF")
-    bank = StagingBank(_FakeConverter(duration=250.0), _FakeDetector(),
-                       SampleLimitPolicy(),
-                       SessionWorkspace(temp_root=str(tmp_path / "tmp")))
+    bank = StagingBank(
+        _FakeConverter(duration=250.0),
+        _FakeDetector(),
+        SampleLimitPolicy(),
+        SessionWorkspace(temp_root=str(tmp_path / "tmp")),
+    )
     with pytest.raises(StagingBlockedError):
         bank.add(str(src), ConversionSpec(44100, 1))
     assert bank.samples() == ()
@@ -228,9 +239,12 @@ def test_staging_add_blocks_oversize(tmp_path) -> None:
 def test_staging_skips_key_on_long_file(tmp_path) -> None:
     src = tmp_path / "loop.wav"
     src.write_bytes(b"RIFF")
-    bank = StagingBank(_FakeConverter(duration=90.0), _FakeDetector(),
-                       SampleLimitPolicy(),
-                       SessionWorkspace(temp_root=str(tmp_path / "tmp")))
+    bank = StagingBank(
+        _FakeConverter(duration=90.0),
+        _FakeDetector(),
+        SampleLimitPolicy(),
+        SessionWorkspace(temp_root=str(tmp_path / "tmp")),
+    )
     sample = bank.add(str(src), ConversionSpec(11025, 1))  # telephone: will fit
     assert sample.key is None
     assert sample.staging_filename() == "loop.wav"

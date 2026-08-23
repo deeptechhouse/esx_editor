@@ -8,12 +8,12 @@ dirty flag, and exposes intent methods the menus call.
 
 from __future__ import annotations
 
-from core.bank import Bank
+from codec.errors import CodecError
 from codec.reader import BankReader
-from codec.writer import BankWriter
 from codec.template import BankTemplate
 from codec.validator import BankValidator, ValidationReport
-from codec.errors import CodecError
+from codec.writer import BankWriter
+from core.bank import Bank
 
 
 class BankSession:

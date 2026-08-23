@@ -8,7 +8,7 @@ bank", not "the bank itself is corrupt".
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 
 class WorkspaceError(Exception):
@@ -25,6 +25,8 @@ class StagingBlockedError(WorkspaceError):
     def __init__(self, findings: Sequence[object], message: str | None = None):
         self.findings = tuple(findings)
         codes = ", ".join(
-            getattr(f, "code", "?") for f in self.findings
-            if getattr(f, "level", None) == "block")
+            getattr(f, "code", "?")
+            for f in self.findings
+            if getattr(f, "level", None) == "block"
+        )
         super().__init__(message or f"sample blocked ({codes})")

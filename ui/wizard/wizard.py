@@ -9,7 +9,7 @@ what the wizard left behind.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from PySide6.QtWidgets import QWizard
 
@@ -18,7 +18,6 @@ from ui.wizard.context import WizardContext
 from ui.wizard.pages import PAGE_CLASSES
 from workspace.staging import StagingBank
 
-
 #: TDD §09 fixes the flow at eleven screens.
 PAGE_COUNT = len(PAGE_CLASSES)
 
@@ -26,10 +25,13 @@ PAGE_COUNT = len(PAGE_CLASSES)
 class SetupWizard(QWizard):
     """The eleven-screen guided setup."""
 
-    def __init__(self, session: BankSession,
-                 staging_bank: StagingBank | None = None,
-                 on_changed: Callable[[], None] | None = None,
-                 parent=None):
+    def __init__(
+        self,
+        session: BankSession,
+        staging_bank: StagingBank | None = None,
+        on_changed: Callable[[], None] | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("ESX Bank Studio — guided setup")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)

@@ -112,6 +112,6 @@ class FxRenderer(Protocol):
     'approximate' in the UI.
     """
 
-    def render(self, pcm: bytes, sample_rate: int, fx_type: int,
-               edit1: int, edit2: int) -> bytes:
-        ...
+    def render(
+        self, pcm: bytes, sample_rate: int, fx_type: int, edit1: int, edit2: int
+    ) -> bytes: ...

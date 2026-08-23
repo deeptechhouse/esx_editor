@@ -12,7 +12,7 @@ WHY A CONTEXT OBJECT
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from ui.session import BankSession
 from workspace.staging import StagingBank
@@ -23,9 +23,12 @@ class WizardContext:
 
     __slots__ = ("_session", "_staging_bank", "_on_changed")
 
-    def __init__(self, session: BankSession,
-                 staging_bank: StagingBank | None = None,
-                 on_changed: Callable[[], None] | None = None):
+    def __init__(
+        self,
+        session: BankSession,
+        staging_bank: StagingBank | None = None,
+        on_changed: Callable[[], None] | None = None,
+    ):
         self._session = session
         self._staging_bank = staging_bank
         self._on_changed = on_changed

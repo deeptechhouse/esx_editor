@@ -13,10 +13,9 @@ Ported in contract form from spike_a/budget.py; bodies land in a later workflow.
 
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 import codec.layout as L
-
 
 # The quality ladder offered in the UI (label, rate). TDD §6.3.
 TIERS: tuple[tuple[str, int], ...] = (
@@ -27,7 +26,7 @@ TIERS: tuple[tuple[str, int], ...] = (
     ("Telephone", 11025),
 )
 DEFAULT_RATE = 44100
-CAPACITY = L.MAX_SAMPLE_BYTES          # 25,165,824 bytes
+CAPACITY = L.MAX_SAMPLE_BYTES  # 25,165,824 bytes
 
 
 class BudgetItem:
@@ -35,8 +34,7 @@ class BudgetItem:
 
     __slots__ = ("_name", "_duration_s", "_source_rate", "_channels")
 
-    def __init__(self, name: str, duration_s: float,
-                 source_rate: int, channels: int):
+    def __init__(self, name: str, duration_s: float, source_rate: int, channels: int):
         self._name = name
         self._duration_s = duration_s
         self._source_rate = source_rate
@@ -70,18 +68,21 @@ class BudgetCalculator:
         """Exact bytes a sample occupies at a rate: align_up(frames*2*ch + 2, 4)."""
         if duration_s < 0 or rate <= 0 or channels < 1:
             raise ValueError(
-                f"invalid cost inputs: duration={duration_s} rate={rate} ch={channels}")
+                f"invalid cost inputs: duration={duration_s} rate={rate} ch={channels}"
+            )
         frames = int(round(duration_s * rate))
         raw = frames * 2 * channels
         return self.align_up(raw + 2, 4)
 
-    def total_cost(self, items: Sequence[BudgetItem],
-                   rate_for: Callable[[str], int] | None = None) -> int:
+    def total_cost(
+        self, items: Sequence[BudgetItem], rate_for: Callable[[str], int] | None = None
+    ) -> int:
         """Sum the cost of every item; rate_for(name)->rate overrides the default."""
         lookup = rate_for or (lambda _name: DEFAULT_RATE)
         return sum(
             self.cost_bytes(item.duration_s, lookup(item.name), item.channels)
-            for item in items)
+            for item in items
+        )
 
     def seconds_available(self, rate: int, channels: int = 1) -> float:
         """Seconds of audio that fit in an empty bank at this rate."""

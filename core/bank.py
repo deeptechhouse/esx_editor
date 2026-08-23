@@ -23,15 +23,14 @@ CAPACITY INVARIANT (TDD §3.2)
 from __future__ import annotations
 
 import struct
-from typing import Sequence
+from collections.abc import Sequence
 
+import codec.layout as L
 from core.errors import InvariantError
 from core.global_params import GlobalParameters
 from core.pattern import Pattern
-from core.song import Song
 from core.sample import SampleSlot
-import codec.layout as L
-
+from core.song import Song
 
 SAVE_ALL = "all"
 SAVE_PSG = "psg"
@@ -62,19 +61,32 @@ class RawRegions:
 class Bank:
     """The complete, editable model of one .esx bank."""
 
-    __slots__ = ("_globals", "_patterns", "_songs", "_samples",
-                 "_pcm", "_raw", "_save_type")
+    __slots__ = (
+        "_globals",
+        "_patterns",
+        "_songs",
+        "_samples",
+        "_pcm",
+        "_raw",
+        "_save_type",
+    )
 
     NUM_PATTERNS = L.NUM_PATTERNS
     NUM_SONGS = L.NUM_SONGS
     NUM_SAMPLES = L.NUM_SAMPLES
     NUM_SAMPLES_MONO = L.NUM_SAMPLES_MONO
-    MAX_PCM_BYTES = L.MAX_SAMPLE_BYTES       # 25,165,824
+    MAX_PCM_BYTES = L.MAX_SAMPLE_BYTES  # 25,165,824
 
-    def __init__(self, globals_: GlobalParameters,
-                 patterns: Sequence[Pattern], songs: Sequence[Song],
-                 samples: Sequence[SampleSlot], pcm: bytes,
-                 raw: RawRegions, save_type: str = SAVE_ALL):
+    def __init__(
+        self,
+        globals_: GlobalParameters,
+        patterns: Sequence[Pattern],
+        songs: Sequence[Song],
+        samples: Sequence[SampleSlot],
+        pcm: bytes,
+        raw: RawRegions,
+        save_type: str = SAVE_ALL,
+    ):
         self._globals = globals_
         self._patterns = list(patterns)
         self._songs = list(songs)
@@ -144,8 +156,9 @@ class Bank:
         """MAX_PCM_BYTES minus pcm_used_bytes()."""
         return self.MAX_PCM_BYTES - self.pcm_used_bytes()
 
-    def commit_sample(self, slot_index: int, pcm: bytes,
-                      *, stereo: bool, sample_rate: int, name: str) -> None:
+    def commit_sample(
+        self, slot_index: int, pcm: bytes, *, stereo: bool, sample_rate: int, name: str
+    ) -> None:
         """Append PCM at currentOffset and write the slot header.
 
         Enforces the capacity invariant before mutating. Full implementation
@@ -155,7 +168,8 @@ class Bank:
         if len(pcm) > self.pcm_free_bytes():
             raise InvariantError(
                 f"sample of {len(pcm):,} B exceeds free space "
-                f"{self.pcm_free_bytes():,} B (cap {self.MAX_PCM_BYTES:,} B)")
+                f"{self.pcm_free_bytes():,} B (cap {self.MAX_PCM_BYTES:,} B)"
+            )
         raise NotImplementedError("sample commit lands with the staging workflow")
 
     def clear_sample(self, slot_index: int) -> None:

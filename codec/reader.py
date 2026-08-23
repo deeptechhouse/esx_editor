@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import codec.layout as L
 from codec.errors import FormatError
-from core.bank import Bank, RawRegions, SAVE_ALL, SAVE_PSG
+from core.bank import SAVE_ALL, SAVE_PSG, Bank, RawRegions
 from core.global_params import GlobalParameters
 from core.pattern import Pattern
 from core.sample import SampleSlot
@@ -47,46 +47,58 @@ class BankReader:
         if len(data) < L.SIZE_FILE_MIN:
             raise FormatError(
                 f"file is 0x{len(data):X} bytes, below All-save minimum "
-                f"0x{L.SIZE_FILE_MIN:X} (a PSG save? use read_auto)")
+                f"0x{L.SIZE_FILE_MIN:X} (a PSG save? use read_auto)"
+            )
         if not data.startswith(L.MAGIC_HEAD):
             raise FormatError(f"missing KORG magic at 0x0 (found {data[:4]!r})")
         if L.MAGIC_1_TAIL not in data[:0x20]:
             raise FormatError("missing 'ESX' tag in first 32 bytes")
-        m2 = data[L.ADDR_MAGIC_2:L.ADDR_MAGIC_2 + 16]
+        m2 = data[L.ADDR_MAGIC_2 : L.ADDR_MAGIC_2 + 16]
         if not m2.startswith(L.MAGIC_HEAD) or L.MAGIC_2_TAIL not in m2:
             raise FormatError("missing KORG..BPS sample-area header at 0x1B0000")
 
         pat_end = L.ADDR_PATTERN_DATA + L.NUM_PATTERNS * L.CHUNK_PATTERN
-        mono_end = L.ADDR_SAMPLE_HEADER_MONO + L.NUM_SAMPLES_MONO * L.CHUNK_SAMPLE_HEADER_MONO
-        stereo_end = L.ADDR_SAMPLE_HEADER_STEREO + L.NUM_SAMPLES_STEREO * L.CHUNK_SAMPLE_HEADER_STEREO
+        mono_end = (
+            L.ADDR_SAMPLE_HEADER_MONO + L.NUM_SAMPLES_MONO * L.CHUNK_SAMPLE_HEADER_MONO
+        )
+        stereo_end = (
+            L.ADDR_SAMPLE_HEADER_STEREO
+            + L.NUM_SAMPLES_STEREO * L.CHUNK_SAMPLE_HEADER_STEREO
+        )
 
-        globals_ = GlobalParameters(
-            data[L.ADDR_GLOBAL_PARAMETERS:L.ADDR_UNKNOWN_1])
+        globals_ = GlobalParameters(data[L.ADDR_GLOBAL_PARAMETERS : L.ADDR_UNKNOWN_1])
 
         patterns = []
         for i in range(L.NUM_PATTERNS):
             off = L.ADDR_PATTERN_DATA + i * L.CHUNK_PATTERN
-            patterns.append(Pattern.from_bytes(data[off:off + L.CHUNK_PATTERN]))
+            patterns.append(Pattern.from_bytes(data[off : off + L.CHUNK_PATTERN]))
 
         samples = []
         for i in range(L.NUM_SAMPLES_MONO):
             off = L.ADDR_SAMPLE_HEADER_MONO + i * L.CHUNK_SAMPLE_HEADER_MONO
-            samples.append(SampleSlot(
-                data[off:off + L.CHUNK_SAMPLE_HEADER_MONO], False, i))
+            samples.append(
+                SampleSlot(data[off : off + L.CHUNK_SAMPLE_HEADER_MONO], False, i)
+            )
         for i in range(L.NUM_SAMPLES_STEREO):
             off = L.ADDR_SAMPLE_HEADER_STEREO + i * L.CHUNK_SAMPLE_HEADER_STEREO
-            samples.append(SampleSlot(
-                data[off:off + L.CHUNK_SAMPLE_HEADER_STEREO], True,
-                L.NUM_SAMPLES_MONO + i))
+            samples.append(
+                SampleSlot(
+                    data[off : off + L.CHUNK_SAMPLE_HEADER_STEREO],
+                    True,
+                    L.NUM_SAMPLES_MONO + i,
+                )
+            )
 
-        raw = RawRegions({
-            "magic": data[L.ADDR_MAGIC_1:L.ADDR_GLOBAL_PARAMETERS],
-            "unknown_1": data[L.ADDR_UNKNOWN_1:L.ADDR_PATTERN_DATA],
-            "mid": data[pat_end:L.ADDR_SAMPLE_HEADER_MONO],
-            "gap_hdr": data[mono_end:L.ADDR_SAMPLE_HEADER_STEREO],
-            "tail": data[stereo_end:L.ADDR_SAMPLE_DATA],
-        })
-        pcm = data[L.ADDR_SAMPLE_DATA:]
+        raw = RawRegions(
+            {
+                "magic": data[L.ADDR_MAGIC_1 : L.ADDR_GLOBAL_PARAMETERS],
+                "unknown_1": data[L.ADDR_UNKNOWN_1 : L.ADDR_PATTERN_DATA],
+                "mid": data[pat_end : L.ADDR_SAMPLE_HEADER_MONO],
+                "gap_hdr": data[mono_end : L.ADDR_SAMPLE_HEADER_STEREO],
+                "tail": data[stereo_end : L.ADDR_SAMPLE_DATA],
+            }
+        )
+        pcm = data[L.ADDR_SAMPLE_DATA :]
         return Bank(globals_, patterns, [], samples, pcm, raw, SAVE_ALL)
 
     def read_psg(self, data: bytes) -> Bank:
@@ -98,9 +110,11 @@ class BankReader:
         if not data.startswith(L.MAGIC_HEAD):
             raise FormatError(f"missing KORG magic at 0x0 (found {data[:4]!r})")
         raw = RawRegions({"psg_image": data})
-        globals_ = GlobalParameters(
-            data[L.ADDR_GLOBAL_PARAMETERS:L.ADDR_UNKNOWN_1]) \
-            if len(data) >= L.ADDR_UNKNOWN_1 else GlobalParameters(b"\x00" * 192)
+        globals_ = (
+            GlobalParameters(data[L.ADDR_GLOBAL_PARAMETERS : L.ADDR_UNKNOWN_1])
+            if len(data) >= L.ADDR_UNKNOWN_1
+            else GlobalParameters(b"\x00" * 192)
+        )
         return Bank(globals_, [], [], [], b"", raw, SAVE_PSG)
 
     def read_auto(self, data: bytes) -> Bank:

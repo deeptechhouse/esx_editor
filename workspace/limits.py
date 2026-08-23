@@ -14,18 +14,19 @@ Ported in contract form from spike_a/limits.py.
 from __future__ import annotations
 
 import os
-from typing import Sequence
+from collections.abc import Sequence
 
 import codec.layout as L
-from workspace.budget import BudgetCalculator, TIERS
+from workspace.budget import TIERS, BudgetCalculator
 
 
 class Severity:
     """Finding severities."""
+
     OK = "ok"
-    NOTICE = "notice"      # informational, no dialog
-    WARN = "warn"          # dismissible, supports "ignore for all"
-    BLOCK = "block"        # cannot proceed -- physically will not fit
+    NOTICE = "notice"  # informational, no dialog
+    WARN = "warn"  # dismissible, supports "ignore for all"
+    BLOCK = "block"  # cannot proceed -- physically will not fit
 
 
 # Warning codes that all mean "this sample is big" -> one mute action (TDD §6.4).
@@ -37,8 +38,7 @@ class Finding:
 
     __slots__ = ("_level", "_code", "_message", "_dismissible")
 
-    def __init__(self, level: str, code: str, message: str,
-                 dismissible: bool = True):
+    def __init__(self, level: str, code: str, message: str, dismissible: bool = True):
         self._level = level
         self._code = code
         self._message = message
@@ -94,9 +94,9 @@ class WarningPolicy:
     def visible(self, findings: Sequence[Finding]) -> tuple[Finding, ...]:
         """Findings that survive the mute set (BLOCK always survives)."""
         return tuple(
-            f for f in findings
-            if f.level != Severity.OK
-            and not (f.dismissible and f.code in self._muted)
+            f
+            for f in findings
+            if f.level != Severity.OK and not (f.dismissible and f.code in self._muted)
         )
 
 
@@ -120,13 +120,15 @@ class SampleLimitPolicy:
     WARN_SOURCE_BYTES = 20 * 1024 * 1024
     PARTIAL_ANALYSIS_SECONDS = 30.0
 
-    def __init__(self,
-                 analysis_max_seconds: float = ANALYSIS_MAX_SECONDS,
-                 warn_bank_fraction: float = WARN_BANK_FRACTION,
-                 max_single_fraction: float = MAX_SINGLE_SAMPLE_FRACTION,
-                 warn_source_bytes: int = WARN_SOURCE_BYTES,
-                 partial_analysis_seconds: float = PARTIAL_ANALYSIS_SECONDS,
-                 capacity: int | None = None):
+    def __init__(
+        self,
+        analysis_max_seconds: float = ANALYSIS_MAX_SECONDS,
+        warn_bank_fraction: float = WARN_BANK_FRACTION,
+        max_single_fraction: float = MAX_SINGLE_SAMPLE_FRACTION,
+        warn_source_bytes: int = WARN_SOURCE_BYTES,
+        partial_analysis_seconds: float = PARTIAL_ANALYSIS_SECONDS,
+        capacity: int | None = None,
+    ):
         self._analysis_max_s = analysis_max_seconds
         self._warn_bank_frac = warn_bank_fraction
         self._max_single_frac = max_single_fraction
@@ -135,9 +137,14 @@ class SampleLimitPolicy:
         self._capacity = L.MAX_SAMPLE_BYTES if capacity is None else capacity
         self._calc = BudgetCalculator()
 
-    def check_sample(self, path: str, duration_s: float, channels: int,
-                     target_rate: int, used_bytes: int = 0
-                     ) -> tuple[tuple[Finding, ...], bool]:
+    def check_sample(
+        self,
+        path: str,
+        duration_s: float,
+        channels: int,
+        target_rate: int,
+        used_bytes: int = 0,
+    ) -> tuple[tuple[Finding, ...], bool]:
         """Return (findings, analyse_ok).
 
         `used_bytes` is how much of the bank is already spoken for, so the fit
@@ -160,49 +167,73 @@ class SampleLimitPolicy:
                     fixes.append(f"drop to {label} ({rate} Hz) mono")
                     break
             fixes.append(f"trim to {single_cap / (44100 * 2):.0f}s at CD mono")
-            findings.append(Finding(
-                Severity.BLOCK, "exceeds_single_cap",
-                f"{duration_s:.1f}s at {target_rate} Hz needs {cost:,} B. One sample "
-                f"may use at most {self._max_single_frac:.0%} of sample memory "
-                f"({single_cap:,} B), leaving {1 - self._max_single_frac:.0%} free. "
-                f"Options: " + "; ".join(fixes) + ".",
-                dismissible=False))
+            findings.append(
+                Finding(
+                    Severity.BLOCK,
+                    "exceeds_single_cap",
+                    f"{duration_s:.1f}s at {target_rate} Hz needs {cost:,} B. One sample "
+                    f"may use at most {self._max_single_frac:.0%} of sample memory "
+                    f"({single_cap:,} B), leaving {1 - self._max_single_frac:.0%} free. "
+                    f"Options: " + "; ".join(fixes) + ".",
+                    dismissible=False,
+                )
+            )
         elif cost > self._capacity * self._warn_bank_frac and cost > single_cap * 0.5:
             steps = duration_s / 128.0
-            findings.append(Finding(
-                Severity.WARN, "dominant_sample",
-                f"uses {cost:,} B — {100 * cost / self._capacity:.0f}% of the bank, "
-                f"leaving {self._capacity - cost:,} B "
-                f"({(self._capacity - cost) / (44100 * 2):.0f}s at CD mono) for "
-                f"everything else. Motion-sequencing Start Point across its 128 "
-                f"positions moves ~{steps:.2f}s per step."))
+            findings.append(
+                Finding(
+                    Severity.WARN,
+                    "dominant_sample",
+                    f"uses {cost:,} B — {100 * cost / self._capacity:.0f}% of the bank, "
+                    f"leaving {self._capacity - cost:,} B "
+                    f"({(self._capacity - cost) / (44100 * 2):.0f}s at CD mono) for "
+                    f"everything else. Motion-sequencing Start Point across its 128 "
+                    f"positions moves ~{steps:.2f}s per step.",
+                )
+            )
         elif cost > free:
-            findings.append(Finding(
-                Severity.BLOCK, "exceeds_free",
-                f"needs {cost:,} B but only {free:,} B remain in this bank.",
-                dismissible=False))
+            findings.append(
+                Finding(
+                    Severity.BLOCK,
+                    "exceeds_free",
+                    f"needs {cost:,} B but only {free:,} B remain in this bank.",
+                    dismissible=False,
+                )
+            )
         elif cost > self._capacity * self._warn_bank_frac:
-            findings.append(Finding(
-                Severity.WARN, "large_sample",
-                f"uses {cost:,} B — {100 * cost / self._capacity:.0f}% of the whole bank."))
+            findings.append(
+                Finding(
+                    Severity.WARN,
+                    "large_sample",
+                    f"uses {cost:,} B — {100 * cost / self._capacity:.0f}% of the whole bank.",
+                )
+            )
 
         try:
             src = os.path.getsize(path)
             if src > self._warn_source_bytes:
-                findings.append(Finding(
-                    Severity.WARN, "large_source",
-                    f"source file is {src / 1048576:.1f} MB."))
+                findings.append(
+                    Finding(
+                        Severity.WARN,
+                        "large_source",
+                        f"source file is {src / 1048576:.1f} MB.",
+                    )
+                )
         except OSError:
             pass
 
         analyse_ok = duration_s <= self._analysis_max_s
         if not analyse_ok:
-            findings.append(Finding(
-                Severity.NOTICE, "analysis_skipped",
-                f"{duration_s:.1f}s exceeds the {self._analysis_max_s:.0f}s analysis "
-                f"limit — key detection skipped, no key appended. A single key for a "
-                f"recording this long would not be meaningful. You can analyse the "
-                f"first {self._partial_analysis_s:.0f}s explicitly if you want one."))
+            findings.append(
+                Finding(
+                    Severity.NOTICE,
+                    "analysis_skipped",
+                    f"{duration_s:.1f}s exceeds the {self._analysis_max_s:.0f}s analysis "
+                    f"limit — key detection skipped, no key appended. A single key for a "
+                    f"recording this long would not be meaningful. You can analyse the "
+                    f"first {self._partial_analysis_s:.0f}s explicitly if you want one.",
+                )
+            )
 
         if not findings:
             findings.append(Finding(Severity.OK, "ok", "fine"))

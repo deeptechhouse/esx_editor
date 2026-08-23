@@ -39,6 +39,7 @@ def qapp():
     """The one QApplication. Qt permits a single instance per process."""
     pytest.importorskip("PySide6")
     from PySide6.QtWidgets import QApplication
+
     from ui.theme import apply as apply_theme
 
     app = QApplication.instance() or QApplication(["esx-test"])
@@ -46,12 +47,24 @@ def qapp():
     return app
 
 
+#: Set ESX_NO_CORPUS=1 to simulate a fresh clone / CI runner, where no bank
+#: exists. Used to prove the suite and its coverage gates hold without them.
+NO_CORPUS = os.environ.get("ESX_NO_CORPUS") == "1"
+
+
+def available_corpus() -> tuple[str, ...]:
+    """Every corpus bank present, honouring the ESX_NO_CORPUS override."""
+    if NO_CORPUS:
+        return ()
+    return tuple(p for p in CORPUS_CANDIDATES if os.path.exists(p))
+
+
 @pytest.fixture(scope="session")
 def corpus_path() -> str:
     """Path to a real bank, or skip."""
-    for path in CORPUS_CANDIDATES:
-        if os.path.exists(path):
-            return path
+    present = available_corpus()
+    if present:
+        return present[0]
     pytest.skip("no corpus bank available (*.esx is gitignored)")
 
 
@@ -59,11 +72,13 @@ def corpus_path() -> str:
 def bank(corpus_path):
     """A parsed corpus Bank, shared read-mostly across the suite."""
     from codec.reader import BankReader
+
     return BankReader().read_file(corpus_path)
 
 
-def make_wav(path: str, seconds: float = 0.05, rate: int = 44100,
-             channels: int = 1) -> str:
+def make_wav(
+    path: str, seconds: float = 0.05, rate: int = 44100, channels: int = 1
+) -> str:
     """Write a tiny silent WAV so staging has a real header to probe."""
     frames = int(rate * seconds)
     with wave.open(path, "wb") as w:
@@ -76,10 +91,11 @@ def make_wav(path: str, seconds: float = 0.05, rate: int = 44100,
 
 def make_staging(tmp_path):
     """A StagingBank rooted in tmp_path, using the WAV passthrough adapters."""
-    from audio.passthrough import WavPassthroughConverter, NullKeyDetector
+    from audio.passthrough import NullKeyDetector, WavPassthroughConverter
     from workspace.limits import SampleLimitPolicy
     from workspace.staging import SessionWorkspace, StagingBank
 
     session = SessionWorkspace(temp_root=str(tmp_path))
-    return StagingBank(WavPassthroughConverter(), NullKeyDetector(),
-                       SampleLimitPolicy(), session)
+    return StagingBank(
+        WavPassthroughConverter(), NullKeyDetector(), SampleLimitPolicy(), session
+    )

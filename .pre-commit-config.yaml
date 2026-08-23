@@ -1,0 +1,63 @@
+# Pre-commit hooks. Install once with:  pre-commit install
+#
+# Three jobs, in order of how much damage they prevent:
+#   1. Stop a .esx bank or a secret from ever entering history.
+#   2. Format and lint, so CI never fails on style.
+#   3. Type-check the layers that can corrupt a bank.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.2
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/psf/black
+    rev: 26.5.1
+    hooks:
+      - id: black
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+
+  - repo: local
+    hooks:
+      - id: no-esx-banks
+        name: refuse to commit a .esx bank
+        # Banks are large binaries and may carry Korg factory-derived audio.
+        # .gitignore already excludes them; this catches a --force add.
+        entry: bash -c 'echo "refusing to commit .esx bank(s) -- $*"; exit 1' --
+        language: system
+        files: '\.esx$'
+
+      - id: changelog
+        name: CHANGELOG.html is generated, not edited
+        entry: python3 tools/generate_changelog.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: pytest-fast
+        name: run the test suite (offscreen Qt)
+        entry: bash -c 'QT_QPA_PLATFORM=offscreen python -m pytest tests/ -q -x'
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

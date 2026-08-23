@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
+    QHBoxLayout,
+    QLabel,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
+import codec.layout as L
 from core.bank import Bank
 from ui.theme import PALETTE
 from ui.widgets.budget_meter import BudgetMeter
-import codec.layout as L
 
 
 class BankView(QWidget):
@@ -22,7 +27,8 @@ class BankView(QWidget):
         self._counts.setStyleSheet(f"color: {PALETTE.lcd};")
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
-            ["#", "name", "pool", "rate", "start", "end"])
+            ["#", "name", "pool", "rate", "start", "end"]
+        )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
@@ -52,22 +58,30 @@ class BankView(QWidget):
             used = len(self._bank.pcm)
         self.meter.set_used(used)
         samples = self._bank.samples()
-        mono = samples[:L.NUM_SAMPLES_MONO]
-        stereo = samples[L.NUM_SAMPLES_MONO:]
+        mono = samples[: L.NUM_SAMPLES_MONO]
+        stereo = samples[L.NUM_SAMPLES_MONO :]
         n_m = sum(1 for s in mono if not s.empty)
         n_s = sum(1 for s in stereo if not s.empty)
         self._counts.setText(
-            f"mono {n_m}/{L.NUM_SAMPLES_MONO}   stereo {n_s}/{L.NUM_SAMPLES_STEREO}")
+            f"mono {n_m}/{L.NUM_SAMPLES_MONO}   stereo {n_s}/{L.NUM_SAMPLES_STEREO}"
+        )
         occupied = [s for s in samples if not s.empty]
         self.table.setRowCount(len(occupied))
         for row, s in enumerate(occupied):
             pool = "stereo" if s.stereo else "mono"
             rate = "—" if s.stereo else str(s.sample_rate)
-            vals = (str(s.index), s.name, pool, rate,
-                    f"0x{s.offset_start:X}", f"0x{s.offset_end:X}")
+            vals = (
+                str(s.index),
+                s.name,
+                pool,
+                rate,
+                f"0x{s.offset_start:X}",
+                f"0x{s.offset_end:X}",
+            )
             for col, text in enumerate(vals):
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                )
                 self.table.setItem(row, col, item)
         self.table.resizeColumnsToContents()

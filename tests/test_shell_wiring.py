@@ -16,10 +16,10 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from codec.errors import CodecError  # noqa: E402
 import ui.main_window as mw  # noqa: E402
+from codec.errors import CodecError  # noqa: E402
 from ui.main_window import MainWindow  # noqa: E402
-from ui.wizard import SetupWizard, PAGE_COUNT  # noqa: E402
+from ui.wizard import PAGE_COUNT, SetupWizard  # noqa: E402
 
 
 @pytest.fixture
@@ -34,29 +34,34 @@ def win(qapp):
 class Dialogs:
     """Records what the shell asked each dialog, and answers as configured."""
 
-    def __init__(self, monkeypatch, *, open_path="", save_path="",
-                 discard=True):
+    def __init__(self, monkeypatch, *, open_path="", save_path="", discard=True):
         self.warnings: list[tuple[str, str]] = []
         self.abouts: list[str] = []
         self.questions = 0
         self._open_path = open_path
         self._save_path = save_path
         monkeypatch.setattr(
-            mw.QMessageBox, "warning",
-            lambda _p, title, text, *a, **k: self.warnings.append((title, text)))
+            mw.QMessageBox,
+            "warning",
+            lambda _p, title, text, *a, **k: self.warnings.append((title, text)),
+        )
         monkeypatch.setattr(
-            mw.QMessageBox, "about",
-            lambda _p, title, text: self.abouts.append(title))
-        answer = (mw.QMessageBox.StandardButton.Discard if discard
-                  else mw.QMessageBox.StandardButton.Cancel)
+            mw.QMessageBox, "about", lambda _p, title, text: self.abouts.append(title)
+        )
+        answer = (
+            mw.QMessageBox.StandardButton.Discard
+            if discard
+            else mw.QMessageBox.StandardButton.Cancel
+        )
         monkeypatch.setattr(
-            mw.QMessageBox, "question", lambda *a, **k: self._question(answer))
+            mw.QMessageBox, "question", lambda *a, **k: self._question(answer)
+        )
         monkeypatch.setattr(
-            mw.QFileDialog, "getOpenFileName",
-            lambda *a, **k: (self._open_path, ""))
+            mw.QFileDialog, "getOpenFileName", lambda *a, **k: (self._open_path, "")
+        )
         monkeypatch.setattr(
-            mw.QFileDialog, "getSaveFileName",
-            lambda *a, **k: (self._save_path, ""))
+            mw.QFileDialog, "getSaveFileName", lambda *a, **k: (self._save_path, "")
+        )
 
     def _question(self, answer):
         self.questions += 1
@@ -77,8 +82,11 @@ def test_new_bank_binds_every_view(win, monkeypatch) -> None:
 
 def test_new_bank_warns_when_the_template_is_missing(win, monkeypatch) -> None:
     dialogs = Dialogs(monkeypatch)
-    monkeypatch.setattr(win.session, "new_bank",
-                        lambda: (_ for _ in ()).throw(CodecError("no template")))
+    monkeypatch.setattr(
+        win.session,
+        "new_bank",
+        lambda: (_ for _ in ()).throw(CodecError("no template")),
+    )
     win._on_new()
     assert dialogs.warnings == [("New bank", "no template")]
     assert win.session.is_open is False
@@ -121,8 +129,9 @@ def test_save_writes_to_the_current_path(win, monkeypatch, corpus_path, tmp_path
     win.open_path(corpus_path)
     dest = str(tmp_path / "saved.esx")
     win.session._path = dest
-    monkeypatch.setattr(win.session, "save",
-                        lambda path, **k: seen.append(path) or path)
+    monkeypatch.setattr(
+        win.session, "save", lambda path, **k: seen.append(path) or path
+    )
     seen: list[str] = []
     win._on_save()
     assert seen == [dest]
@@ -132,8 +141,9 @@ def test_save_falls_back_to_save_as_without_a_path(win, monkeypatch, tmp_path):
     dest = str(tmp_path / "as.esx")
     Dialogs(monkeypatch, save_path=dest)
     seen: list[str] = []
-    monkeypatch.setattr(win.session, "save",
-                        lambda path, **k: seen.append(path) or path)
+    monkeypatch.setattr(
+        win.session, "save", lambda path, **k: seen.append(path) or path
+    )
     win._on_save()
     assert seen == [dest]
 
@@ -141,8 +151,9 @@ def test_save_falls_back_to_save_as_without_a_path(win, monkeypatch, tmp_path):
 def test_save_as_cancelled_writes_nothing(win, monkeypatch) -> None:
     Dialogs(monkeypatch, save_path="")
     seen: list[str] = []
-    monkeypatch.setattr(win.session, "save",
-                        lambda path, **k: seen.append(path) or path)
+    monkeypatch.setattr(
+        win.session, "save", lambda path, **k: seen.append(path) or path
+    )
     win._on_save_as()
     assert seen == []
 
@@ -151,8 +162,10 @@ def test_save_refusal_is_surfaced_not_swallowed(win, monkeypatch) -> None:
     """An incoherent bank is refused by the writer; the user must be told."""
     dialogs = Dialogs(monkeypatch)
     monkeypatch.setattr(
-        win.session, "save",
-        lambda path, **k: (_ for _ in ()).throw(CodecError("refusing: 17 errors")))
+        win.session,
+        "save",
+        lambda path, **k: (_ for _ in ()).throw(CodecError("refusing: 17 errors")),
+    )
     win._write("/tmp/whatever.esx")
     assert dialogs.warnings == [("Save refused", "refusing: 17 errors")]
 
@@ -172,6 +185,7 @@ def test_clean_session_never_prompts(win, monkeypatch) -> None:
 
 def test_close_with_unsaved_changes_can_be_cancelled(win, monkeypatch) -> None:
     from PySide6.QtGui import QCloseEvent
+
     dialogs = Dialogs(monkeypatch, discard=False)
     win.session._dirty = True
     event = QCloseEvent()
@@ -183,6 +197,7 @@ def test_close_with_unsaved_changes_can_be_cancelled(win, monkeypatch) -> None:
 
 def test_close_with_unsaved_changes_can_be_discarded(win, monkeypatch) -> None:
     from PySide6.QtGui import QCloseEvent
+
     Dialogs(monkeypatch, discard=True)
     win.session._dirty = True
     event = QCloseEvent()
@@ -198,8 +213,9 @@ def test_guided_setup_opens_on_the_live_session(win, corpus_path) -> None:
         assert isinstance(wizard, SetupWizard)
         assert len(wizard.pages()) == PAGE_COUNT == 11
         assert wizard.context.session is win.session
-        assert wizard.staging_bank() is win.staging_view.bank, \
-            "the wizard must render the Staging tab's model, not a second one"
+        assert (
+            wizard.staging_bank() is win.staging_view.bank
+        ), "the wizard must render the Staging tab's model, not a second one"
     finally:
         wizard.close()
 
@@ -208,7 +224,7 @@ def test_guided_setup_changes_flow_back_to_the_shell(win, corpus_path) -> None:
     win.open_path(corpus_path)
     wizard = win.open_wizard()
     try:
-        page = wizard.page_at(8)            # 9 · Pattern basics
+        page = wizard.page_at(8)  # 9 · Pattern basics
         page.refresh()
         page.name.setText("FROMWIZ")
         page.apply_name()
@@ -220,8 +236,9 @@ def test_guided_setup_changes_flow_back_to_the_shell(win, corpus_path) -> None:
 
 
 def test_menus_expose_every_wired_action(win) -> None:
-    labels = {name: [a.text() for a in menu.actions()]
-              for name, menu in win.menus.items()}
+    labels = {
+        name: [a.text() for a in menu.actions()] for name, menu in win.menus.items()
+    }
     assert "Guided setup…" in labels["File"]
     assert "Clear staging" in labels["Edit"]
     assert "About" in labels["Help"]
@@ -231,12 +248,13 @@ def test_menus_expose_every_wired_action(win) -> None:
 # -- entry point -------------------------------------------------------------
 def test_app_main_builds_and_shows_a_window(monkeypatch) -> None:
     import ui.app as app_mod
+
     monkeypatch.setattr(app_mod.QApplication, "exec", lambda self: 0)
     assert app_mod.main(["esx-app-test"]) == 0
 
 
 def test_pattern_selection_without_a_bank_is_a_no_op(win) -> None:
-    win._on_pattern_selected(0)          # no bank open — must not raise
+    win._on_pattern_selected(0)  # no bank open — must not raise
     assert win.session.bank is None
 
 
@@ -255,4 +273,4 @@ def test_bind_motion_tolerates_a_bank_with_no_patterns(win, monkeypatch) -> None
             return ()
 
     monkeypatch.setattr(type(win.session), "bank", property(lambda self: _Empty()))
-    win._bind_motion()                   # must not raise or bind anything
+    win._bind_motion()  # must not raise or bind anything

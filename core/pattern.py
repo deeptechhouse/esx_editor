@@ -23,25 +23,40 @@ NOTE ON LAYOUT CONSTANTS
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
-from core.errors import InvariantError
-from core.part import (
-    Part, KIND_DRUM, KIND_KEYBOARD, KIND_STRETCHSLICE, KIND_AUDIOIN, KIND_ACCENT,
-)
-from core.motion import MotionSlot
 import codec.layout as L
+from core.errors import InvariantError
+from core.motion import MotionSlot
+from core.part import (
+    KIND_ACCENT,
+    KIND_AUDIOIN,
+    KIND_DRUM,
+    KIND_KEYBOARD,
+    KIND_STRETCHSLICE,
+    Part,
+)
 
 NAME_LEN = 8
 HEADER_LEN = 16
 
 # (kind, on-disk offset, count, chunk size) for the 16 parts, in file order.
 _PART_GROUPS = (
-    (KIND_DRUM,         L.PAT_OFF_PARTS_DRUM,         L.NUM_PARTS_DRUM,         L.CHUNK_PARTS_DRUM),
-    (KIND_KEYBOARD,     L.PAT_OFF_PARTS_KEYBOARD,     L.NUM_PARTS_KEYBOARD,     L.CHUNK_PARTS_KEYBOARD),
-    (KIND_STRETCHSLICE, L.PAT_OFF_PARTS_STRETCHSLICE, L.NUM_PARTS_STRETCHSLICE, L.CHUNK_PARTS_STRETCHSLICE),
-    (KIND_AUDIOIN,      L.PAT_OFF_PARTS_AUDIOIN,      L.NUM_PARTS_AUDIOIN,      L.CHUNK_PARTS_AUDIOIN),
-    (KIND_ACCENT,       L.PAT_OFF_PARTS_ACCENT,       L.NUM_PARTS_ACCENT,       L.CHUNK_PARTS_ACCENT),
+    (KIND_DRUM, L.PAT_OFF_PARTS_DRUM, L.NUM_PARTS_DRUM, L.CHUNK_PARTS_DRUM),
+    (
+        KIND_KEYBOARD,
+        L.PAT_OFF_PARTS_KEYBOARD,
+        L.NUM_PARTS_KEYBOARD,
+        L.CHUNK_PARTS_KEYBOARD,
+    ),
+    (
+        KIND_STRETCHSLICE,
+        L.PAT_OFF_PARTS_STRETCHSLICE,
+        L.NUM_PARTS_STRETCHSLICE,
+        L.CHUNK_PARTS_STRETCHSLICE,
+    ),
+    (KIND_AUDIOIN, L.PAT_OFF_PARTS_AUDIOIN, L.NUM_PARTS_AUDIOIN, L.CHUNK_PARTS_AUDIOIN),
+    (KIND_ACCENT, L.PAT_OFF_PARTS_ACCENT, L.NUM_PARTS_ACCENT, L.CHUNK_PARTS_ACCENT),
 )
 
 
@@ -57,7 +72,8 @@ class PatternHeader:
     def __init__(self, raw: bytes):
         if len(raw) != HEADER_LEN:
             raise InvariantError(
-                f"pattern header must be {HEADER_LEN} bytes, got {len(raw)}")
+                f"pattern header must be {HEADER_LEN} bytes, got {len(raw)}"
+            )
         self._raw = bytearray(raw)
 
     @property
@@ -89,7 +105,8 @@ class FxUnit:
     def __init__(self, raw: bytes):
         if len(raw) != L.CHUNK_PARAMETERS_FX:
             raise InvariantError(
-                f"fx unit must be {L.CHUNK_PARAMETERS_FX} bytes, got {len(raw)}")
+                f"fx unit must be {L.CHUNK_PARAMETERS_FX} bytes, got {len(raw)}"
+            )
         self._raw = bytearray(raw)
 
     @property
@@ -109,17 +126,23 @@ class Pattern:
 
     __slots__ = ("_name", "_header", "_parts", "_fx", "_motion")
 
-    NUM_MOTION_SLOTS = L.NUM_PARAMETERS_MOTION   # 24
+    NUM_MOTION_SLOTS = L.NUM_PARAMETERS_MOTION  # 24
 
-    def __init__(self, name: bytes, header: PatternHeader,
-                 parts: Sequence[Part], fx: Sequence[FxUnit],
-                 motion: Sequence[MotionSlot]):
+    def __init__(
+        self,
+        name: bytes,
+        header: PatternHeader,
+        parts: Sequence[Part],
+        fx: Sequence[FxUnit],
+        motion: Sequence[MotionSlot],
+    ):
         if len(name) != NAME_LEN:
             raise InvariantError(f"pattern name must be {NAME_LEN} bytes")
         if len(motion) != self.NUM_MOTION_SLOTS:
             raise InvariantError(
                 f"a pattern holds exactly {self.NUM_MOTION_SLOTS} motion slots, "
-                f"got {len(motion)}")
+                f"got {len(motion)}"
+            )
         self._name = bytes(name)
         self._header = header
         self._parts = tuple(parts)
@@ -154,7 +177,8 @@ class Pattern:
         """Replace one motion slot in place (slots are replaced, never appended)."""
         if not (0 <= index < self.NUM_MOTION_SLOTS):
             raise InvariantError(
-                f"motion index {index} out of range 0..{self.NUM_MOTION_SLOTS-1}")
+                f"motion index {index} out of range 0..{self.NUM_MOTION_SLOTS-1}"
+            )
         self._motion[index] = slot
 
     def motion_slots_used(self) -> int:
@@ -173,26 +197,37 @@ class Pattern:
             out += slot.to_bytes()
         if len(out) != L.CHUNK_PATTERN:
             raise InvariantError(
-                f"serialized pattern is {len(out)} bytes, expected {L.CHUNK_PATTERN}")
+                f"serialized pattern is {len(out)} bytes, expected {L.CHUNK_PATTERN}"
+            )
         return bytes(out)
 
     @classmethod
-    def from_bytes(cls, raw: bytes) -> "Pattern":
+    def from_bytes(cls, raw: bytes) -> Pattern:
         if len(raw) != L.CHUNK_PATTERN:
             raise InvariantError(
-                f"pattern chunk must be {L.CHUNK_PATTERN} bytes, got {len(raw)}")
+                f"pattern chunk must be {L.CHUNK_PATTERN} bytes, got {len(raw)}"
+            )
         name = raw[:NAME_LEN]
-        header = PatternHeader(raw[NAME_LEN:NAME_LEN + HEADER_LEN])
+        header = PatternHeader(raw[NAME_LEN : NAME_LEN + HEADER_LEN])
         parts: list[Part] = []
         for kind, base, count, size in _PART_GROUPS:
             for i in range(count):
                 off = base + i * size
-                parts.append(Part.from_bytes(kind, i, raw[off:off + size]))
-        fx = [FxUnit(raw[L.PAT_OFF_PARAMETERS_FX + i * L.CHUNK_PARAMETERS_FX:
-                         L.PAT_OFF_PARAMETERS_FX + (i + 1) * L.CHUNK_PARAMETERS_FX])
-              for i in range(L.NUM_PARAMETERS_FX)]
+                parts.append(Part.from_bytes(kind, i, raw[off : off + size]))
+        fx = [
+            FxUnit(
+                raw[
+                    L.PAT_OFF_PARAMETERS_FX
+                    + i * L.CHUNK_PARAMETERS_FX : L.PAT_OFF_PARAMETERS_FX
+                    + (i + 1) * L.CHUNK_PARAMETERS_FX
+                ]
+            )
+            for i in range(L.NUM_PARAMETERS_FX)
+        ]
         motion = []
         for i in range(L.NUM_PARAMETERS_MOTION):
             off = L.PAT_OFF_PARAMETERS_MOTION + i * L.CHUNK_PARAMETERS_MOTION
-            motion.append(MotionSlot.from_bytes(raw[off:off + L.CHUNK_PARAMETERS_MOTION]))
+            motion.append(
+                MotionSlot.from_bytes(raw[off : off + L.CHUNK_PARAMETERS_MOTION])
+            )
         return cls(name, header, parts, fx, motion)

@@ -7,11 +7,11 @@ files into committed samples (TDD §07), keeps the live 25 MB scoreboard exact
 session directory. It depends on audio.ports and core, never on the UI.
 """
 
-from .errors import WorkspaceError, StagingBlockedError
-from .limits import Severity, Finding, WarningPolicy, SampleLimitPolicy
-from .budget import BudgetCalculator, BudgetItem, TIERS, DEFAULT_RATE, CAPACITY
-from .naming import pack_slot_name, staging_filename, classical
-from .staging import SessionWorkspace, StagingSample, StagingBank
+from .budget import CAPACITY, DEFAULT_RATE, TIERS, BudgetCalculator, BudgetItem
+from .errors import StagingBlockedError, WorkspaceError
+from .limits import Finding, SampleLimitPolicy, Severity, WarningPolicy
+from .naming import classical, pack_slot_name, staging_filename
+from .staging import SessionWorkspace, StagingBank, StagingSample
 
 __all__ = [
     "WorkspaceError",
@@ -32,4 +32,3 @@ __all__ = [
     "StagingSample",
     "StagingBank",
 ]
-

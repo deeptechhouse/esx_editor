@@ -30,8 +30,8 @@ def test_discrete_n2_knob_positions() -> None:
     assert dom.legal_values() == (0, 64)
     slot = _empty()
     tools.write_step(slot, 0, 0, dom)
-    tools.write_step(slot, 1, 30, dom)    # nearer 0 than 64
-    tools.write_step(slot, 2, 40, dom)    # nearer 64
+    tools.write_step(slot, 1, 30, dom)  # nearer 0 than 64
+    tools.write_step(slot, 2, 40, dom)  # nearer 64
     tools.write_step(slot, 3, 127, dom)
     assert slot.get_step(0) == 0
     assert slot.get_step(1) == 0
@@ -86,7 +86,7 @@ def test_clear_keeps_target_and_disables_playable() -> None:
     tools.clear(slot, dom, length=64)
     assert slot.target == 102
     assert slot.values[:64] == bytes([0x80] * 64)
-    assert slot.values[64:] == bytes(range(64, 128))   # masked tail untouched
+    assert slot.values[64:] == bytes(range(64, 128))  # masked tail untouched
 
 
 def test_invert_skips_disabl() -> None:
@@ -124,7 +124,7 @@ def test_sample_and_hold_is_deterministic_with_seed() -> None:
     tools.sample_and_hold(b, dom, hold=4, length=16, rng=random.Random(1))
     assert a.values[:16] == b.values[:16]
     for i in range(0, 16, 4):
-        assert len(set(a.values[i:i + 4])) == 1
+        assert len(set(a.values[i : i + 4])) == 1
 
 
 def test_line_interpolates_continuous() -> None:
@@ -156,7 +156,7 @@ def test_randomise_discrete_only_legal() -> None:
 def test_write_stored_roundtrip_bytes() -> None:
     """A tooled slot serializes to the 130-byte on-disk form."""
     dom = MotionDomain.discrete(2, forced_trig=True)
-    slot = MotionSlot(14, bytes([0x80] * 128))   # Drum1 Roll
+    slot = MotionSlot(14, bytes([0x80] * 128))  # Drum1 Roll
     tools.write_step(slot, 0, 64, dom, length=16)
     tools.write_step(slot, 1, 0, dom, length=16)
     raw = slot.to_bytes()

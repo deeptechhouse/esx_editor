@@ -50,11 +50,14 @@ class BankTemplate:
                 with open(path, "rb") as f:
                     return f.read()
         from codec.errors import CodecError
+
         raise CodecError(
             f"blank template {TEMPLATE_FILENAME!r} not found in "
-            f"{self._candidate_paths()}")
+            f"{self._candidate_paths()}"
+        )
 
     def new_bank(self) -> Bank:
         """Parse the bundled template into a fresh, editable Bank."""
         from codec.reader import BankReader
+
         return BankReader().read_auto(self.blank_bytes())

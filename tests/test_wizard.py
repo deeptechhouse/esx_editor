@@ -15,19 +15,28 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
+import codec.layout as L  # noqa: E402
 from audio.ports import ConversionSpec  # noqa: E402
 from tests.conftest import make_staging, make_wav  # noqa: E402
 from ui.session import BankSession  # noqa: E402
-from ui.wizard import SetupWizard, WizardContext, PAGE_COUNT  # noqa: E402
+from ui.wizard import PAGE_COUNT, SetupWizard, WizardContext  # noqa: E402
 from ui.wizard.pages import (  # noqa: E402
-    PAGE_CLASSES, StartPage, CardCheckPage, AddSamplesPage, QualityBudgetPage,
-    KeyAnalysisPage, NamingPage, SlotAssignmentPage, PartSetupPage,
-    PatternBasicsPage, MotionPage, ValidateWritePage,
+    PAGE_CLASSES,
+    AddSamplesPage,
+    CardCheckPage,
+    KeyAnalysisPage,
+    MotionPage,
+    NamingPage,
+    PartSetupPage,
+    PatternBasicsPage,
+    QualityBudgetPage,
+    SlotAssignmentPage,
+    StartPage,
+    ValidateWritePage,
 )
 from workspace.budget import CAPACITY  # noqa: E402
 from workspace.naming import SLOT_NAME_LEN  # noqa: E402
 from workspace.staging import StagingBank  # noqa: E402
-import codec.layout as L  # noqa: E402
 
 
 @pytest.fixture
@@ -58,9 +67,19 @@ def test_every_page_is_skippable(qapp) -> None:
 
 
 def test_pages_are_in_spec_order(qapp) -> None:
-    expected = (StartPage, CardCheckPage, AddSamplesPage, QualityBudgetPage,
-                KeyAnalysisPage, NamingPage, SlotAssignmentPage, PartSetupPage,
-                PatternBasicsPage, MotionPage, ValidateWritePage)
+    expected = (
+        StartPage,
+        CardCheckPage,
+        AddSamplesPage,
+        QualityBudgetPage,
+        KeyAnalysisPage,
+        NamingPage,
+        SlotAssignmentPage,
+        PartSetupPage,
+        PatternBasicsPage,
+        MotionPage,
+        ValidateWritePage,
+    )
     assert PAGE_CLASSES == expected
     wiz = build(BankSession())
     for i, cls in enumerate(expected):
@@ -71,6 +90,7 @@ def test_pages_are_in_spec_order(qapp) -> None:
 def test_every_page_states_its_reasoning(qapp) -> None:
     """Each screen must explain the decision, not just ask for it (TDD §09)."""
     from PySide6.QtWidgets import QLabel
+
     wiz = build(BankSession())
     for page in wiz.pages():
         assert page.subTitle(), f"{page.title()} has no subtitle"
@@ -99,7 +119,7 @@ def test_context_notify_is_optional_and_fires(qapp) -> None:
     ctx = WizardContext(BankSession(), on_changed=lambda: hits.append(1))
     ctx.notify_changed()
     assert hits == [1]
-    WizardContext(BankSession()).notify_changed()   # no callback: must not throw
+    WizardContext(BankSession()).notify_changed()  # no callback: must not throw
 
 
 # -- 1 Start -----------------------------------------------------------------
@@ -139,9 +159,9 @@ def test_card_check_names_the_backup_path(qapp, opened) -> None:
     wiz = build(opened)
     page = wiz.page_at(1)
     page.refresh()
-    assert page.confirm.isChecked() is False       # never pre-consented
+    assert page.confirm.isChecked() is False  # never pre-consented
     assert f"{opened.path}.bak" in page.status.text()
-    assert page.isComplete() is True               # skippable even unchecked
+    assert page.isComplete() is True  # skippable even unchecked
 
 
 # -- 3 Add samples -----------------------------------------------------------
@@ -227,7 +247,8 @@ def test_naming_preview_includes_camelot_prefix(qapp) -> None:
     page.example.setText("bassline")
     page.camelot.setCurrentIndex(page.camelot.findData("8A"))
     page.style.setCurrentIndex(
-        [page.style.itemData(i) for i in range(page.style.count())].index("short"))
+        [page.style.itemData(i) for i in range(page.style.count())].index("short")
+    )
     packed = page.preview_lines()[0].split("|")[1]
     assert packed.startswith("a08")
     assert page.current_style() == "short"
@@ -241,7 +262,7 @@ def test_naming_previews_every_staged_sample(qapp, tmp_path) -> None:
     page = wiz.page_at(5)
     page.refresh()
     lines = page.preview_lines()
-    assert len(lines) == 3          # the example plus both staged files
+    assert len(lines) == 3  # the example plus both staged files
     assert page.preview.toPlainText() == "\n".join(lines)
 
 
@@ -252,8 +273,8 @@ def test_slot_page_reports_free_pools_separately(qapp, opened) -> None:
     page.refresh()
     mono, stereo = page.free_slots()
     samples = opened.bank.samples()
-    assert mono == sum(1 for s in samples[:L.NUM_SAMPLES_MONO] if s.empty)
-    assert stereo == sum(1 for s in samples[L.NUM_SAMPLES_MONO:] if s.empty)
+    assert mono == sum(1 for s in samples[: L.NUM_SAMPLES_MONO] if s.empty)
+    assert stereo == sum(1 for s in samples[L.NUM_SAMPLES_MONO :] if s.empty)
     assert "commit-to-slot lands with the staging workflow" in page.pools.text()
 
 
@@ -284,7 +305,7 @@ def test_part_page_shows_raw_parts_not_sample_numbers(qapp, opened) -> None:
     assert page.table.item(0, 1).text() == parts[0].kind
     assert page.table.item(0, 3).text() == str(len(parts[0].to_bytes()))
     with pytest.raises(NotImplementedError):
-        _ = parts[0].sample_number          # the page must never call this
+        _ = parts[0].sample_number  # the page must never call this
 
 
 def test_part_page_with_no_bank(qapp) -> None:
@@ -304,7 +325,7 @@ def test_pattern_basics_shows_header_hex_only(qapp, opened) -> None:
     assert page.header.toPlainText() == pat.header.to_bytes().hex(" ")
     assert f"/{L.NUM_PARAMETERS_MOTION} motion" in page.motion.text()
     with pytest.raises(NotImplementedError):
-        _ = pat.header.tempo                # the page must never call this
+        _ = pat.header.tempo  # the page must never call this
 
 
 def test_pattern_basics_rename_marks_dirty(qapp, opened) -> None:
@@ -317,7 +338,7 @@ def test_pattern_basics_rename_marks_dirty(qapp, opened) -> None:
     assert opened.bank.patterns()[0].name.strip() == "WIZNAME"
     assert opened.dirty is True
     assert hits == [1]
-    page.apply_name()                        # idempotent: no second notification
+    page.apply_name()  # idempotent: no second notification
     assert hits == [1]
 
 
@@ -368,7 +389,8 @@ def test_validate_page_refuses_an_incoherent_bank(qapp, opened, tmp_path) -> Non
 
 
 def test_validate_page_writes_with_override_and_keeps_a_backup(
-        qapp, opened, tmp_path) -> None:
+    qapp, opened, tmp_path
+) -> None:
     wiz = build(opened)
     page = wiz.page_at(10)
     page.allow_invalid.setChecked(True)
@@ -396,8 +418,10 @@ def test_wizard_write_round_trips_the_source_bytes(qapp, opened, tmp_path) -> No
 # -- remaining dialog and error paths ----------------------------------------
 def test_start_page_browse_opens_the_chosen_file(qapp, corpus_path, monkeypatch):
     import ui.wizard.pages as pages
-    monkeypatch.setattr(pages.QFileDialog, "getOpenFileName",
-                        lambda *a, **k: (corpus_path, ""))
+
+    monkeypatch.setattr(
+        pages.QFileDialog, "getOpenFileName", lambda *a, **k: (corpus_path, "")
+    )
     session = BankSession()
     wiz = build(session)
     wiz.page_at(0).browse()
@@ -407,8 +431,8 @@ def test_start_page_browse_opens_the_chosen_file(qapp, corpus_path, monkeypatch)
 
 def test_start_page_browse_cancelled_does_nothing(qapp, monkeypatch) -> None:
     import ui.wizard.pages as pages
-    monkeypatch.setattr(pages.QFileDialog, "getOpenFileName",
-                        lambda *a, **k: ("", ""))
+
+    monkeypatch.setattr(pages.QFileDialog, "getOpenFileName", lambda *a, **k: ("", ""))
     session = BankSession()
     wiz = build(session)
     wiz.page_at(0).browse()
@@ -417,9 +441,11 @@ def test_start_page_browse_cancelled_does_nothing(qapp, monkeypatch) -> None:
 
 def test_start_page_reports_a_missing_template(qapp, monkeypatch) -> None:
     from codec.errors import CodecError
+
     session = BankSession()
-    monkeypatch.setattr(session, "new_bank",
-                        lambda: (_ for _ in ()).throw(CodecError("no template")))
+    monkeypatch.setattr(
+        session, "new_bank", lambda: (_ for _ in ()).throw(CodecError("no template"))
+    )
     wiz = build(session)
     page = wiz.page_at(0)
     page.create_new()
@@ -452,21 +478,24 @@ def test_pattern_basics_rename_without_a_bank_is_a_no_op(qapp) -> None:
     page = wiz.page_at(8)
     page.refresh()
     page.name.setText("NOBANK")
-    page.apply_name()                 # must not raise
+    page.apply_name()  # must not raise
     assert "No bank open" in page.motion.text()
 
 
 def test_validate_page_asks_where_to_save_when_there_is_no_path(
-        qapp, tmp_path, monkeypatch) -> None:
+    qapp, tmp_path, monkeypatch
+) -> None:
     import ui.wizard.pages as pages
+
     session = BankSession()
     try:
         session.new_bank()
     except Exception as exc:
         pytest.skip(f"blank template unavailable: {exc}")
     dest = str(tmp_path / "asked.esx")
-    monkeypatch.setattr(pages.QFileDialog, "getSaveFileName",
-                        lambda *a, **k: (dest, ""))
+    monkeypatch.setattr(
+        pages.QFileDialog, "getSaveFileName", lambda *a, **k: (dest, "")
+    )
     wiz = build(session)
     page = wiz.page_at(10)
     page.allow_invalid.setChecked(True)
@@ -476,13 +505,13 @@ def test_validate_page_asks_where_to_save_when_there_is_no_path(
 
 def test_validate_page_write_can_be_cancelled(qapp, monkeypatch) -> None:
     import ui.wizard.pages as pages
+
     session = BankSession()
     try:
         session.new_bank()
     except Exception as exc:
         pytest.skip(f"blank template unavailable: {exc}")
-    monkeypatch.setattr(pages.QFileDialog, "getSaveFileName",
-                        lambda *a, **k: ("", ""))
+    monkeypatch.setattr(pages.QFileDialog, "getSaveFileName", lambda *a, **k: ("", ""))
     wiz = build(session)
     page = wiz.page_at(10)
     assert page.run_write() is False

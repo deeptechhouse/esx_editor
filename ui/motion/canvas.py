@@ -14,8 +14,8 @@ the picker; if a Pitch domain were bound, writes still go through snap_stored
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal, QPointF, QRectF
-from PySide6.QtGui import QColor, QPainter, QPen, QMouseEvent
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from core.motion import MotionDomain, MotionSlot
@@ -28,10 +28,14 @@ class MotionCanvas(QWidget):
 
     changed = Signal()
 
-    def __init__(self, parent=None, *,
-                 slot: MotionSlot | None = None,
-                 domain: MotionDomain | None = None,
-                 length: int = 64):
+    def __init__(
+        self,
+        parent=None,
+        *,
+        slot: MotionSlot | None = None,
+        domain: MotionDomain | None = None,
+        length: int = 64,
+    ):
         super().__init__(parent)
         self._slot = slot or MotionSlot.empty()
         self._domain = domain or MotionDomain.continuous()
@@ -174,8 +178,9 @@ class MotionCanvas(QWidget):
         if self._drawing and self._tool == "line" and self._anchor is not None:
             step, value = self._pos_to_step_value(event.position())
             x0, y0 = self._anchor
-            tools.line(self._slot, self._domain, x0, y0, step, value,
-                       length=self._length)
+            tools.line(
+                self._slot, self._domain, x0, y0, step, value, length=self._length
+            )
             self.changed.emit()
             self.update()
         self._drawing = False

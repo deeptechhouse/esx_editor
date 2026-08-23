@@ -53,9 +53,11 @@ class BudgetMeter(QWidget):
         p.fillRect(fill, QColor(PALETTE.red if over else PALETTE.amber))
 
         remain_s = max(0, self._capacity - self._used) / (DEFAULT_RATE * 2)
-        label = (f"{self._used / 1_048_576:.1f} / "
-                 f"{self._capacity / 1_048_576:.1f} MB   "
-                 f"{remain_s:.0f}s CD left")
+        label = (
+            f"{self._used / 1_048_576:.1f} / "
+            f"{self._capacity / 1_048_576:.1f} MB   "
+            f"{remain_s:.0f}s CD left"
+        )
         p.setPen(QColor(PALETTE.txt if not over else PALETTE.red))
         p.setFont(self.font())
         p.drawText(r, Qt.AlignmentFlag.AlignCenter, label)

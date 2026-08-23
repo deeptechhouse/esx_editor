@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESX Bank Studio</title>
+<style>
+  :root{--bg:#12100d;--panel:#1b1814;--panel2:#231f19;--line:#3a332a;--amber:#ff9d2e;
+    --amber-dim:#c9761b;--lcd:#ffb454;--green:#7fd68a;--red:#ff6b5e;--blue:#6fb6ff;
+    --txt:#e8e0d4;--muted:#9d9384;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:0 0 80px}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+  header{border-bottom:2px solid var(--amber);background:linear-gradient(180deg,#1f1a13,#12100d);padding:44px 0 28px}
+  h1{margin:0 0 10px;font-size:32px;letter-spacing:-.5px} h1 span{color:var(--amber)}
+  .tag{color:var(--muted);max-width:760px;font-size:16px}
+  .badges{margin-top:16px;display:flex;gap:8px;flex-wrap:wrap}
+  .badge{font-family:var(--mono);font-size:11.5px;border:1px solid var(--line);
+    background:var(--panel2);border-radius:4px;padding:3px 9px;color:var(--lcd)}
+  .badge b{color:var(--green)}
+  h2{margin:42px 0 10px;font-size:21px;color:var(--lcd);border-left:3px solid var(--amber);padding-left:12px}
+  h3{margin:24px 0 6px;font-size:15.5px;border-bottom:1px solid var(--line);padding-bottom:4px}
+  code{font-family:var(--mono);font-size:.88em;background:var(--panel2);padding:1px 6px;border-radius:3px;color:var(--lcd)}
+  pre{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber-dim);
+    padding:14px 16px;border-radius:5px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.55}
+  pre code{background:none;padding:0;color:var(--txt)}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--lcd)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:16px 18px;margin:14px 0}
+  .flag{border-left:4px solid var(--red);background:#241715}
+  .win{border-left:4px solid var(--green);background:#15201a}
+  .warn{border-left:4px solid var(--amber);background:#241d13}
+  .note{border-left:4px solid var(--blue);background:#141b24}
+  .card h3{margin-top:0;border:0}
+  ul{padding-left:22px} li{margin:5px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+  footer{margin-top:52px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+  a{color:var(--amber)}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>ESX <span>Bank Studio</span></h1>
+  <p class="tag">Build Korg Electribe SX banks on a computer — with the sample preparation,
+     memory budgeting, and motion authoring the hardware's two-line display makes impractical.
+     Offline, local, and built so it cannot corrupt a bank.</p>
+  <div class="badges">
+    <span class="badge">tests <b>252 passing</b></span>
+    <span class="badge">codec coverage <b>100%</b></span>
+    <span class="badge">project coverage <b>92%</b></span>
+    <span class="badge">round-trip <b>byte-identical</b></span>
+    <span class="badge">python 3.13</span>
+    <span class="badge">PySide6 6.9.3</span>
+    <span class="badge">licence GPL-3.0-or-later</span>
+  </div>
+</div></header>
+
+<div class="wrap">
+
+<h2>What it does</h2>
+<div class="grid">
+  <div class="card"><h3>Reads and writes safely</h3>
+    <p>Byte-identical round-trip on every real bank tested. Writes go to a temp file, are
+       verified by re-reading, then atomically replace — and the previous version is kept
+       as <code>.bak</code>. An incoherent bank is refused unless you explicitly override.</p></div>
+  <div class="card"><h3>Makes the 25 MB budget legible</h3>
+    <p>A live scoreboard showing what any configuration costs, computed from headers
+       without re-encoding anything.</p></div>
+  <div class="card"><h3>Draws motion sequences</h3>
+    <p>A 128-step canvas per slot that honours each target's real value domain — a 4-option
+       target snaps to {0,32,64,96}, never to 0/1/2/3.</p></div>
+  <div class="card"><h3>Guides a first-time user</h3>
+    <p>An eleven-screen wizard that states the decision <em>and</em> the reasoning on every
+       screen, and never blocks Next.</p></div>
+</div>
+
+<h2>Install and run</h2>
+<pre><code>git clone https://github.com/deeptechhouse/esx_editor
+cd esx_editor
+
+python3 -m venv ~/.venvs/esx
+~/.venvs/esx/bin/pip install -r requirements.txt
+
+PYTHONPATH="$PWD" ~/.venvs/esx/bin/python -m ui.app</code></pre>
+
+<table>
+  <tr><th>Prerequisite</th><th>Version</th><th>Why</th></tr>
+  <tr><td>Python</td><td>3.13 (see <code>.python-version</code>)</td><td>Pinned for reproducible builds</td></tr>
+  <tr><td>PySide6</td><td><b>6.9.3, pinned</b></td><td>6.10+ ships macOS 13+ wheels only and cannot install on macOS 12</td></tr>
+  <tr><td>ffmpeg</td><td>any recent</td><td>Optional — only for non-WAV import; the app degrades to WAV-only without it</td></tr>
+</table>
+
+<h3>Development</h3>
+<pre><code>~/.venvs/esx/bin/pip install -r requirements-dev.txt
+pre-commit install
+
+QT_QPA_PLATFORM=offscreen pytest tests/ -q          # 252 passing
+ruff check . &amp;&amp; black --check . &amp;&amp; mypy           # lint, format, types</code></pre>
+<p>Tests that need a real <code>.esx</code> bank skip automatically — <code>*.esx</code> is gitignored,
+   so a fresh clone still runs the full gate against <code>tests/synthetic.py</code>, a coherent
+   bank built deterministically in memory. Set <code>ESX_NO_CORPUS=1</code> to simulate that locally.</p>
+
+<h2>Architecture</h2>
+<pre><code>ui/            presentation — renders state, emits intent, never touches bytes
+ ├─ session.py     THE composition root: the only UI object that imports codec/
+ ├─ views/         one widget per region (bank, staging, pattern, song, global)
+ ├─ motion/        drawable canvas + pure tools + target picker
+ ├─ wizard/        11 skippable guided-setup pages
+ └─ widgets/       BudgetMeter, KnobDial, StepGrid, WaveformView
+
+workspace/     application services — budget, limits, naming, staging lifecycle
+audio/         ports (Protocols) + the WAV passthrough adapter
+codec/         bytes &lt;-&gt; domain: reader, writer, validator, template, layout
+core/          the domain model — pure Python, no I/O, no Qt</code></pre>
+<p>Full map with module relationships and entry points: <a href="NAVIGATION.md">NAVIGATION.md</a>.</p>
+
+<div class="card win">
+  <h3>The two rules that shape everything</h3>
+  <ul>
+    <li><b>Undecoded bytes are carried verbatim.</b> <code>RawRegions</code> has no setter, so
+        "never modify unknown regions" is structural rather than a convention — and that is
+        what makes the round-trip byte-identical.</li>
+    <li><b>An unproven field raises rather than guesses.</b> Pattern tempo, MIDI channel, and a
+        part's sample number all raise <code>NotImplementedError</code>; the UI shows the bytes
+        and says so. A plausible wrong number the user cannot distinguish from a fact is the
+        failure mode this project exists to prevent.</li>
+  </ul>
+</div>
+
+<h2>Project status</h2>
+<table>
+  <tr><th>Area</th><th>State</th></tr>
+  <tr><td>Codec — read, write, validate, template</td><td>Complete. 100% line coverage, byte-identical on 4 banks.</td></tr>
+  <tr><td>Motion editor</td><td>Complete. Encodings byte-verified against real banks.</td></tr>
+  <tr><td>Views + wizard</td><td>Complete.</td></tr>
+  <tr><td>Songs, global fields, pattern tempo/length</td><td>Displayed as bytes — offsets unproven, see below.</td></tr>
+  <tr><td>Non-WAV import, key detection</td><td>Ports frozen; adapters in progress.</td></tr>
+  <tr><td>Approximate FX preview</td><td>Phase 2, not started. Motion preview is silent.</td></tr>
+</table>
+
+<div class="card flag">
+  <h3>Not yet verified on hardware</h3>
+  <p>No file this app has written has been loaded by a real ESX-1 yet. The round-trip gate is
+     green on four real banks and writes are defensive, but until the checklist in
+     <code>research/HARDWARE_CHECKLIST.md</code> is closed, <b>keep a card backup</b>. Six
+     open items (pitch mapping, stereo headers, character set, PSG variant, unknown-region
+     stability, stale-header tolerance) each need button presses on the device.</p>
+</div>
+
+<h2>API reference</h2>
+<p>Generated from docstrings with Sphinx: <code>sphinx-build -b html docs docs/_build</code>.
+   The authoritative behavioural spec is <a href="TDD_esx_bank_studio.html">TDD_esx_bank_studio.html</a>;
+   <a href="research/CODEC_FINDINGS_LOG.md">research/CODEC_FINDINGS_LOG.md</a> records every bug,
+   decision, and the reasoning behind it.</p>
+
+<h2>Contributing</h2>
+<ul>
+  <li>Branch from <code>main</code> as <code>feat/</code>, <code>fix/</code>, <code>docs/</code>, <code>refactor/</code>. Conventional Commits.</li>
+  <li><code>pre-commit install</code> before your first commit — it formats, lints, blocks secrets, and refuses a committed <code>.esx</code>.</li>
+  <li><b>Never regress the round-trip gate.</b> If your change alters emitted bytes, the golden hash fails; say why in the findings log.</li>
+  <li>Do not invent a field offset. If it is not in <code>research/</code> as VERIFIED or DOCUMENTED, it raises.</li>
+  <li>Widgets do not import <code>codec/</code>. Business logic does not live in a widget.</li>
+</ul>
+
+<h2>Licence and attribution</h2>
+<p>GPL-3.0-or-later. Personal use; never commercial.</p>
+<p>Binary-format knowledge derives from Jeff / SKRATCHDOT.COM's
+   <em>open-electribe-editor</em> (EPL-1.0, 2009–2013). Parameter semantics come from the Korg
+   ESX-1 Owner's Manual, which supersedes the source code where they disagree. Every encoding
+   marked VERIFIED was established independently against real bank data. No Korg factory audio
+   is bundled or committed.</p>
+
+<footer>
+  ESX Bank Studio · <a href="NAVIGATION.md">navigation map</a> ·
+  <a href="TDD_esx_bank_studio.html">technical design</a> ·
+  <a href="CHANGELOG.html">changelog</a> ·
+  <a href="WF6_HUMAN_TESTING.html">manual test script</a>
+</footer>
+</div>
+</body>
+</html>

@@ -24,7 +24,7 @@ class Palette:
     amber: str = "#ff9d2e"
     amber_dim: str = "#c9761b"
     lcd: str = "#ffb454"
-    step: str = "#ff7a2e"          # orange step-key highlight
+    step: str = "#ff7a2e"  # orange step-key highlight
     green: str = "#7fd68a"
     red: str = "#ff6b5e"
     blue: str = "#6fb6ff"
@@ -36,7 +36,9 @@ class Palette:
 
 @dataclass(frozen=True)
 class Type:
-    ui: str = '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
+    ui: str = (
+        '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
+    )
     lcd: str = 'Menlo, "SF Mono", ui-monospace, Consolas, monospace'
     size_body: int = 13
     size_lcd: int = 12

@@ -20,23 +20,36 @@ from __future__ import annotations
 import os
 
 from PySide6.QtWidgets import (
-    QWizardPage, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QRadioButton,
-    QButtonGroup, QCheckBox, QComboBox, QLineEdit, QListWidget, QTableWidget,
-    QTableWidgetItem, QFileDialog, QPlainTextEdit,
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPlainTextEdit,
+    QPushButton,
+    QRadioButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWizardPage,
 )
 
+import codec.layout as L
 from codec.errors import CodecError
 from ui.theme import PALETTE, TYPE
 from ui.views.staging_view import StagingView
 from ui.widgets.budget_meter import BudgetMeter
-from workspace.budget import BudgetCalculator, CAPACITY
+from workspace.budget import CAPACITY, BudgetCalculator
 from workspace.naming import CAMELOT, pack_slot_name
-import codec.layout as L
 
-
-NAME_STYLES = (("short  (Am / C)", "short"),
-               ("long   (Amin / Cmaj)", "long"),
-               ("camelot only (8A)", "camelot"))
+NAME_STYLES = (
+    ("short  (Am / C)", "short"),
+    ("long   (Amin / Cmaj)", "long"),
+    ("camelot only (8A)", "camelot"),
+)
 
 
 def _muted(text: str) -> QLabel:
@@ -58,7 +71,8 @@ def _mono(widget: QPlainTextEdit) -> QPlainTextEdit:
     widget.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
     widget.setStyleSheet(
         f"font-family: {TYPE.lcd}; font-size: {TYPE.size_lcd}px; "
-        f"color: {PALETTE.lcd}; background: {PALETTE.lcd_bg};")
+        f"color: {PALETTE.lcd}; background: {PALETTE.lcd_bg};"
+    )
     return widget
 
 
@@ -105,7 +119,8 @@ class StartPage(SkippablePage):
         self.reason(
             "'New' loads a blank bank a real ESX-1 wrote, then edits it — five "
             "regions of the format are still undecoded, so synthesising a bank "
-            "from zeros risks a file the hardware rejects.")
+            "from zeros risks a file the hardware rejects."
+        )
         self.new_radio = QRadioButton("New bank from template")
         self.open_radio = QRadioButton("Open an existing .esx")
         self.new_radio.setChecked(True)
@@ -138,7 +153,8 @@ class StartPage(SkippablePage):
 
     def browse(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open ESX bank", "", "ESX banks (*.esx);;All files (*)")
+            self, "Open ESX bank", "", "ESX banks (*.esx);;All files (*)"
+        )
         if path:
             self.open_file(path)
 
@@ -172,7 +188,8 @@ class CardCheckPage(SkippablePage):
             "Writing is already defensive — the app serialises to a temp file, "
             "re-reads it to verify the bytes, replaces atomically, and keeps the "
             "previous version as <name>.esx.bak. A card-level copy still protects "
-            "you from the things software cannot: a bad card, a yanked reader.")
+            "you from the things software cannot: a bad card, a yanked reader."
+        )
         self.confirm = QCheckBox("I have copied the card contents somewhere safe")
         self.status = _lcd("")
         self.layout.addWidget(self.confirm)
@@ -183,10 +200,12 @@ class CardCheckPage(SkippablePage):
         path = self._ctx.session.path
         if path:
             self.status.setText(
-                f"This bank came from {path}\nA backup will be kept at {path}.bak")
+                f"This bank came from {path}\nA backup will be kept at {path}.bak"
+            )
         else:
             self.status.setText(
-                "No source file yet — Validate & write will ask where to save.")
+                "No source file yet — Validate & write will ask where to save."
+            )
 
 
 # 3 ---------------------------------------------------------------------------
@@ -198,7 +217,8 @@ class AddSamplesPage(SkippablePage):
         self.reason(
             "Originals are never modified. Each file is copied into a session "
             "workspace and costed against the 25 MB budget from its header — no "
-            "re-encoding is needed to know what a configuration will cost.")
+            "re-encoding is needed to know what a configuration will cost."
+        )
         self.staging = StagingView(bank=self._ctx.staging_bank)
         self._ctx.adopt_staging_bank(self.staging.bank)
         self.layout.addWidget(self.staging, 1)
@@ -217,7 +237,8 @@ class QualityBudgetPage(SkippablePage):
             "Order of sacrifice: trim silence first, then fold stereo to mono, "
             "and only then drop the sample rate — rate is the one that cannot be "
             "undone later. Nothing here is applied automatically; this screen "
-            "proposes, you decide.")
+            "proposes, you decide."
+        )
         self._calc = BudgetCalculator()
         self.meter = BudgetMeter()
         self.summary = _lcd("")
@@ -233,7 +254,8 @@ class QualityBudgetPage(SkippablePage):
         for s in self._ctx.staged_samples():
             if s.duration_s is not None and s.spec is not None:
                 total += self._calc.cost_bytes(
-                    s.duration_s, s.spec.rate, s.spec.channels)
+                    s.duration_s, s.spec.rate, s.spec.channels
+                )
         return total
 
     def proposals(self) -> tuple[str, ...]:
@@ -242,15 +264,22 @@ class QualityBudgetPage(SkippablePage):
         if cost <= CAPACITY:
             return ()
         over = cost - CAPACITY
-        stereo = [s for s in self._ctx.staged_samples()
-                  if s.spec is not None and s.spec.channels > 1]
+        stereo = [
+            s
+            for s in self._ctx.staged_samples()
+            if s.spec is not None and s.spec.channels > 1
+        ]
         out = [f"Over capacity by {over:,} B ({over / CAPACITY:.0%} of the card)."]
         out.append("1. Trim leading/trailing silence — free, lossless, reversible.")
         if stereo:
-            out.append(f"2. Fold {len(stereo)} stereo sample(s) to mono — halves "
-                       "their cost and frees the 128-slot stereo pool.")
-        out.append(f"{3 if stereo else 2}. Drop the tier (44.1 → 32 → 24 kHz) — "
-                   "cheapest in bytes, but resampling cannot be undone.")
+            out.append(
+                f"2. Fold {len(stereo)} stereo sample(s) to mono — halves "
+                "their cost and frees the 128-slot stereo pool."
+            )
+        out.append(
+            f"{3 if stereo else 2}. Drop the tier (44.1 → 32 → 24 kHz) — "
+            "cheapest in bytes, but resampling cannot be undone."
+        )
         return tuple(out)
 
     def refresh(self) -> None:
@@ -260,11 +289,14 @@ class QualityBudgetPage(SkippablePage):
         pct = (cost / CAPACITY * 100) if CAPACITY else 0.0
         self.summary.setText(
             f"{n} staged sample(s) — {cost:,} B of {CAPACITY:,} B ({pct:.1f}%). "
-            f"{max(CAPACITY - cost, 0):,} B free.")
+            f"{max(CAPACITY - cost, 0):,} B free."
+        )
         props = self.proposals()
         self.proposal.setText(
-            "\n".join(props) if props
-            else "Within budget — the CD-quality default (44.1 kHz) stands.")
+            "\n".join(props)
+            if props
+            else "Within budget — the CD-quality default (44.1 kHz) stands."
+        )
 
 
 # 5 ---------------------------------------------------------------------------
@@ -277,7 +309,8 @@ class KeyAnalysisPage(SkippablePage):
             "The adapter shipped today is NullKeyDetector: it returns no key, "
             "ever. Returning nothing is a legitimate result — a kick drum has no "
             "key, and a guessed one would be baked into the 8-character slot name "
-            "permanently. Real detection lands with the librosa adapter.")
+            "permanently. Real detection lands with the librosa adapter."
+        )
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["sample", "camelot", "classical"])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -293,13 +326,16 @@ class KeyAnalysisPage(SkippablePage):
         detected = sum(1 for s in staged if s.key is not None)
         self.status.setText(
             f"{len(staged)} staged, {detected} with a key. "
-            "The passthrough detector reports none by design.")
+            "The passthrough detector reports none by design."
+        )
         self.table.setRowCount(len(staged))
         for row, s in enumerate(staged):
             key = s.key
-            vals = (os.path.basename(s.source_path),
-                    key.camelot if key else "— none —",
-                    key.classical if key else "— none —")
+            vals = (
+                os.path.basename(s.source_path),
+                key.camelot if key else "— none —",
+                key.classical if key else "— none —",
+            )
             for col, text in enumerate(vals):
                 self.table.setItem(row, col, QTableWidgetItem(text))
         self.table.resizeColumnsToContents()
@@ -315,7 +351,8 @@ class NamingPage(SkippablePage):
             "The machine slot name is exactly 8 characters, so the policy is a "
             "real trade-off: the Camelot prefix costs 3 of them. The on-disk "
             "staging filename is unlimited and carries both notations, so nothing "
-            "is lost — only the hardware display is constrained.")
+            "is lost — only the hardware display is constrained."
+        )
         self.style = QComboBox()
         for label, value in NAME_STYLES:
             self.style.addItem(label, value)
@@ -353,8 +390,9 @@ class NamingPage(SkippablePage):
         rows = [(self.example.text() or "example", chosen)]
         for s in self._ctx.staged_samples():
             key = s.key
-            rows.append((os.path.basename(s.source_path),
-                         key.camelot if key else chosen))
+            rows.append(
+                (os.path.basename(s.source_path), key.camelot if key else chosen)
+            )
         lines = []
         for name, code in rows:
             try:
@@ -379,7 +417,8 @@ class SlotAssignmentPage(SkippablePage):
             "at separate offsets, so a stereo file cannot borrow a free mono slot. "
             "Committing PCM into a slot lands with the staging workflow "
             "(Bank.commit_sample still raises NotImplementedError); this screen "
-            "shows what would be written, and nothing is written yet.")
+            "shows what would be written, and nothing is written yet."
+        )
         self.pools = _lcd("")
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["staged file", "packed name", "pool"])
@@ -396,8 +435,8 @@ class SlotAssignmentPage(SkippablePage):
         if bank is None:
             return L.NUM_SAMPLES_MONO, L.NUM_SAMPLES_STEREO
         samples = bank.samples()
-        mono = sum(1 for s in samples[:L.NUM_SAMPLES_MONO] if s.empty)
-        stereo = sum(1 for s in samples[L.NUM_SAMPLES_MONO:] if s.empty)
+        mono = sum(1 for s in samples[: L.NUM_SAMPLES_MONO] if s.empty)
+        stereo = sum(1 for s in samples[L.NUM_SAMPLES_MONO :] if s.empty)
         return mono, stereo
 
     def refresh(self) -> None:
@@ -405,13 +444,17 @@ class SlotAssignmentPage(SkippablePage):
         self.pools.setText(
             f"free mono {mono}/{L.NUM_SAMPLES_MONO}   "
             f"free stereo {stereo}/{L.NUM_SAMPLES_STEREO}   "
-            "— commit-to-slot lands with the staging workflow.")
+            "— commit-to-slot lands with the staging workflow."
+        )
         staged = self._ctx.staged_samples()
         self.table.setRowCount(len(staged))
         for row, s in enumerate(staged):
             channels = s.spec.channels if s.spec is not None else 1
-            vals = (os.path.basename(s.source_path), s.slot_name(),
-                    "stereo" if channels > 1 else "mono")
+            vals = (
+                os.path.basename(s.source_path),
+                s.slot_name(),
+                "stereo" if channels > 1 else "mono",
+            )
             for col, text in enumerate(vals):
                 self.table.setItem(row, col, QTableWidgetItem(text))
         self.table.resizeColumnsToContents()
@@ -427,11 +470,13 @@ class PartSetupPage(SkippablePage):
             "Which sample a part plays lives at an unproven offset inside the "
             "part chunk — Part.sample_number raises NotImplementedError rather "
             "than return a guess, so this screen shows each part's kind and "
-            "index only. Assignment arrives when a hardware diff pins the field.")
+            "index only. Assignment arrives when a hardware diff pins the field."
+        )
         self.status = _lcd("")
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
-            ["#", "kind", "index", "chunk B", "first 8 B"])
+            ["#", "kind", "index", "chunk B", "first 8 B"]
+        )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
@@ -447,12 +492,18 @@ class PartSetupPage(SkippablePage):
             return
         parts = pat.parts()
         self.status.setText(
-            f"Pattern 000 '{pat.name}' — {len(parts)} parts, raw and undecoded.")
+            f"Pattern 000 '{pat.name}' — {len(parts)} parts, raw and undecoded."
+        )
         self.table.setRowCount(len(parts))
         for row, part in enumerate(parts):
             raw = part.to_bytes()
-            vals = (str(row), part.kind, str(part.index),
-                    str(len(raw)), raw[:8].hex(" "))
+            vals = (
+                str(row),
+                part.kind,
+                str(part.index),
+                str(len(raw)),
+                raw[:8].hex(" "),
+            )
             for col, text in enumerate(vals):
                 self.table.setItem(row, col, QTableWidgetItem(text))
         self.table.resizeColumnsToContents()
@@ -469,7 +520,8 @@ class PatternBasicsPage(SkippablePage):
             "swing and roll — but which byte holds which is not settled, and "
             "PatternHeader.tempo raises NotImplementedError. Writing a wrong byte "
             "into a pattern is exactly the corruption this project exists to "
-            "avoid, so the header is shown as hex until a hardware diff pins it.")
+            "avoid, so the header is shown as hex until a hardware diff pins it."
+        )
         self.name = QLineEdit()
         self.name.setMaxLength(L.PATTERN_NAME_LEN)
         self.name.editingFinished.connect(self.apply_name)
@@ -506,7 +558,8 @@ class PatternBasicsPage(SkippablePage):
         self.name.setText(pat.name)
         self.header.setPlainText(pat.header.to_bytes().hex(" "))
         self.motion.setText(
-            f"{pat.motion_slots_used()}/{L.NUM_PARAMETERS_MOTION} motion slots used")
+            f"{pat.motion_slots_used()}/{L.NUM_PARAMETERS_MOTION} motion slots used"
+        )
 
 
 # 10 --------------------------------------------------------------------------
@@ -519,7 +572,8 @@ class MotionPage(SkippablePage):
             "A pattern has 24 motion slots. Drawing happens on the full canvas in "
             "the Motion tab, which knows each target's real value domain — a "
             "4-option target snaps to {0,32,64,96}, not to arbitrary bytes. This "
-            "screen only reports how much of the budget is spent.")
+            "screen only reports how much of the budget is spent."
+        )
         self.status = _lcd("")
         self.slots = QListWidget()
         self.layout.addWidget(self.status)
@@ -534,9 +588,10 @@ class MotionPage(SkippablePage):
         used = pat.motion_slots_used()
         self.status.setText(
             f"{used}/{L.NUM_PARAMETERS_MOTION} motion slots used in pattern 000. "
-            "Close the wizard and use the Motion tab to draw.")
+            "Close the wizard and use the Motion tab to draw."
+        )
         for i, slot in enumerate(pat.motion_slots()):
-            state = (f"target 0x{slot.target:04X}" if slot.in_use else "free")
+            state = f"target 0x{slot.target:04X}" if slot.in_use else "free"
             self.slots.addItem(f"slot {i:02d}  {state}")
 
 
@@ -552,10 +607,12 @@ class ValidateWritePage(SkippablePage):
             "still has 17 sample headers pointing past EOF. Findings are reported, "
             "never auto-repaired — an incoherent bank is refused unless you "
             "explicitly override, because that stale state may be exactly what "
-            "you are trying to preserve.")
+            "you are trying to preserve."
+        )
         self.findings = QListWidget()
         self.allow_invalid = QCheckBox(
-            "Write anyway if validation reports errors (allow_invalid)")
+            "Write anyway if validation reports errors (allow_invalid)"
+        )
         self.validate_button = QPushButton("Validate")
         self.validate_button.clicked.connect(self.run_validate)
         self.write_button = QPushButton("Write bank")
@@ -583,8 +640,12 @@ class ValidateWritePage(SkippablePage):
         n_err = len(report.errors())
         self.status.setText(
             f"{len(report)} finding(s), {n_err} error(s). "
-            + ("Coherent — safe to write." if report.ok
-               else "Writing needs the override below."))
+            + (
+                "Coherent — safe to write."
+                if report.ok
+                else "Writing needs the override below."
+            )
+        )
         return len(report)
 
     def run_write(self, path: str | None = None) -> bool:
@@ -596,19 +657,20 @@ class ValidateWritePage(SkippablePage):
         dest = path or session.path
         if not dest:
             dest, _ = QFileDialog.getSaveFileName(
-                self, "Save ESX bank", "", "ESX banks (*.esx)")
+                self, "Save ESX bank", "", "ESX banks (*.esx)"
+            )
             if not dest:
                 self.status.setText("Write cancelled.")
                 return False
         try:
-            written = session.save(
-                dest, allow_invalid=self.allow_invalid.isChecked())
+            written = session.save(dest, allow_invalid=self.allow_invalid.isChecked())
         except (CodecError, OSError) as exc:
             self.status.setText(f"Write refused: {exc}")
             return False
         self._ctx.notify_changed()
         self.status.setText(
-            f"Wrote {written} (verified by re-read; previous kept as .bak).")
+            f"Wrote {written} (verified by re-read; previous kept as .bak)."
+        )
         return True
 
     def refresh(self) -> None:
@@ -618,12 +680,21 @@ class ValidateWritePage(SkippablePage):
             return
         self.status.setText(
             f"Ready: {session.path or 'untitled (will ask where to save)'}. "
-            "Press Validate to check coherence first.")
+            "Press Validate to check coherence first."
+        )
 
 
 #: The eleven screens, in wizard order (TDD §09).
 PAGE_CLASSES = (
-    StartPage, CardCheckPage, AddSamplesPage, QualityBudgetPage,
-    KeyAnalysisPage, NamingPage, SlotAssignmentPage, PartSetupPage,
-    PatternBasicsPage, MotionPage, ValidateWritePage,
+    StartPage,
+    CardCheckPage,
+    AddSamplesPage,
+    QualityBudgetPage,
+    KeyAnalysisPage,
+    NamingPage,
+    SlotAssignmentPage,
+    PartSetupPage,
+    PatternBasicsPage,
+    MotionPage,
+    ValidateWritePage,
 )

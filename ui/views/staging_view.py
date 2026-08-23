@@ -6,15 +6,22 @@ import os
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QPushButton,
-    QComboBox, QFileDialog, QMessageBox,
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from audio.passthrough import WavPassthroughConverter, NullKeyDetector
+from audio.passthrough import NullKeyDetector, WavPassthroughConverter
 from audio.ports import ConversionSpec
 from ui.theme import PALETTE
 from ui.widgets.budget_meter import BudgetMeter
-from workspace.budget import BudgetCalculator, TIERS, DEFAULT_RATE
+from workspace.budget import DEFAULT_RATE, TIERS, BudgetCalculator
 from workspace.errors import StagingBlockedError
 from workspace.limits import SampleLimitPolicy
 from workspace.staging import SessionWorkspace, StagingBank
@@ -23,8 +30,13 @@ from workspace.staging import SessionWorkspace, StagingBank
 class StagingView(QWidget):
     samplesChanged = Signal()
 
-    def __init__(self, parent=None, *, temp_root: str | None = None,
-                 bank: StagingBank | None = None):
+    def __init__(
+        self,
+        parent=None,
+        *,
+        temp_root: str | None = None,
+        bank: StagingBank | None = None,
+    ):
         """Render a StagingBank.
 
         `bank` lets a second view (the wizard's Add-samples screen) render the
@@ -37,8 +49,11 @@ class StagingView(QWidget):
             session = SessionWorkspace(temp_root=temp_root)
             session.sweep_orphans()
             bank = StagingBank(
-                WavPassthroughConverter(), NullKeyDetector(),
-                SampleLimitPolicy(), session)
+                WavPassthroughConverter(),
+                NullKeyDetector(),
+                SampleLimitPolicy(),
+                session,
+            )
         self.bank = bank
         self._calc = BudgetCalculator()
 
@@ -75,7 +90,8 @@ class StagingView(QWidget):
 
     def _pick(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Add samples", "", "WAV audio (*.wav)")
+            self, "Add samples", "", "WAV audio (*.wav)"
+        )
         for p in paths:
             self.add_path(p)
 
@@ -84,9 +100,11 @@ class StagingView(QWidget):
             return
         if not path.lower().endswith(".wav"):
             QMessageBox.information(
-                self, "WAV only for now",
+                self,
+                "WAV only for now",
                 "The passthrough converter reads WAV headers. "
-                "Other formats wait on the ffmpeg adapter.")
+                "Other formats wait on the ffmpeg adapter.",
+            )
             return
         rate = int(self._tier.currentData() or DEFAULT_RATE)
         try:
@@ -116,5 +134,6 @@ class StagingView(QWidget):
             key = s.slot_name()
             self._list.addItem(
                 f"{os.path.basename(s.source_path)}  →  {s.staging_filename()}  "
-                f"[{key}]  {cost:,} B")
+                f"[{key}]  {cost:,} B"
+            )
         self.meter.set_used(used)

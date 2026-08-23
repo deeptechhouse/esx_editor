@@ -50,6 +50,37 @@ class MotionDomain:
         self._kind = kind
         self._option_count = option_count
         self._forced_trig = forced_trig
+        if kind in (self.BOOLEAN, self.ENUM):
+            self._reject_inexpressible_option_count()
+
+    def _reject_inexpressible_option_count(self) -> None:
+        """Refuse an option count the VERIFIED rule cannot express.
+
+        `value = i * ceil(128 / N)` is PROVEN for N = 2, 3, 4 (Spike A, against
+        297 populated slots). Extrapolated to larger N it eventually produces
+        bytes outside the 0-127 knob range: N=14 tops out at 130, and twelve
+        values of N — 17, 18, 33..42 — produce exactly **128**, which is the
+        Disabl sentinel. Writing that would silently turn an option index into
+        "do not update this step", and nothing downstream could tell.
+
+        The shipped 313-target table only uses N = 2 and N = 4, so this is not
+        reachable today. It is still refused rather than clamped, because a
+        clamp would break `decode(encode(i)) == i` and would be a guess at a
+        rule we have no data for. If a real target ever needs such an N, the
+        encoding must be established on hardware first.
+        """
+        if self._option_count < 1:
+            raise InvariantError("discrete domain needs option_count >= 1")
+        step = -(-128 // self._option_count)
+        top = step * (self._option_count - 1)
+        if top > 127:
+            raise InvariantError(
+                f"option_count {self._option_count} is not expressible by the "
+                f"verified rule i * ceil(128/N): the top option would store as "
+                f"{top}, outside the 0-127 knob range"
+                + (" and colliding with the Disabl sentinel 128" if top == 128 else "")
+                + ". The encoding for this option count is unproven."
+            )
 
     @property
     def kind(self) -> str:
@@ -76,7 +107,8 @@ class MotionDomain:
         if self._kind in (self.BOOLEAN, self.ENUM):
             if not (0 <= value < self._option_count):
                 raise InvariantError(
-                    f"option index {value} out of range 0..{self._option_count-1}")
+                    f"option index {value} out of range 0..{self._option_count-1}"
+                )
             return value * self._step()
         # continuous / bipolar are stored as a raw 0..127 byte
         if not (0 <= value <= 127):
@@ -113,11 +145,11 @@ class MotionDomain:
         return self._kind in (self.BOOLEAN, self.ENUM)
 
     @classmethod
-    def continuous(cls, forced_trig: bool = False) -> "MotionDomain":
+    def continuous(cls, forced_trig: bool = False) -> MotionDomain:
         return cls(cls.CONTINUOUS, 0, forced_trig)
 
     @classmethod
-    def discrete(cls, option_count: int, forced_trig: bool = True) -> "MotionDomain":
+    def discrete(cls, option_count: int, forced_trig: bool = True) -> MotionDomain:
         return cls(cls.ENUM, option_count, forced_trig)
 
 
@@ -131,15 +163,16 @@ class MotionSlot:
 
     __slots__ = ("_target", "_values")
 
-    DISABLED = 0x80          # per-step "do not update" sentinel
-    EMPTY_TARGET = 0xFFFF    # slot is unused
+    DISABLED = 0x80  # per-step "do not update" sentinel
+    EMPTY_TARGET = 0xFFFF  # slot is unused
     NUM_STEPS = 128
-    CHUNK_SIZE = 130         # 2-byte target + 128 values
+    CHUNK_SIZE = 130  # 2-byte target + 128 values
 
     def __init__(self, target: int, values: bytes):
         if len(values) != self.NUM_STEPS:
             raise InvariantError(
-                f"motion needs exactly {self.NUM_STEPS} values, got {len(values)}")
+                f"motion needs exactly {self.NUM_STEPS} values, got {len(values)}"
+            )
         if not (0 <= target <= 0xFFFF):
             raise InvariantError(f"motion target {target} out of uint16 range")
         self._target = target
@@ -163,8 +196,7 @@ class MotionSlot:
             raise InvariantError(f"motion target {target} out of uint16 range")
         self._target = target
 
-    def set_step(self, step: int, value: int | None,
-                 domain: "MotionDomain") -> None:
+    def set_step(self, step: int, value: int | None, domain: MotionDomain) -> None:
         """Set one step. `value=None` means Disabl.
 
         The domain snaps discrete targets to legal knob positions, so a caller
@@ -175,8 +207,14 @@ class MotionSlot:
             raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS-1}")
         self._values[step] = self.DISABLED if value is None else domain.encode(value)
 
-    def write_stored(self, step: int, stored: int | None,
-                     domain: "MotionDomain", *, length: int = NUM_STEPS) -> None:
+    def write_stored(
+        self,
+        step: int,
+        stored: int | None,
+        domain: MotionDomain,
+        *,
+        length: int = NUM_STEPS,
+    ) -> None:
         """Write a raw 0–127 (or None=Disabl), snapping discrete targets.
 
         Steps at or beyond `length` are masked and left untouched (TDD §8.2 / §8.5).
@@ -195,7 +233,7 @@ class MotionSlot:
             self.set_step(step, snapped, domain)
 
     @classmethod
-    def empty(cls) -> "MotionSlot":
+    def empty(cls) -> MotionSlot:
         return cls(cls.EMPTY_TARGET, bytes([cls.DISABLED] * cls.NUM_STEPS))
 
     def get_step(self, step: int) -> int:
@@ -217,10 +255,11 @@ class MotionSlot:
         return struct.pack(">H", self._target) + bytes(self._values)
 
     @classmethod
-    def from_bytes(cls, raw: bytes) -> "MotionSlot":
+    def from_bytes(cls, raw: bytes) -> MotionSlot:
         """Parse the 130-byte on-disk form."""
         if len(raw) != cls.CHUNK_SIZE:
             raise InvariantError(
-                f"motion chunk must be {cls.CHUNK_SIZE} bytes, got {len(raw)}")
+                f"motion chunk must be {cls.CHUNK_SIZE} bytes, got {len(raw)}"
+            )
         (target,) = struct.unpack_from(">H", raw, 0)
         return cls(target, raw[2:])

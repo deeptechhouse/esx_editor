@@ -37,7 +37,8 @@ class SampleSlot:
         if len(raw) != expected:
             raise InvariantError(
                 f"{'stereo' if stereo else 'mono'} sample header must be "
-                f"{expected} bytes, got {len(raw)}")
+                f"{expected} bytes, got {len(raw)}"
+            )
         self._raw = bytearray(raw)
         self._stereo = stereo
         self._index = index
@@ -100,5 +101,5 @@ class SampleSlot:
         return bytes(self._raw)
 
     @classmethod
-    def from_bytes(cls, raw: bytes, stereo: bool, index: int) -> "SampleSlot":
+    def from_bytes(cls, raw: bytes, stereo: bool, index: int) -> SampleSlot:
         return cls(raw, stereo, index)

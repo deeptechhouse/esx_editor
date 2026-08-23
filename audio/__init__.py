@@ -12,14 +12,14 @@ satisfy the ports structurally, so swapping in ffmpeg/librosa later touches no
 caller.
 """
 
+from .passthrough import NullKeyDetector, WavPassthroughConverter
 from .ports import (
     AudioConverter,
-    KeyDetector,
-    FxRenderer,
-    KeyResult,
     ConversionSpec,
+    FxRenderer,
+    KeyDetector,
+    KeyResult,
 )
-from .passthrough import WavPassthroughConverter, NullKeyDetector
 
 __all__ = [
     "AudioConverter",

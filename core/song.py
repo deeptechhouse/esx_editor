@@ -9,7 +9,7 @@ FORMAT (TDD §2.1)
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 
 class SongEvent:
@@ -49,5 +49,5 @@ class Song:
         raise NotImplementedError
 
     @classmethod
-    def from_bytes(cls, raw: bytes) -> "Song":
+    def from_bytes(cls, raw: bytes) -> Song:
         raise NotImplementedError

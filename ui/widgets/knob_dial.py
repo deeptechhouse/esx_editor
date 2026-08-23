@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import Qt, Signal, QPointF
-from PySide6.QtGui import QColor, QPainter, QPen, QMouseEvent
+from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from ui.theme import PALETTE, SPACE
@@ -18,8 +18,9 @@ from ui.theme import PALETTE, SPACE
 class KnobDial(QWidget):
     valueChanged = Signal(int)
 
-    def __init__(self, parent=None, *, value: int = 0, minimum: int = 0,
-                 maximum: int = 127):
+    def __init__(
+        self, parent=None, *, value: int = 0, minimum: int = 0, maximum: int = 127
+    ):
         super().__init__(parent)
         self._min = minimum
         self._max = maximum
@@ -70,8 +71,11 @@ class KnobDial(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         r = min(self.width(), self.height()) - 6
         box = self.rect().adjusted(
-            (self.width() - r) // 2, (self.height() - r) // 2,
-            -(self.width() - r) // 2, -(self.height() - r) // 2)
+            (self.width() - r) // 2,
+            (self.height() - r) // 2,
+            -(self.width() - r) // 2,
+            -(self.height() - r) // 2,
+        )
         p.setPen(QPen(QColor(PALETTE.line), 2))
         p.setBrush(QColor(PALETTE.panel2))
         p.drawEllipse(box)

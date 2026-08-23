@@ -1,0 +1,8 @@
+-r requirements.txt
+pytest==8.4.2
+pytest-cov==7.1.0
+hypothesis==6.165.10
+ruff==0.16.2
+black==26.5.1
+mypy==1.18.2
+pre-commit==4.3.0

@@ -9,14 +9,20 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QListWidget, QLabel, QLineEdit,
-    QTableWidget, QTableWidgetItem,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
+import codec.layout as L
 from core.bank import Bank
 from core.pattern import Pattern
 from ui.theme import PALETTE
-import codec.layout as L
 
 
 class PatternView(QWidget):
@@ -120,9 +126,11 @@ class PatternView(QWidget):
         raw = pat.header.to_bytes()
         self._header.setText(
             "header 16 B (tempo/length/beat unread — offsets unproven): "
-            f"{raw.hex(' ')}")
+            f"{raw.hex(' ')}"
+        )
         self._motion.setText(
-            f"{pat.motion_slots_used()}/{L.NUM_PARAMETERS_MOTION} motion")
+            f"{pat.motion_slots_used()}/{L.NUM_PARAMETERS_MOTION} motion"
+        )
         parts = pat.parts()
         self.parts.setRowCount(len(parts))
         for i, part in enumerate(parts):
@@ -131,7 +139,6 @@ class PatternView(QWidget):
         units = pat.fx_units()
         self.fx.setRowCount(len(units))
         for i, fx in enumerate(units):
-            vals = (f"FX{i + 1}", str(fx.fx_type),
-                    "on" if fx.motion_enabled else "off")
+            vals = (f"FX{i + 1}", str(fx.fx_type), "on" if fx.motion_enabled else "off")
             for col, text in enumerate(vals):
                 self.fx.setItem(i, col, QTableWidgetItem(text))

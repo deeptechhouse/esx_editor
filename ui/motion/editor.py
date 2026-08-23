@@ -12,16 +12,24 @@ import os
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSpinBox,
-    QCheckBox, QButtonGroup, QMessageBox, QComboBox,
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
 
-from codec.operation_table import OperationTable, MotionTarget
+from codec.operation_table import MotionTarget, OperationTable
 from core.motion import MotionDomain, MotionSlot
 from core.pattern import Pattern
+from ui.motion import tools
 from ui.motion.canvas import MotionCanvas
 from ui.motion.picker import TargetPicker
-from ui.motion import tools
 from ui.theme import PALETTE
 
 TOOL_BUTTONS = (
@@ -147,7 +155,8 @@ class MotionEditor(QWidget):
             return
         if slot.in_use and slot.target != target.target_id:
             reply = QMessageBox.question(
-                self, "Replace motion target",
+                self,
+                "Replace motion target",
                 "Re-assigning a populated slot erases it on the hardware. Replace?",
             )
             if reply != QMessageBox.StandardButton.Yes:
@@ -185,11 +194,15 @@ class MotionEditor(QWidget):
         used = sum(1 for s in self._slots if s.in_use)
         self._budget.setText(f"{used}/24 used")
         self._budget.setStyleSheet(
-            f"color: {PALETTE.red if used >= 24 else PALETTE.lcd};")
+            f"color: {PALETTE.red if used >= 24 else PALETTE.lcd};"
+        )
 
     def _refresh_start_help(self) -> None:
-        if (self._target and "START POINT" in self._target.name.upper()
-                and self._sample_duration_s):
+        if (
+            self._target
+            and "START POINT" in self._target.name.upper()
+            and self._sample_duration_s
+        ):
             step_s = self._sample_duration_s / 128.0
             self._start_help.setText(f"Start Point: {step_s:.2f}s per step")
         else:

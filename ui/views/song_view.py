@@ -14,13 +14,17 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget, QTableWidgetItem,
+    QHBoxLayout,
+    QLabel,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
+import codec.layout as L
 from core.bank import Bank
 from ui.theme import PALETTE
-import codec.layout as L
-
 
 #: First byte of the verbatim "mid" raw region, i.e. just past the patterns.
 MID_START = L.ADDR_PATTERN_DATA + L.NUM_PATTERNS * L.CHUNK_PATTERN
@@ -44,7 +48,8 @@ class SongView(QWidget):
 
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(
-            ["song", "file offset", f"first {PREVIEW_BYTES} bytes (undecoded)"])
+            ["song", "file offset", f"first {PREVIEW_BYTES} bytes (undecoded)"]
+        )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
@@ -83,16 +88,19 @@ class SongView(QWidget):
         mid = self.mid_region_size()
         if mid == 0:
             self._headline.setText(
-                f"{L.NUM_SONGS} songs + events preserved verbatim — decode later.")
+                f"{L.NUM_SONGS} songs + events preserved verbatim — decode later."
+            )
             self._detail.setText(
                 "This bank has no 'mid' region (PSG save), so the song area is "
                 "held inside the whole-image raw region instead. Nothing is lost; "
-                "the writer replays it byte for byte.")
+                "the writer replays it byte for byte."
+            )
             return
 
         self._headline.setText(
             f"{L.NUM_SONGS} songs + events preserved verbatim — decode later. "
-            f"{decoded} decoded so far.")
+            f"{decoded} decoded so far."
+        )
         self._detail.setText(
             f"Raw region 'mid' holds {mid:,} B (file 0x{MID_START:X}–"
             f"0x{MID_START + mid:X}). Songs begin at 0x{L.ADDR_SONG_DATA:X} "
@@ -100,7 +108,8 @@ class SongView(QWidget):
             f"{L.NUM_SONGS * L.CHUNK_SONG:,} B); the shared event area begins at "
             f"0x{L.ADDR_SONG_EVENT_DATA:X} ({L.CHUNK_SONG_EVENT} B per event, "
             f"max {L.MAX_SONG_EVENTS:,}). No field offsets inside a song block "
-            "are proven, so none are shown as values.")
+            "are proven, so none are shown as values."
+        )
         self._fill_rows(self._bank.raw_regions.get("mid"))
 
     # -- internals ----------------------------------------------------------
@@ -111,13 +120,19 @@ class SongView(QWidget):
             start = base + i * L.CHUNK_SONG
             if start < 0 or start + PREVIEW_BYTES > len(mid):
                 break
-            rows.append((i, L.ADDR_SONG_DATA + i * L.CHUNK_SONG,
-                         mid[start:start + PREVIEW_BYTES].hex(" ")))
+            rows.append(
+                (
+                    i,
+                    L.ADDR_SONG_DATA + i * L.CHUNK_SONG,
+                    mid[start : start + PREVIEW_BYTES].hex(" "),
+                )
+            )
         self.table.setRowCount(len(rows))
         for row, (i, addr, hexed) in enumerate(rows):
             for col, text in enumerate((f"{i:02d}", f"0x{addr:X}", hexed)):
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                )
                 self.table.setItem(row, col, item)
         self.table.resizeColumnsToContents()

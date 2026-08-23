@@ -23,27 +23,46 @@ from core.motion import MotionDomain, MotionSlot
 SHAPES = ("sine", "tri", "saw", "square")
 
 
-def write_step(slot: MotionSlot, step: int, stored: int | None,
-               domain: MotionDomain, *, length: int = MotionSlot.NUM_STEPS) -> None:
+def write_step(
+    slot: MotionSlot,
+    step: int,
+    stored: int | None,
+    domain: MotionDomain,
+    *,
+    length: int = MotionSlot.NUM_STEPS,
+) -> None:
     """Pencil / eraser primitive: one step, snapped, length-masked."""
     slot.write_stored(step, stored, domain, length=length)
 
 
-def eraser(slot: MotionSlot, step: int, domain: MotionDomain,
-           *, length: int = MotionSlot.NUM_STEPS) -> None:
+def eraser(
+    slot: MotionSlot,
+    step: int,
+    domain: MotionDomain,
+    *,
+    length: int = MotionSlot.NUM_STEPS,
+) -> None:
     slot.write_stored(step, None, domain, length=length)
 
 
-def clear(slot: MotionSlot, domain: MotionDomain,
-          *, length: int = MotionSlot.NUM_STEPS) -> None:
+def clear(
+    slot: MotionSlot, domain: MotionDomain, *, length: int = MotionSlot.NUM_STEPS
+) -> None:
     """Fill the playable range with Disabl; keep the target id."""
     for i in range(min(length, MotionSlot.NUM_STEPS)):
         slot.write_stored(i, None, domain, length=length)
 
 
-def line(slot: MotionSlot, domain: MotionDomain,
-         x0: int, y0: int, x1: int, y1: int,
-         *, length: int = MotionSlot.NUM_STEPS) -> None:
+def line(
+    slot: MotionSlot,
+    domain: MotionDomain,
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+    *,
+    length: int = MotionSlot.NUM_STEPS,
+) -> None:
     """Linear interpolation inclusive of both endpoints (length-masked)."""
     if x0 == x1:
         write_step(slot, x0, y0, domain, length=length)
@@ -57,9 +76,14 @@ def line(slot: MotionSlot, domain: MotionDomain,
         write_step(slot, x, int(round(y)), domain, length=length)
 
 
-def ramp(slot: MotionSlot, domain: MotionDomain,
-         start: int, end: int,
-         *, length: int = MotionSlot.NUM_STEPS) -> None:
+def ramp(
+    slot: MotionSlot,
+    domain: MotionDomain,
+    start: int,
+    end: int,
+    *,
+    length: int = MotionSlot.NUM_STEPS,
+) -> None:
     """Ramp across the playable range (last playable step = `end`)."""
     last = min(length, MotionSlot.NUM_STEPS) - 1
     if last < 0:
@@ -67,9 +91,15 @@ def ramp(slot: MotionSlot, domain: MotionDomain,
     line(slot, domain, 0, start, last, end, length=length)
 
 
-def lfo(slot: MotionSlot, domain: MotionDomain, shape: str,
-        *, depth: int = 127, centre: int = 64,
-        length: int = MotionSlot.NUM_STEPS) -> None:
+def lfo(
+    slot: MotionSlot,
+    domain: MotionDomain,
+    shape: str,
+    *,
+    depth: int = 127,
+    centre: int = 64,
+    length: int = MotionSlot.NUM_STEPS,
+) -> None:
     """One cycle of sine / tri / saw / square over the playable range."""
     if shape not in SHAPES:
         raise ValueError(f"unknown LFO shape {shape!r}")
@@ -78,7 +108,7 @@ def lfo(slot: MotionSlot, domain: MotionDomain, shape: str,
         return
     amp = depth / 2.0
     for i in range(n):
-        t = i / n                          # [0, 1)
+        t = i / n  # [0, 1)
         if shape == "sine":
             w = math.sin(2 * math.pi * t)
         elif shape == "tri":
@@ -93,9 +123,14 @@ def lfo(slot: MotionSlot, domain: MotionDomain, shape: str,
         write_step(slot, i, int(round(y)), domain, length=length)
 
 
-def sample_and_hold(slot: MotionSlot, domain: MotionDomain,
-                    *, hold: int = 8, length: int = MotionSlot.NUM_STEPS,
-                    rng: random.Random | None = None) -> None:
+def sample_and_hold(
+    slot: MotionSlot,
+    domain: MotionDomain,
+    *,
+    hold: int = 8,
+    length: int = MotionSlot.NUM_STEPS,
+    rng: random.Random | None = None,
+) -> None:
     rng = rng or random.Random()
     legal = domain.legal_values()
     hold = max(1, hold)
@@ -107,8 +142,9 @@ def sample_and_hold(slot: MotionSlot, domain: MotionDomain,
         write_step(slot, i, current, domain, length=length)
 
 
-def invert(slot: MotionSlot, domain: MotionDomain,
-           *, length: int = MotionSlot.NUM_STEPS) -> None:
+def invert(
+    slot: MotionSlot, domain: MotionDomain, *, length: int = MotionSlot.NUM_STEPS
+) -> None:
     """Mirror enabled steps around 63.5; Disabl and masked steps stay put."""
     n = min(length, MotionSlot.NUM_STEPS)
     for i in range(n):
@@ -117,8 +153,14 @@ def invert(slot: MotionSlot, domain: MotionDomain,
         write_step(slot, i, 127 - slot.get_step(i), domain, length=length)
 
 
-def scale(slot: MotionSlot, domain: MotionDomain, factor: float,
-          *, centre: int = 64, length: int = MotionSlot.NUM_STEPS) -> None:
+def scale(
+    slot: MotionSlot,
+    domain: MotionDomain,
+    factor: float,
+    *,
+    centre: int = 64,
+    length: int = MotionSlot.NUM_STEPS,
+) -> None:
     n = min(length, MotionSlot.NUM_STEPS)
     for i in range(n):
         if slot.is_disabled(i):
@@ -127,8 +169,9 @@ def scale(slot: MotionSlot, domain: MotionDomain, factor: float,
         write_step(slot, i, int(round(y)), domain, length=length)
 
 
-def smooth(slot: MotionSlot, domain: MotionDomain,
-           *, length: int = MotionSlot.NUM_STEPS) -> None:
+def smooth(
+    slot: MotionSlot, domain: MotionDomain, *, length: int = MotionSlot.NUM_STEPS
+) -> None:
     """3-point average of neighbouring *enabled* steps; Disabl is a wall."""
     n = min(length, MotionSlot.NUM_STEPS)
     original = [slot.get_step(i) for i in range(n)]
@@ -144,9 +187,13 @@ def smooth(slot: MotionSlot, domain: MotionDomain,
         write_step(slot, i, int(round(sum(acc) / len(acc))), domain, length=length)
 
 
-def randomise(slot: MotionSlot, domain: MotionDomain,
-              *, length: int = MotionSlot.NUM_STEPS,
-              rng: random.Random | None = None) -> None:
+def randomise(
+    slot: MotionSlot,
+    domain: MotionDomain,
+    *,
+    length: int = MotionSlot.NUM_STEPS,
+    rng: random.Random | None = None,
+) -> None:
     rng = rng or random.Random()
     legal = domain.legal_values()
     n = min(length, MotionSlot.NUM_STEPS)

@@ -12,13 +12,16 @@ WHY A HEX DUMP AND NOT FIELDS
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPlainTextEdit,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
+import codec.layout as L
 from core.bank import Bank
 from ui.theme import PALETTE, TYPE
-import codec.layout as L
-
 
 #: Bytes per line in the dump.
 DUMP_STRIDE = 16
@@ -28,7 +31,7 @@ def hex_dump(data: bytes, base: int = 0, stride: int = DUMP_STRIDE) -> str:
     """Classic offset / hex / ASCII dump. Pure function — easy to unit-test."""
     lines = []
     for start in range(0, len(data), stride):
-        chunk = data[start:start + stride]
+        chunk = data[start : start + stride]
         hexed = " ".join(f"{b:02x}" for b in chunk).ljust(stride * 3 - 1)
         ascii_ = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
         lines.append(f"{base + start:08X}  {hexed}  |{ascii_}|")
@@ -54,7 +57,8 @@ class GlobalView(QWidget):
         self.dump.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.dump.setStyleSheet(
             f"font-family: {TYPE.lcd}; font-size: {TYPE.size_lcd}px; "
-            f"color: {PALETTE.lcd}; background: {PALETTE.lcd_bg};")
+            f"color: {PALETTE.lcd}; background: {PALETTE.lcd_bg};"
+        )
 
         head = QHBoxLayout()
         head.addWidget(QLabel("Global parameters"))
@@ -86,10 +90,12 @@ class GlobalView(QWidget):
             return
         self._headline.setText(
             f"{len(raw)} B global block retained verbatim at "
-            f"0x{L.ADDR_GLOBAL_PARAMETERS:X} — field offsets unproven.")
+            f"0x{L.ADDR_GLOBAL_PARAMETERS:X} — field offsets unproven."
+        )
         self._detail.setText(
             "MIDI channel, tempo mode, metronome and the rest are not decoded: "
             "GlobalParameters.midi_channel raises NotImplementedError rather "
             "than return a guess. The bytes below are what the machine wrote "
-            "and what the writer replays unchanged.")
+            "and what the writer replays unchanged."
+        )
         self.dump.setPlainText(hex_dump(raw, L.ADDR_GLOBAL_PARAMETERS))

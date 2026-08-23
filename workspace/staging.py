@@ -24,11 +24,12 @@ import shutil
 import tempfile
 import time
 
-from audio.ports import AudioConverter, KeyDetector, ConversionSpec, KeyResult
+from audio.ports import AudioConverter, ConversionSpec, KeyDetector, KeyResult
 from workspace.budget import BudgetCalculator
 from workspace.errors import StagingBlockedError
 from workspace.limits import SampleLimitPolicy, Severity
-from workspace.naming import pack_slot_name, staging_filename as _staging_filename
+from workspace.naming import pack_slot_name
+from workspace.naming import staging_filename as _staging_filename
 
 LOCKFILE = ".lock"
 SESSION_PREFIX = "esxstudio-"
@@ -40,7 +41,7 @@ def _pid_alive(pid: int) -> bool:
     except ProcessLookupError:
         return False
     except PermissionError:
-        return True          # exists, just not ours
+        return True  # exists, just not ours
     except OSError:
         return False
     return True
@@ -53,8 +54,8 @@ class SessionWorkspace:
 
     def __init__(self, temp_root: str | None = None):
         self._root = temp_root
-        self._pid = None
-        self._dir = None
+        self._pid: int | None = None
+        self._dir: str | None = None
 
     def _root_dir(self) -> str:
         return self._root if self._root is not None else tempfile.gettempdir()
@@ -98,7 +99,7 @@ class SessionWorkspace:
                 continue
             lock = os.path.join(d, LOCKFILE)
             try:
-                with open(lock, "r", encoding="utf-8") as f:
+                with open(lock, encoding="utf-8") as f:
                     pid = int(f.read().strip())
                 orphan = not _pid_alive(pid)
             except (OSError, ValueError):
@@ -119,15 +120,14 @@ class SessionWorkspace:
 class StagingSample:
     """One candidate sample as it moves through the staging workflow."""
 
-    __slots__ = ("_source_path", "_converted_path", "_spec",
-                 "_key", "_duration_s")
+    __slots__ = ("_source_path", "_converted_path", "_spec", "_key", "_duration_s")
 
     def __init__(self, source_path: str):
         self._source_path = source_path
-        self._converted_path = None
-        self._spec = None
-        self._key = None
-        self._duration_s = None
+        self._converted_path: str | None = None
+        self._spec: ConversionSpec | None = None
+        self._key: KeyResult | None = None
+        self._duration_s: float | None = None
 
     @property
     def source_path(self) -> str:
@@ -169,11 +169,15 @@ class StagingBank:
     swappable and the whole flow is testable with fakes.
     """
 
-    __slots__ = ("_converter", "_detector", "_limits", "_session",
-                 "_samples", "_calc")
+    __slots__ = ("_converter", "_detector", "_limits", "_session", "_samples", "_calc")
 
-    def __init__(self, converter: AudioConverter, detector: KeyDetector,
-                 limits: SampleLimitPolicy, session: SessionWorkspace):
+    def __init__(
+        self,
+        converter: AudioConverter,
+        detector: KeyDetector,
+        limits: SampleLimitPolicy,
+        session: SessionWorkspace,
+    ):
         self._converter = converter
         self._detector = detector
         self._limits = limits
@@ -186,8 +190,7 @@ class StagingBank:
         for s in self._samples:
             if s.duration_s is None or s.spec is None:
                 continue
-            total += self._calc.cost_bytes(
-                s.duration_s, s.spec.rate, s.spec.channels)
+            total += self._calc.cost_bytes(s.duration_s, s.spec.rate, s.spec.channels)
         return total
 
     def add(self, source_path: str, spec: ConversionSpec) -> StagingSample:
@@ -198,8 +201,12 @@ class StagingBank:
         """
         duration_s, _src_rate, _src_ch = self._converter.probe_duration(source_path)
         findings, analyse_ok = self._limits.check_sample(
-            source_path, duration_s, spec.channels, spec.rate,
-            used_bytes=self._used_bytes())
+            source_path,
+            duration_s,
+            spec.channels,
+            spec.rate,
+            used_bytes=self._used_bytes(),
+        )
         if any(f.level == Severity.BLOCK for f in findings):
             raise StagingBlockedError(findings)
 

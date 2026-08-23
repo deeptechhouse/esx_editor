@@ -1,0 +1,139 @@
+# CI for ESX Bank Studio.
+#
+# The corpus banks are gitignored (large binaries, Korg factory-derived audio),
+# so the round-trip gate here runs against tests/synthetic.py — a bank built
+# deterministically in memory that is structurally valid AND coherent. Corpus
+# tests skip on the runner and run locally, where the real banks live.
+#
+# PySide6 is pinned to 6.9.3 to match the development machine (macOS 12 cannot
+# install 6.10+). Pinning here is what catches Qt drift at the commit rather
+# than at the machine boundary.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: ruff
+        run: ruff check .
+      - name: black
+        run: black --check .
+
+  typecheck:
+    name: Type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      # codec/, core/, workspace/ and audio/ only: a type error there costs a
+      # corrupted bank. ui/ is excluded in pyproject.toml because Qt's stubs
+      # are the limiting factor, not our code.
+      - run: mypy
+
+  test:
+    name: Tests and coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install Qt's Linux runtime deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-cursor0
+      - run: pip install -r requirements-dev.txt
+      - name: Run the suite
+        run: |
+          pytest tests/ \
+            --cov=codec --cov=core --cov=workspace --cov=audio --cov=ui \
+            --cov-report=term-missing --cov-report=xml
+      - name: Gate — codec/ must stay at 100%
+        # The codec is the only layer that can destroy a bank. Every other
+        # module has a coverage target; this one has a floor.
+        run: |
+          coverage report --include='codec/*' --fail-under=100
+      - name: Gate — project-wide 90% (CLAUDE.md 22)
+        run: |
+          coverage report --fail-under=90
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage.xml
+
+  security:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt pip-audit
+      - name: Dependency audit — fail on critical/high
+        run: pip-audit --requirement requirements.txt --strict
+      - name: Refuse a committed bank or secret
+        run: |
+          if git ls-files | grep -iE '\.esx$'; then
+            echo "::error::a .esx bank is tracked; banks must never be committed"
+            exit 1
+          fi
+          if git ls-files | grep -E '(^|/)\.env$'; then
+            echo "::error::a .env file is tracked"
+            exit 1
+          fi
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install build
+      - run: python -m build
+      - name: Refuse source maps or banks in the artifact (CLAUDE.md 18)
+        run: |
+          if tar -tzf dist/*.tar.gz | grep -iE '\.(map|esx)$'; then
+            echo "::error::build artifact contains a .map or .esx file"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

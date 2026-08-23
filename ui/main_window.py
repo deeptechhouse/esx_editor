@@ -15,17 +15,20 @@ import os
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
-    QMainWindow, QTabWidget, QFileDialog, QMessageBox, QLabel,
+    QFileDialog,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QTabWidget,
 )
 
 from codec.errors import CodecError
+from ui.motion.editor import MotionEditor
 from ui.session import BankSession
 from ui.theme import PALETTE
+from ui.views import BankView, GlobalView, PatternView, SongView, StagingView
 from ui.widgets.budget_meter import BudgetMeter
-from ui.motion.editor import MotionEditor
-from ui.views import BankView, StagingView, PatternView, SongView, GlobalView
 from ui.wizard import SetupWizard
-
 
 APP_TITLE = "ESX Bank Studio"
 
@@ -92,8 +95,9 @@ class MainWindow(QMainWindow):
         self._act("New bank", file_menu, self._on_new, QKeySequence.StandardKey.New)
         self._act("Open…", file_menu, self._on_open, QKeySequence.StandardKey.Open)
         self._act("Save", file_menu, self._on_save, QKeySequence.StandardKey.Save)
-        self._act("Save As…", file_menu, self._on_save_as,
-                  QKeySequence.StandardKey.SaveAs)
+        self._act(
+            "Save As…", file_menu, self._on_save_as, QKeySequence.StandardKey.SaveAs
+        )
         file_menu.addSeparator()
         self._act("Guided setup…", file_menu, self.open_wizard)
         file_menu.addSeparator()
@@ -109,7 +113,8 @@ class MainWindow(QMainWindow):
             act = QAction(name, self)
             act.setShortcut(QKeySequence(f"Ctrl+{i + 1}"))
             act.triggered.connect(
-                lambda _checked=False, idx=i: self.tabs.setCurrentIndex(idx))
+                lambda _checked=False, idx=i: self.tabs.setCurrentIndex(idx)
+            )
             view_menu.addAction(act)
 
         help_menu = self.menuBar().addMenu("&Help")
@@ -138,8 +143,11 @@ class MainWindow(QMainWindow):
     # -- binding ------------------------------------------------------------
     def _refresh_chrome(self) -> None:
         path = self.session.path
-        name = os.path.basename(path) if path else (
-            "untitled.esx" if self.session.is_open else "no bank")
+        name = (
+            os.path.basename(path)
+            if path
+            else ("untitled.esx" if self.session.is_open else "no bank")
+        )
         dirty = "•" if self.session.dirty else ""
         self.setWindowTitle(f"{APP_TITLE} — {name}{dirty}")
         self._path_label.setText(path or name)
@@ -192,7 +200,8 @@ class MainWindow(QMainWindow):
             self.session,
             staging_bank=self.staging_view.bank,
             on_changed=self._on_wizard_changed,
-            parent=self)
+            parent=self,
+        )
         self._wizard = wizard
         wizard.finished.connect(lambda _result: self._on_wizard_changed())
         wizard.show()
@@ -218,7 +227,8 @@ class MainWindow(QMainWindow):
         if not self._confirm_discard():
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open ESX bank", "", "ESX banks (*.esx);;All files (*)")
+            self, "Open ESX bank", "", "ESX banks (*.esx);;All files (*)"
+        )
         if not path:
             return
         self.open_path(path)
@@ -242,7 +252,8 @@ class MainWindow(QMainWindow):
 
     def _on_save_as(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save ESX bank", "", "ESX banks (*.esx)")
+            self, "Save ESX bank", "", "ESX banks (*.esx)"
+        )
         if path:
             self._write(path)
 
@@ -256,15 +267,18 @@ class MainWindow(QMainWindow):
 
     def _on_about(self) -> None:
         QMessageBox.about(
-            self, "About ESX Bank Studio",
+            self,
+            "About ESX Bank Studio",
             "Offline editor for Korg Electribe SX (.esx) banks.\n"
-            "Personal use, never commercial.")
+            "Personal use, never commercial.",
+        )
 
     def _confirm_discard(self) -> bool:
         if not self.session.dirty:
             return True
         reply = QMessageBox.question(
-            self, "Unsaved changes",
+            self,
+            "Unsaved changes",
             "The current bank has unsaved changes. Discard them?",
             QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
         )

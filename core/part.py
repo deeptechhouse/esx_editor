@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from core.errors import InvariantError
 
-
 # Part kinds (used by the operation table's target picker, TDD §8.5).
 KIND_DRUM = "drum"
 KIND_KEYBOARD = "keyboard"
@@ -78,7 +77,7 @@ class Part:
         return bytes(self._raw)
 
     @classmethod
-    def from_bytes(cls, kind: str, index: int, raw: bytes) -> "Part":
+    def from_bytes(cls, kind: str, index: int, raw: bytes) -> Part:
         if not raw:
             raise InvariantError("part raw bytes must be non-empty")
         return cls(kind, index, raw)

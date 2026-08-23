@@ -6,11 +6,10 @@ draws. The staging view (WF6) will feed it from converted copies.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
-from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QWidget
 
 from ui.theme import PALETTE

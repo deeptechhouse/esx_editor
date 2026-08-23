@@ -21,7 +21,8 @@ class GlobalParameters:
     def __init__(self, raw: bytes):
         if len(raw) != SIZE:
             raise InvariantError(
-                f"global parameters block must be {SIZE} bytes, got {len(raw)}")
+                f"global parameters block must be {SIZE} bytes, got {len(raw)}"
+            )
         self._raw = bytearray(raw)
 
     @property
@@ -34,5 +35,5 @@ class GlobalParameters:
         return bytes(self._raw)
 
     @classmethod
-    def from_bytes(cls, raw: bytes) -> "GlobalParameters":
+    def from_bytes(cls, raw: bytes) -> GlobalParameters:
         return cls(raw)

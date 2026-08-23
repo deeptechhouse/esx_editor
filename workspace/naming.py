@@ -17,18 +17,30 @@ import os
 
 # Camelot wheel <-> classical key (a bijection). Values are (flat, sharp) spellings.
 CAMELOT: dict[str, tuple[str, str]] = {
-    "1A": ("Abm", "G#m"), "1B": ("B", "B"),
-    "2A": ("Ebm", "D#m"), "2B": ("F#", "F#"),
-    "3A": ("Bbm", "A#m"), "3B": ("Db", "C#"),
-    "4A": ("Fm", "Fm"),   "4B": ("Ab", "G#"),
-    "5A": ("Cm", "Cm"),   "5B": ("Eb", "D#"),
-    "6A": ("Gm", "Gm"),   "6B": ("Bb", "A#"),
-    "7A": ("Dm", "Dm"),   "7B": ("F", "F"),
-    "8A": ("Am", "Am"),   "8B": ("C", "C"),
-    "9A": ("Em", "Em"),   "9B": ("G", "G"),
-    "10A": ("Bm", "Bm"),  "10B": ("D", "D"),
-    "11A": ("F#m", "F#m"), "11B": ("A", "A"),
-    "12A": ("C#m", "C#m"), "12B": ("E", "E"),
+    "1A": ("Abm", "G#m"),
+    "1B": ("B", "B"),
+    "2A": ("Ebm", "D#m"),
+    "2B": ("F#", "F#"),
+    "3A": ("Bbm", "A#m"),
+    "3B": ("Db", "C#"),
+    "4A": ("Fm", "Fm"),
+    "4B": ("Ab", "G#"),
+    "5A": ("Cm", "Cm"),
+    "5B": ("Eb", "D#"),
+    "6A": ("Gm", "Gm"),
+    "6B": ("Bb", "A#"),
+    "7A": ("Dm", "Dm"),
+    "7B": ("F", "F"),
+    "8A": ("Am", "Am"),
+    "8B": ("C", "C"),
+    "9A": ("Em", "Em"),
+    "9B": ("G", "G"),
+    "10A": ("Bm", "Bm"),
+    "10B": ("D", "D"),
+    "11A": ("F#m", "F#m"),
+    "11B": ("A", "A"),
+    "12A": ("C#m", "C#m"),
+    "12B": ("E", "E"),
 }
 
 SLOT_NAME_LEN = 8
@@ -56,8 +68,7 @@ def _stem(path_or_name: str) -> str:
     return os.path.splitext(os.path.basename(path_or_name))[0]
 
 
-def pack_slot_name(basename: str, camelot: str | None,
-                   style: str = "short") -> str:
+def pack_slot_name(basename: str, camelot: str | None, style: str = "short") -> str:
     """Pack an 8-byte machine slot name. Pads/truncates to exactly 8 chars.
 
     With no key, uses the uppercased tail of the basename. With a Camelot code,
@@ -78,8 +89,9 @@ def pack_slot_name(basename: str, camelot: str | None,
     return (head + tail)[:SLOT_NAME_LEN].ljust(SLOT_NAME_LEN)
 
 
-def staging_filename(basename: str, classical_key: str | None,
-                     camelot: str | None) -> str:
+def staging_filename(
+    basename: str, classical_key: str | None, camelot: str | None
+) -> str:
     """Unlimited-length on-disk name carrying both notations (TDD §5.3)."""
     stem = _stem(basename)
     if classical_key and camelot:

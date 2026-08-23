@@ -10,17 +10,20 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
-from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtCore import (
+    QEvent,  # noqa: E402
+    Qt,  # noqa: E402
+)
 from PySide6.QtGui import QKeyEvent  # noqa: E402
-from PySide6.QtCore import QEvent  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from ui.theme import qss, apply as apply_theme, PALETTE  # noqa: E402
+from ui.main_window import TABS, MainWindow  # noqa: E402
 from ui.session import BankSession  # noqa: E402
-from ui.main_window import MainWindow, TABS  # noqa: E402
+from ui.theme import PALETTE, qss  # noqa: E402
+from ui.theme import apply as apply_theme
 from ui.widgets.budget_meter import BudgetMeter  # noqa: E402
 from ui.widgets.knob_dial import KnobDial  # noqa: E402
-from ui.widgets.step_grid import StepGrid, NUM_STEPS  # noqa: E402
+from ui.widgets.step_grid import NUM_STEPS, StepGrid  # noqa: E402
 from ui.widgets.waveform_view import WaveformView  # noqa: E402
 from workspace.budget import CAPACITY  # noqa: E402
 
@@ -73,7 +76,9 @@ def test_knob_dial_clamps_and_emits(qapp) -> None:
 def test_knob_dial_keyboard(qapp) -> None:
     k = KnobDial(value=10)
     k.setFocus()
-    event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier)
+    event = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier
+    )
     k.keyPressEvent(event)
     assert k.value == 11
 
@@ -85,7 +90,7 @@ def test_step_grid_toggle_and_length(qapp) -> None:
     g.set_step(3, True)
     assert g.is_on(3)
     assert seen == [(3, True)]
-    g.set_step(3, True)          # idempotent: no extra signal
+    g.set_step(3, True)  # idempotent: no extra signal
     assert seen == [(3, True)]
     g.set_length(8)
     assert g.steps()[3] is True

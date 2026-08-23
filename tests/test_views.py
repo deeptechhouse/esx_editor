@@ -15,28 +15,39 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from audio.passthrough import WavPassthroughConverter, NullKeyDetector  # noqa: E402
+import codec.layout as L  # noqa: E402
+from audio.passthrough import NullKeyDetector, WavPassthroughConverter  # noqa: E402
 from tests.conftest import make_staging, make_wav  # noqa: E402
-from ui.main_window import MainWindow, TABS  # noqa: E402
+from ui.main_window import TABS, MainWindow  # noqa: E402
 from ui.views import (  # noqa: E402
-    BankView, StagingView, PatternView, SongView, GlobalView,
+    BankView,
+    GlobalView,
+    PatternView,
+    SongView,
+    StagingView,
 )
 from ui.views.global_view import hex_dump  # noqa: E402
 from ui.views.song_view import MID_START, PREVIEW_BYTES  # noqa: E402
-import codec.layout as L  # noqa: E402
 
 
 # -- package -----------------------------------------------------------------
 def test_views_package_exports_five() -> None:
     import ui.views as views
+
     assert set(views.__all__) == {
-        "BankView", "StagingView", "PatternView", "SongView", "GlobalView"}
+        "BankView",
+        "StagingView",
+        "PatternView",
+        "SongView",
+        "GlobalView",
+    }
     for name in views.__all__:
         assert getattr(views, name) is not None
 
 
 def test_audio_package_exports_passthrough_adapters() -> None:
     import audio
+
     assert audio.WavPassthroughConverter is WavPassthroughConverter
     assert audio.NullKeyDetector is NullKeyDetector
     # The adapters satisfy the ports structurally (ports-and-adapters, TDD §5.1).
@@ -116,9 +127,11 @@ def test_staging_view_ignores_empty_path(qapp, tmp_path) -> None:
 
 def test_staging_view_refuses_non_wav(qapp, tmp_path, monkeypatch) -> None:
     import ui.views.staging_view as mod
+
     shown = []
-    monkeypatch.setattr(mod.QMessageBox, "information",
-                        lambda *a, **k: shown.append(a[-1]))
+    monkeypatch.setattr(
+        mod.QMessageBox, "information", lambda *a, **k: shown.append(a[-1])
+    )
     v = StagingView(bank=make_staging(tmp_path))
     other = tmp_path / "loop.aiff"
     other.write_bytes(b"FORM")
@@ -193,7 +206,7 @@ def test_song_view_previews_bytes_at_verified_offsets(qapp, bank) -> None:
     mid = bank.raw_regions.get("mid")
     start = L.ADDR_SONG_DATA - MID_START
     assert v.table.item(0, 1).text() == f"0x{L.ADDR_SONG_DATA:X}"
-    assert v.table.item(0, 2).text() == mid[start:start + PREVIEW_BYTES].hex(" ")
+    assert v.table.item(0, 2).text() == mid[start : start + PREVIEW_BYTES].hex(" ")
 
 
 def test_song_view_unbinds_cleanly(qapp) -> None:
@@ -226,7 +239,7 @@ def test_global_view_does_not_decode_midi_channel(qapp, bank) -> None:
     with pytest.raises(NotImplementedError):
         _ = bank.globals.midi_channel
     v = GlobalView()
-    v.bind_bank(bank)          # would raise if the view touched the property
+    v.bind_bank(bank)  # would raise if the view touched the property
     assert "NotImplementedError" in v._detail.text()
 
 
@@ -257,7 +270,8 @@ def test_main_window_binds_every_view_on_open(qapp, corpus_path) -> None:
     bank = win.session.bank
     assert win.pattern_view.list.count() == L.NUM_PATTERNS
     assert win.bank_view.table.rowCount() == len(
-        [s for s in bank.samples() if not s.empty])
+        [s for s in bank.samples() if not s.empty]
+    )
     assert win.song_view.mid_region_size() > 0
     assert len(win.global_view.block_bytes()) == 192
     win.session._dirty = False
@@ -341,17 +355,21 @@ def test_staging_view_accepts_a_file_drag(qapp, tmp_path) -> None:
 
 def test_staging_view_drop_adds_every_url(qapp, tmp_path) -> None:
     v = StagingView(bank=make_staging(tmp_path))
-    urls = [_Url(make_wav(str(tmp_path / "d1.wav"))),
-            _Url(make_wav(str(tmp_path / "d2.wav")))]
+    urls = [
+        _Url(make_wav(str(tmp_path / "d1.wav"))),
+        _Url(make_wav(str(tmp_path / "d2.wav"))),
+    ]
     v.dropEvent(_DropEvent(urls))
     assert v._list.count() == 2
 
 
 def test_staging_view_file_picker_adds_selection(qapp, tmp_path, monkeypatch) -> None:
     import ui.views.staging_view as mod
+
     chosen = [make_wav(str(tmp_path / "p1.wav"))]
-    monkeypatch.setattr(mod.QFileDialog, "getOpenFileNames",
-                        lambda *a, **k: (chosen, ""))
+    monkeypatch.setattr(
+        mod.QFileDialog, "getOpenFileNames", lambda *a, **k: (chosen, "")
+    )
     v = StagingView(bank=make_staging(tmp_path))
     v._pick()
     assert v._list.count() == 1
@@ -362,14 +380,20 @@ def test_staging_view_surfaces_a_blocked_sample(qapp, tmp_path, monkeypatch) -> 
     import ui.views.staging_view as mod
     from workspace.errors import StagingBlockedError
     from workspace.limits import Finding, Severity
+
     warned = []
-    monkeypatch.setattr(mod.QMessageBox, "warning",
-                        lambda _p, title, text, *a, **k: warned.append(title))
+    monkeypatch.setattr(
+        mod.QMessageBox,
+        "warning",
+        lambda _p, title, text, *a, **k: warned.append(title),
+    )
     v = StagingView(bank=make_staging(tmp_path))
     blocked = StagingBlockedError(
-        (Finding(Severity.BLOCK, "exceeds_single_cap", "too big"),))
-    monkeypatch.setattr(type(v.bank), "add",
-                        lambda *a, **k: (_ for _ in ()).throw(blocked))
+        (Finding(Severity.BLOCK, "exceeds_single_cap", "too big"),)
+    )
+    monkeypatch.setattr(
+        type(v.bank), "add", lambda *a, **k: (_ for _ in ()).throw(blocked)
+    )
     v.add_path(make_wav(str(tmp_path / "big.wav")))
     assert warned == ["Sample blocked"]
     assert v._list.count() == 0
@@ -377,9 +401,13 @@ def test_staging_view_surfaces_a_blocked_sample(qapp, tmp_path, monkeypatch) -> 
 
 def test_staging_view_surfaces_an_unreadable_file(qapp, tmp_path, monkeypatch) -> None:
     import ui.views.staging_view as mod
+
     warned = []
-    monkeypatch.setattr(mod.QMessageBox, "warning",
-                        lambda _p, title, text, *a, **k: warned.append(title))
+    monkeypatch.setattr(
+        mod.QMessageBox,
+        "warning",
+        lambda _p, title, text, *a, **k: warned.append(title),
+    )
     v = StagingView(bank=make_staging(tmp_path))
     broken = tmp_path / "broken.wav"
     broken.write_bytes(b"not really a wav")
@@ -399,6 +427,7 @@ def test_staging_view_uses_the_selected_tier(qapp, tmp_path) -> None:
 # -- song / pattern edge cases ------------------------------------------------
 def test_song_view_handles_a_bank_with_no_mid_region(qapp, monkeypatch, bank) -> None:
     """A PSG save keeps its whole image in one region — say so, do not crash."""
+
     class _NoMid:
         def has(self, name):
             return False
@@ -418,7 +447,7 @@ def test_song_view_handles_a_bank_with_no_mid_region(qapp, monkeypatch, bank) ->
 def test_song_view_truncated_region_stops_early(qapp, bank) -> None:
     v = SongView()
     v.bind_bank(bank)
-    v._fill_rows(b"\x00" * 8)          # far shorter than one song block
+    v._fill_rows(b"\x00" * 8)  # far shorter than one song block
     assert v.table.rowCount() == 0
 
 
@@ -440,8 +469,11 @@ def test_pattern_view_current_pattern_out_of_range(qapp, bank) -> None:
 def test_bank_view_survives_a_bank_without_a_sample_header(qapp, bank, monkeypatch):
     """pcm_used_bytes() raises on a PSG bank — fall back to the PCM length."""
     v = BankView()
-    monkeypatch.setattr(type(bank), "pcm_used_bytes",
-                        lambda self: (_ for _ in ()).throw(RuntimeError("psg")))
+    monkeypatch.setattr(
+        type(bank),
+        "pcm_used_bytes",
+        lambda self: (_ for _ in ()).throw(RuntimeError("psg")),
+    )
     v.bind_bank(bank)
     assert v.meter.used == len(bank.pcm)
 
@@ -464,6 +496,7 @@ def test_passthrough_translates_backend_errors(tmp_path) -> None:
 
 def test_passthrough_copy_never_touches_the_original(tmp_path) -> None:
     from audio.ports import ConversionSpec
+
     src = make_wav(str(tmp_path / "orig.wav"))
     before = open(src, "rb").read()
     dst = str(tmp_path / "copy.wav")
@@ -481,9 +514,16 @@ def test_null_key_detector_never_guesses(tmp_path) -> None:
 def test_passthrough_rejects_a_zero_rate_header(tmp_path) -> None:
     """A hand-built WAV claiming 0 Hz would divide by zero — refuse it instead."""
     import struct
-    data = (b"RIFF" + struct.pack("<I", 36) + b"WAVE"
-            + b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, 0, 0, 2, 16)
-            + b"data" + struct.pack("<I", 0))
+
+    data = (
+        b"RIFF"
+        + struct.pack("<I", 36)
+        + b"WAVE"
+        + b"fmt "
+        + struct.pack("<IHHIIHH", 16, 1, 1, 0, 0, 2, 16)
+        + b"data"
+        + struct.pack("<I", 0)
+    )
     bad = tmp_path / "zero.wav"
     bad.write_bytes(data)
     with pytest.raises(ValueError):

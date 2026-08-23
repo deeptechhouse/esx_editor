@@ -9,9 +9,9 @@ the view says so and shows the bytes, rather than inventing field offsets.
 """
 
 from .bank_view import BankView
-from .staging_view import StagingView
+from .global_view import GlobalView
 from .pattern_view import PatternView
 from .song_view import SongView
-from .global_view import GlobalView
+from .staging_view import StagingView
 
 __all__ = ["BankView", "StagingView", "PatternView", "SongView", "GlobalView"]

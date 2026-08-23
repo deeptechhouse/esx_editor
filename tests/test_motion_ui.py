@@ -14,8 +14,8 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 from codec.operation_table import OperationTable  # noqa: E402
 from core.motion import MotionDomain, MotionSlot  # noqa: E402
 from ui.motion.canvas import MotionCanvas  # noqa: E402
-from ui.motion.picker import TargetPicker  # noqa: E402
 from ui.motion.editor import MotionEditor  # noqa: E402
+from ui.motion.picker import TargetPicker  # noqa: E402
 from ui.theme import apply as apply_theme  # noqa: E402
 
 PROJECT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,11 +39,11 @@ def test_canvas_pencil_snaps_discrete(qapp) -> None:
     dom = MotionDomain.discrete(4)
     c = MotionCanvas(slot=slot, domain=dom, length=16)
     c.resize(640, 160)
-    c.apply_pencil(3, 50)          # nearer 64 than 32
+    c.apply_pencil(3, 50)  # nearer 64 than 32
     assert slot.get_step(3) == 64
     c.apply_eraser(3)
     assert slot.is_disabled(3)
-    c.apply_pencil(20, 10)         # beyond length=16: no write
+    c.apply_pencil(20, 10)  # beyond length=16: no write
     assert slot.is_disabled(20)
     c.show()
     qapp.processEvents()
@@ -55,7 +55,7 @@ def test_canvas_forced_trig_flag(qapp) -> None:
     c = MotionCanvas(domain=MotionDomain.discrete(2, forced_trig=True), length=8)
     assert c._stepped() is True
     c.set_trig_hold(False)
-    assert c._stepped() is True          # forced-TRIG wins
+    assert c._stepped() is True  # forced-TRIG wins
     c.set_slot(MotionSlot.empty(), MotionDomain.continuous())
     c.set_trig_hold(True)
     assert c._stepped() is True

@@ -16,7 +16,7 @@ DOMAIN RESOLUTION (WF2: best-effort; finalised in the motion-editor WF)
 from __future__ import annotations
 
 import os
-from typing import Iterator, Sequence
+from collections.abc import Iterator, Sequence
 
 EXPECTED_TARGET_COUNT = 313
 
@@ -24,11 +24,24 @@ EXPECTED_TARGET_COUNT = 313
 class MotionTarget:
     """Immutable description of one motion target id."""
 
-    __slots__ = ("_target_id", "_name", "_group", "_kind",
-                 "_option_count", "_forced_trig")
+    __slots__ = (
+        "_target_id",
+        "_name",
+        "_group",
+        "_kind",
+        "_option_count",
+        "_forced_trig",
+    )
 
-    def __init__(self, target_id: int, name: str, group: str, kind: str,
-                 option_count: int, forced_trig: bool):
+    def __init__(
+        self,
+        target_id: int,
+        name: str,
+        group: str,
+        kind: str,
+        option_count: int,
+        forced_trig: bool,
+    ):
         self._target_id = target_id
         self._name = name
         self._group = group
@@ -70,17 +83,17 @@ class OperationTable:
         self._by_id = dict(by_id)
 
     @classmethod
-    def load(cls, research_dir: str) -> "OperationTable":
+    def load(cls, research_dir: str) -> OperationTable:
         """Build the table from the TSV sources in `research_dir`."""
         targets_path = os.path.join(research_dir, "motion_operation_table_313.tsv")
         domains_path = os.path.join(research_dir, "motion_target_domains.tsv")
 
-        domains = cls._load_domains(domains_path)   # label(upper) -> (kind,N,trig)
+        domains = cls._load_domains(domains_path)  # label(upper) -> (kind,N,trig)
         # Match longest labels first so "FILTER CUTOFF" wins over "CUTOFF".
         labels_by_len = sorted(domains, key=len, reverse=True)
 
         by_id: dict[int, MotionTarget] = {}
-        with open(targets_path, "r", encoding="utf-8") as f:
+        with open(targets_path, encoding="utf-8") as f:
             for line in f:
                 line = line.rstrip("\n")
                 if not line or line.startswith("#") or "\t" not in line:
@@ -101,6 +114,7 @@ class OperationTable:
 
         if not by_id:
             from codec.errors import CodecError
+
             raise CodecError(f"no targets parsed from {targets_path}")
         return cls(by_id)
 
@@ -110,7 +124,7 @@ class OperationTable:
         out: dict[str, tuple[str, int, bool]] = {}
         if not os.path.exists(path):
             return out
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.rstrip("\n")
                 if not line or line.startswith("#"):
@@ -153,9 +167,9 @@ class OperationTable:
             return "Modulation"
         return "Part Common"
 
-    def targets_for_part(self, part_kind: str, *,
-                         hide_unverified_pitch: bool = True
-                         ) -> Sequence[MotionTarget]:
+    def targets_for_part(
+        self, part_kind: str, *, hide_unverified_pitch: bool = True
+    ) -> Sequence[MotionTarget]:
         """Targets a given part type may automate (TDD §8.5).
 
         Rules:
@@ -188,8 +202,9 @@ class OperationTable:
                 continue
             if part_kind == "accent" and not name_u.endswith("LEVEL"):
                 continue
-            if part_kind == "audioin" and any(name_u.endswith(s.strip()) or s in name_u
-                                              for s in audio_hide):
+            if part_kind == "audioin" and any(
+                name_u.endswith(s.strip()) or s in name_u for s in audio_hide
+            ):
                 continue
             if hide_unverified_pitch and name_u.endswith("PITCH"):
                 continue
