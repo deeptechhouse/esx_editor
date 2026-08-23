@@ -529,16 +529,16 @@ class PartSetupPage(SkippablePage):
 
     def build(self) -> None:
         self.reason(
-            "Which sample a part plays lives at an unproven offset inside the "
-            "part chunk — Part.sample_number raises NotImplementedError rather "
-            "than return a guess, so this screen shows each part's kind and "
-            "index only. Assignment arrives when a hardware diff pins the field."
+            "Which sample a part plays is a big-endian u16 at the start of the "
+            "part chunk, established against 728 real parts: every one points "
+            "at an occupied slot, and in a bank whose samples are named after "
+            "their own index, 672 of 672 decode to exactly that number. Audio-in "
+            "and accent parts do not reference a sample, so they show '—'. "
+            "Edit the step triggers in the Pattern tab."
         )
         self.status = _lcd("")
         self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(
-            ["#", "kind", "index", "chunk B", "first 8 B"]
-        )
+        self.table.setHorizontalHeaderLabels(["#", "kind", "sample", "name", "steps"])
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
@@ -554,19 +554,25 @@ class PartSetupPage(SkippablePage):
             return
         parts = pat.parts()
         self.status.setText(
-            f"Pattern 000 '{pat.name}' — {len(parts)} parts, raw and undecoded."
+            f"Pattern 000 '{pat.name}' — {len(parts)} parts. "
+            "Edit step triggers in the Pattern tab."
         )
+        bank = self._ctx.session.bank
+        samples = bank.samples() if bank is not None else ()
         self.table.setRowCount(len(parts))
         for row, part in enumerate(parts):
-            raw = part.to_bytes()
-            vals = (
-                str(row),
-                part.kind,
-                str(part.index),
-                str(len(raw)),
-                raw[:8].hex(" "),
-            )
-            for col, text in enumerate(vals):
+            try:
+                number = part.sample_number
+                slot_text = str(number)
+                name = samples[number].name if number < len(samples) else ""
+            except NotImplementedError:
+                # Audio-in and accent parts do not reference a sample slot.
+                slot_text, name = "—", ""
+            try:
+                steps = str(part.sequence().count())
+            except NotImplementedError:
+                steps = "—"
+            for col, text in enumerate((str(row), part.kind, slot_text, name, steps)):
                 self.table.setItem(row, col, QTableWidgetItem(text))
         self.table.resizeColumnsToContents()
 

@@ -20,6 +20,11 @@ NUM_STEPS = COLS * ROWS  # 128
 class StepGrid(QWidget):
     stepToggled = Signal(int, bool)
 
+    #: The hardware's maximum, exposed so callers do not re-derive it.
+    NUM_STEPS = NUM_STEPS
+    COLS = COLS
+    ROWS = ROWS
+
     def __init__(self, parent=None, *, length: int = NUM_STEPS):
         super().__init__(parent)
         self._on = [False] * NUM_STEPS

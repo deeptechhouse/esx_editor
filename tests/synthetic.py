@@ -97,6 +97,13 @@ def build(
         buf[header_at : header_at + len(DEFAULT_PATTERN_HEADER)] = (
             DEFAULT_PATTERN_HEADER
         )
+        # Zero the part and FX area. Filler there decodes as a part triggering
+        # on ~half its steps and pointing at a random sample slot, which is not
+        # what a blank pattern looks like and made every fixture-based
+        # assertion start from noise.
+        buf[base + L.PAT_OFF_PARTS_DRUM : base + L.PAT_OFF_PARAMETERS_MOTION] = bytes(
+            L.PAT_OFF_PARAMETERS_MOTION - L.PAT_OFF_PARTS_DRUM
+        )
         # Every motion slot starts unused: target 0xFFFF, all values Disabl.
         for s in range(L.NUM_PARAMETERS_MOTION):
             off = base + L.PAT_OFF_PARAMETERS_MOTION + s * L.CHUNK_PARAMETERS_MOTION

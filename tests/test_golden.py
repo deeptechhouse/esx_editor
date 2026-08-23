@@ -32,11 +32,13 @@ from tests.synthetic import SEED, build, sha256
 # Pinned bytes for the default synthetic bank. Regenerate ONLY when a change to
 # the emitted image is intended, and say why in research/CODEC_FINDINGS_LOG.md.
 #
-# CHANGED 2026-08-23 (WF10): the synthetic pattern headers now carry the real
-# machine default (tempo 120.0) instead of deterministic filler, so the fixture
-# looks like something an ESX-1 actually wrote. This hash moving is the golden
-# test doing its job — the change was intended.
-GOLDEN_DEFAULT = "3664395c7fb91f7a4834102217156bde7043a5f0889a2a1d4fdb48b40f77fd9e"
+# CHANGED 2026-08-23 (WF10/WF11): the synthetic patterns now carry the real
+# machine default header (tempo 120.0) and a zeroed part/FX area, instead of
+# deterministic filler that decoded as a nonsense 104.02 BPM and as parts
+# triggering on half their steps. The fixture now looks like something an ESX-1
+# actually wrote. This hash moving is the golden test doing its job — the
+# changes were intended.
+GOLDEN_DEFAULT = "022c5b6b2c7bd523a71ff1f3a0dd58e2b5a47ef8f66fc522f31b96a452e711ca"
 GOLDEN_SIZE = 2428928
 
 

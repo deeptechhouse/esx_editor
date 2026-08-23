@@ -516,3 +516,77 @@ the golden test doing its job, and the change was intended.
 Updated `research/HARDWARE_CHECKLIST.md`: the stereo-header item was written
 before Chronic-Interactive.esx joined the corpus and was never re-evaluated
 against it. Reading is closed; WRITING a stereo sample still needs the machine.
+
+---
+
+## 2026-08-23 — WF11 (part sample numbers and step triggers decoded)
+
+### DISCOVERY — `Part.sample_number` is a big-endian u16 at part offset 0
+
+PROVEN, with an independent oracle:
+
+- Across every sample-playing part in `Chronic-Interactive.esx` — 468 drum, 104
+  keyboard, 156 stretch/slice — the field points at an **OCCUPIED** slot
+  **728/728**. The bank has 100 occupied slots out of 384, so a wrong field
+  would land on an empty one most of the time.
+- That bank names its samples after their own slot index (`'00'`..`'99'`), which
+  is a free oracle: the decoded number must equal `int(slot.name)`. It does, on
+  **672 of 672** parts whose slot name is numeric.
+
+Audio-in and accent parts raise instead of answering: they do not reference the
+sample table (their offset 0 holds a constant 127 and values above 10,000
+respectively), and returning that as a slot index would be a lie.
+
+### DISCOVERY — the step trigger bitmap, and its bit order
+
+16 bytes = 128 one-bit steps, END-ALIGNED in the part chunk:
+
+```
+  drum          offset 18  (18 + 16 == 34, the chunk size)
+  stretchslice  offset 16  (16 + 16 == 32)
+```
+
+- The two 8-byte halves are byte-identical on **468/468** drum and **156/156**
+  stretch parts — what a 64-step pattern written into a 128-step field looks
+  like.
+- **Bit order is LSB-first**, settled statistically rather than by eye. Read
+  LSB-first, step 0 is the single most-triggered step (244 hits vs 29 for step
+  1) and the quarter-note grid carries **1.85x** its uniform share. Read
+  MSB-first, the busiest step becomes step 7 — a 16th-note offbeat — and grid
+  concentration inverts to **0.5x**. Real drum programming puts hits on the
+  beat.
+- Decoded patterns are musically coherent, which is the final sanity check:
+  one part triggers every other step (8th-note hats), another on steps 4, 12,
+  20, 28 (the backbeat), another on 26, 58, 90, 122 (a sparse accent).
+
+Keyboard, audio-in and accent parts are NOT decoded. Keyboard bits show **no**
+grid concentration (0.80x, i.e. below uniform), consistent with note data rather
+than a trigger bitmap; the other two gave no usable signal. All three raise.
+
+### NEGATIVE RESULT — song decoding is impossible from this corpus
+
+Recorded so nobody re-runs it. **All 64 songs in every corpus bank are
+byte-identical and blank**: eight spaces (the same name convention patterns and
+samples use) followed by `3c 00` — which is tempo 120.0 at the same 1/128 scale
+the pattern header uses — and then zeros. Zero bytes vary across all 256 song
+blocks in four banks. No user in this corpus has ever saved a song, so there is
+nothing to correlate against. `Bank.songs()` stays empty and the song area stays
+verbatim in the `mid` region.
+
+(The structural hint is worth keeping for the hardware session: a song block
+appears to open exactly like a pattern chunk — 8-byte space-padded name, then a
+1/128-scaled tempo. One saved song would confirm or kill that in seconds.)
+
+### FIXTURE — the synthetic bank now has a zeroed part/FX area
+Filler bytes there decoded as parts triggering on roughly half their steps and
+pointing at random slots, so every fixture-based assertion started from noise.
+Golden hash repinned; the change was intended.
+
+### UI
+The Pattern tab now shows each part's sample number, that sample's name, and its
+trigger count — and the `StepGrid` widget built in WF4 and never wired to
+anything is finally live: selecting a part loads its 128 steps, and clicking a
+step edits the bank. Wizard screen 8 shows the same decoded data.
+
+### RESULT
+**356 tests** passing (1 skipped: no stereo write). codec/ 100%, project 91%.

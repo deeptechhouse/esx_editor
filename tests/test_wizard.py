@@ -297,16 +297,21 @@ def test_slot_page_lists_packed_names(qapp, tmp_path) -> None:
 
 
 # -- 8 Part setup ------------------------------------------------------------
-def test_part_page_shows_raw_parts_not_sample_numbers(qapp, opened) -> None:
+def test_part_page_shows_decoded_sample_numbers(qapp, opened) -> None:
     wiz = build(opened)
     page = wiz.page_at(7)
     page.refresh()
     parts = opened.bank.patterns()[0].parts()
     assert page.table.rowCount() == len(parts) == 16
     assert page.table.item(0, 1).text() == parts[0].kind
-    assert page.table.item(0, 3).text() == str(len(parts[0].to_bytes()))
-    with pytest.raises(NotImplementedError):
-        _ = parts[0].sample_number  # the page must never call this
+    # Drum parts reference a slot; audio-in and accent do not and show "—".
+    assert page.table.item(0, 2).text() == str(parts[0].sample_number)
+    kinds = {page.table.item(r, 1).text(): r for r in range(page.table.rowCount())}
+    for kind in ("audioin", "accent"):
+        if kind in kinds:
+            assert page.table.item(kinds[kind], 2).text() == "—"
+            with pytest.raises(NotImplementedError):
+                _ = parts[kinds[kind]].sample_number
 
 
 def test_part_page_with_no_bank(qapp) -> None:
