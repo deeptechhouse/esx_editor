@@ -47,9 +47,9 @@
      memory budgeting, and motion authoring the hardware's two-line display makes impractical.
      Offline, local, and built so it cannot corrupt a bank.</p>
   <div class="badges">
-    <span class="badge">tests <b>252 passing</b></span>
+    <span class="badge">tests <b>375 passing</b></span>
     <span class="badge">codec coverage <b>100%</b></span>
-    <span class="badge">project coverage <b>92%</b></span>
+    <span class="badge">project coverage <b>91%</b></span>
     <span class="badge">round-trip <b>byte-identical</b></span>
     <span class="badge">python 3.13</span>
     <span class="badge">PySide6 6.9.3</span>
@@ -122,10 +122,11 @@ core/          the domain model — pure Python, no I/O, no Qt</code></pre>
     <li><b>Undecoded bytes are carried verbatim.</b> <code>RawRegions</code> has no setter, so
         "never modify unknown regions" is structural rather than a convention — and that is
         what makes the round-trip byte-identical.</li>
-    <li><b>An unproven field raises rather than guesses.</b> Pattern tempo, MIDI channel, and a
-        part's sample number all raise <code>NotImplementedError</code>; the UI shows the bytes
-        and says so. A plausible wrong number the user cannot distinguish from a fact is the
-        failure mode this project exists to prevent.</li>
+    <li><b>An unproven field raises rather than guesses.</b> Where a field HAS been established it is
+        decoded and editable, and the evidence is recorded — 728/728 parts pointing at an occupied slot,
+        19 of 20 tempos landing on exact integer BPMs. Where it has not, the accessor raises and the UI
+        shows bytes. A plausible wrong number the user cannot distinguish from a fact is the failure
+        mode this project exists to prevent.</li>
   </ul>
 </div>
 
@@ -135,9 +136,11 @@ core/          the domain model — pure Python, no I/O, no Qt</code></pre>
   <tr><td>Codec — read, write, validate, template</td><td>Complete. 100% line coverage, byte-identical on 4 banks.</td></tr>
   <tr><td>Motion editor</td><td>Complete. Encodings byte-verified against real banks.</td></tr>
   <tr><td>Views + wizard</td><td>Complete.</td></tr>
-  <tr><td>Songs, global fields, pattern tempo/length</td><td>Displayed as bytes — offsets unproven, see below.</td></tr>
-  <tr><td>Non-WAV import, key detection</td><td>Ports frozen; adapters in progress.</td></tr>
-  <tr><td>Approximate FX preview</td><td>Phase 2, not started. Motion preview is silent.</td></tr>
+  <tr><td>Sample commit</td><td>Complete. Stage, cost, name, and write into a slot; stereo READING verified, writing gated on hardware.</td></tr>
+  <tr><td>Pattern tempo, part sample numbers, step triggers</td><td>Decoded and editable — each proven against real bank data, not inferred.</td></tr>
+  <tr><td>Audio adapters</td><td>ffmpeg (any format) and librosa (key + dominant note). Both optional; the app degrades and says so.</td></tr>
+  <tr><td>Songs, global fields, pattern length/beat</td><td>Shown as bytes — <em>undeterminable</em> from the corpus, not merely unfinished. See <code>research/CODEC_FINDINGS_LOG.md</code>.</td></tr>
+  <tr><td>Approximate FX preview</td><td>Phase 2. Blocked on the FX index-to-name mapping, which the manual does not give.</td></tr>
 </table>
 
 <div class="card flag">

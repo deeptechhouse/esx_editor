@@ -19,7 +19,7 @@ composition root (`ui/session.BankSession`) does.
 |---|---|---|
 | `core/` | Domain | `Bank`, `Pattern`, `Part`, `SampleSlot`, `MotionSlot`, `GlobalParameters`, `Song`. No I/O, no Qt. Fields are private; invariants enforced in methods. |
 | `codec/` | Serialization | `reader` / `writer` (byte-identical round-trip), `validator` (coherence, reports never repairs), `template` (the blank bank), `layout` (**the single source of truth for every offset**), `operation_table` (313 motion targets), `byte_buffer`. stdlib only. |
-| `audio/` | Ports + adapters | `ports.py` freezes `AudioConverter` / `KeyDetector` / `FxRenderer` as Protocols. `passthrough.py` is the WAV-only adapter shipped today. |
+| `audio/` | Ports + adapters | `ports.py` freezes `AudioConverter` / `KeyDetector` / `PitchDetector` / `FxRenderer` as Protocols. Adapters: `ffmpeg_adapter` (any format), `librosa_adapter` (key), `pitch` (dominant note), `passthrough` (WAV fallback), `pcm` (endianness + channel handling). `factory.py` probes the machine and picks. |
 | `workspace/` | Application services | `budget` (the verified cost model), `limits` (fit/analyse/warn policy), `naming` (8-byte slot names + Camelot), `staging` (session dir, lockfile, orphan sweep). |
 | `ui/` | Presentation | `session.py` is the composition root. `main_window.py` is the shell. |
 | `ui/views/` | Presentation | One widget per region: bank, staging, pattern, song, global. Each binds via `bind_bank(bank)`. |
@@ -40,6 +40,8 @@ composition root (`ui/session.BankSession`) does.
 - **Write a bank safely:** `codec/writer.py` → `BankWriter.write_file(...)`
 - **Every offset and size:** `codec/layout.py` — never duplicate a constant from here
 - **Test fixtures without a real bank:** `tests/synthetic.py` → `build()`
+- **Commit a sample into a bank:** `core/bank.py` → `Bank.commit_sample()`
+- **Which backends are live:** `audio/factory.py` → `detect_capabilities()`
 
 ## Module Relationships
 
@@ -56,6 +58,25 @@ composition root (`ui/session.BankSession`) does.
 3. Motion discrete values are `i * ceil(128/N)`; `0x80` is Disabl, a third state, never a value.
 4. Total committed PCM ≤ 25,165,824 B.
 5. Undecoded fields raise `NotImplementedError` rather than return a guess; the UI shows bytes instead.
+6. PCM is 16-bit signed **big-endian**. A wrong byte order still round-trips and still validates — it just plays static, so `tests/test_pcm.py` measures it rather than trusting the spec.
+7. Committing never relocates an existing sample. `_highest_end()` must count a stereo slot's SECOND channel, or a commit overwrites it.
+
+## What Is Decoded, And What Is Not
+
+| Region | State | Why |
+|---|---|---|
+| Sample headers (mono + stereo), rate, tune | **Decoded** | Stereo layout verified against 40 real slots; corrects TDD §2.3 |
+| Pattern tempo | **Decoded** | 19/20 distinct values are exact integer BPMs; default exactly 120.0 |
+| Part sample number | **Decoded** | 728/728 point at an occupied slot; 672/672 match the slot's own name |
+| Step triggers (drum, stretch/slice) | **Decoded** | Halves identical on 468/468; LSB-first concentrates hits on the beat 1.85× |
+| Motion slots | **Decoded** | Byte-verified in WF5 |
+| Pattern length / beat / last step | Raises | Those header bytes are CONSTANT across all 52 named corpus patterns |
+| Songs | Raises | All 64 songs in all 4 banks are byte-identical blanks |
+| Global fields (MIDI channel) | Raises | Block is effectively constant across the corpus |
+| Keyboard / audio-in / accent step data | Raises | Keyboard bits show no grid concentration; not a trigger bitmap |
+| FX index → effect name | Not mapped | The manual names 16 types but gives no indices, and its two orderings disagree |
+
+Each "raises" row needs one hardware diff, not more analysis. See `research/HARDWARE_CHECKLIST.md`.
 
 ## External Dependencies
 

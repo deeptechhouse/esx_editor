@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 
 import codec.layout as L
 from core.bank import Bank
-from core.pattern import MAX_TEMPO, MIN_TEMPO, Pattern
+from core.pattern import MAX_TEMPO, MIN_TEMPO, NUM_FX_TYPES, Pattern
 from ui.theme import PALETTE
 from ui.widgets.step_grid import StepGrid
 
@@ -261,6 +261,12 @@ class PatternView(QWidget):
         units = pat.fx_units()
         self.fx.setRowCount(len(units))
         for i, fx in enumerate(units):
-            vals = (f"FX{i + 1}", str(fx.fx_type), "on" if fx.motion_enabled else "off")
+            # Show the index, not a name: the manual lists 16 effect types but
+            # gives no index->name mapping, and its two orderings disagree.
+            vals = (
+                f"FX{i + 1}",
+                f"type {fx.fx_type} of {NUM_FX_TYPES}",
+                "on" if fx.motion_enabled else "off",
+            )
             for col, text in enumerate(vals):
                 self.fx.setItem(i, col, QTableWidgetItem(text))

@@ -148,6 +148,38 @@ class PatternHeader:
         return bytes(self._raw)
 
 
+#: The ESX-1 has 16 effect types (manual p.51, "one of the 16 effect types").
+#: Corpus data agrees: fx_type spans 0..14 across the named patterns of three
+#: banks, consistent with 0..15.
+NUM_FX_TYPES = 16
+
+#: The sixteen names, from the manual. Order here is the manual's ROUTING
+#: grouping (p.52), which is NOT necessarily the machine's dial order — and the
+#: manual's parameter section (p.53 onward) lists them in a different order
+#: again. So this is a reference list, deliberately NOT an index->name map:
+#: showing "type 10 = GRAIN SHIFTER" would be a guess the user could not tell
+#: from a fact. Closing it needs one hardware pass: set FX1 to each type in
+#: turn, Save All, and read back the byte.
+FX_TYPE_NAMES = (
+    "CHO/FLG",
+    "PHASER",
+    "RING MOD",
+    "COMPRESSOR",
+    "DECIMATOR",
+    "EQ",
+    "LPF",
+    "HPF",
+    "REVERB",
+    "MOD DELAY",
+    "GRAIN SHIFTER",
+    "TALKING MOD",
+    "PITCH SHIFTER",
+    "DISTORTION",
+    "BPM SYNC DELAY",
+    "SHORT DELAY",
+)
+
+
 class FxUnit:
     """One of three FX units: {type, edit1, edit2, motionSW} (4 bytes)."""
 
