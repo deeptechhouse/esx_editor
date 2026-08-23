@@ -15,16 +15,21 @@ caller.
 from .factory import Capabilities, detect_capabilities
 from .passthrough import NullKeyDetector, WavPassthroughConverter
 from .pcm import WavPcmReader, fold_to_mono, split_stereo, swap_endianness
+from .pitch import SpectralPitchDetector, frequency_to_note, note_to_frequency
 from .ports import (
     AudioConverter,
     ConversionSpec,
     FxRenderer,
     KeyDetector,
     KeyResult,
+    NoteResult,
+    PitchDetector,
 )
 
 __all__ = [
     "AudioConverter",
+    "NoteResult",
+    "PitchDetector",
     "KeyDetector",
     "FxRenderer",
     "KeyResult",
@@ -32,6 +37,9 @@ __all__ = [
     "WavPassthroughConverter",
     "NullKeyDetector",
     "WavPcmReader",
+    "SpectralPitchDetector",
+    "frequency_to_note",
+    "note_to_frequency",
     "Capabilities",
     "detect_capabilities",
     "swap_endianness",

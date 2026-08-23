@@ -590,3 +590,72 @@ step edits the bank. Wizard screen 8 shows the same decoded data.
 
 ### RESULT
 **356 tests** passing (1 skipped: no stereo write). codec/ 100%, project 91%.
+
+---
+
+## 2026-08-23 — WF12 (dominant-note detection for material with no key)
+
+User request: *"a noise still has a note correct? ... for each sound that does
+not have a 'key' i would like it to show what 'note' it corresponds to."*
+
+Correct for essentially all real material, and it is now implemented as its own
+port. The distinction the UI now makes:
+
+- A **key** is a claim about harmony — which seven notes a piece is built from.
+  Most one-shots have none, and a guess gets baked into an 8-character slot name
+  permanently, so the key detector is allowed to say nothing.
+- A **note** is just the dominant pitch. Nearly every real sound has one: a kick
+  sits around 40-60 Hz, which is a note you can tune to a bassline. This is
+  often the more useful number for a sampler.
+- Only genuinely broadband material — white noise, a noise-burst hi-hat — has
+  neither, and that is reported as "—" rather than invented.
+
+### WHY NOT A PITCH TRACKER
+YIN/pYIN estimate the fundamental of a SUSTAINED periodic tone. Point one at a
+kick and it usually reports nothing: two cycles of a falling sine under a click
+is not periodic enough to track. So `audio/pitch.py` measures the dominant
+SPECTRAL PEAK instead, refined by parabolic interpolation and named with its
+cent deviation.
+
+### TWO MEASURED CORRECTIONS
+
+**1. Averaging the whole sound reads SHARP.** Percussion is pitch-swept by
+design — a kick starts an octave or more above where it lands. Measuring
+everything biased the result by roughly a semitone, enough to name the wrong
+note. Fixed by skipping the attack: find the loudest frame, skip half of what
+follows, measure the body. What a producer means by "what note is this kick" is
+the body, not the click.
+
+**2. Combine frames with a MEDIAN, not a mean.** This is what actually fixes the
+sweep: the swept frequencies appear in a minority of frames while the settled
+pitch appears in most. Grid-searched over sines, kicks and toms from 36 Hz to
+440 Hz:
+
+```
+  mean,   skip 0.25  -> mean error 32.7 cents, worst 66.5   (2 wrong notes)
+  mean,   skip 0.50  -> mean error  5.6 cents, worst 15.0
+  median, skip 0.25  -> mean error 17.2 cents, worst 35.2
+  median, skip 0.50  -> mean error  2.4 cents, worst  7.7   (all correct)
+```
+
+Also raised the FFT cap to 16,384: at 44.1 kHz an 8,192-point transform has
+5.4 Hz bins, which is nearly **two semitones** at the 40 Hz where kicks live.
+
+Final accuracy: **12/12** correct on sines, kicks (36-65 Hz), toms and a snare,
+all within a few cents, with white noise correctly reporting nothing.
+
+### A TESTING LESSON WORTH RECORDING
+The first run showed 2 failures that were **my test signal, not the detector**:
+I synthesised the pitch sweep as `sin(2π·f(t)·t)`, whose instantaneous frequency
+is `f(t) + t·f'(t)`, not `f(t)`. Integrating the phase properly changed the
+answer. Worth remembering before "fixing" code to match a broken fixture.
+
+### PROMINENCE GATE
+The spectral peak must stand 8x above the median magnitude to count. Measured:
+sine ~1000x, tonal chord ~120x, kick ~40x, white noise ~3x. 8.0 sits well clear
+of noise while admitting every real percussive sound.
+
+### NOTE
+For a chord the dominant note is the loudest PARTIAL, not necessarily the root —
+an A minor triad reports E5. That is what "dominant note" means and the label
+says so; the key detector is what answers "what chord is this".

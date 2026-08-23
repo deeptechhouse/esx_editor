@@ -306,18 +306,23 @@ class QualityBudgetPage(SkippablePage):
 
 # 5 ---------------------------------------------------------------------------
 class KeyAnalysisPage(SkippablePage):
-    TITLE = "5 · Key analysis"
-    SUBTITLE = "Confirm detected keys; suppress them for percussive material."
+    TITLE = "5 · Key and pitch"
+    SUBTITLE = "A key where there is one; a dominant note for everything else."
 
     def build(self) -> None:
         self.reason(
-            "The adapter shipped today is NullKeyDetector: it returns no key, "
-            "ever. Returning nothing is a legitimate result — a kick drum has no "
-            "key, and a guessed one would be baked into the 8-character slot name "
-            "permanently. Real detection lands with the librosa adapter."
+            "KEY and NOTE are different claims and are detected separately. A "
+            "key says which seven notes a piece is built from — most one-shots "
+            "have none, and a guess would be baked into an 8-character slot "
+            "name permanently, so the detector is allowed to say nothing. A "
+            "NOTE is just the dominant pitch, and nearly every real sound has "
+            "one: a kick sits around 40-60 Hz, which is a note you can tune to "
+            "a bassline. Only genuinely broadband noise has neither."
         )
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["sample", "camelot", "classical"])
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(
+            ["sample", "camelot", "classical", "note", "Hz"]
+        )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
@@ -328,18 +333,22 @@ class KeyAnalysisPage(SkippablePage):
 
     def refresh(self) -> None:
         staged = self._ctx.staged_samples()
-        detected = sum(1 for s in staged if s.key is not None)
+        keyed = sum(1 for s in staged if s.key is not None)
+        pitched = sum(1 for s in staged if s.note is not None)
         self.status.setText(
-            f"{len(staged)} staged, {detected} with a key. "
-            "The passthrough detector reports none by design."
+            f"{len(staged)} staged — {keyed} with a key, {pitched} with a "
+            "dominant note."
         )
         self.table.setRowCount(len(staged))
         for row, s in enumerate(staged):
             key = s.key
+            note = s.note
             vals = (
                 os.path.basename(s.source_path),
-                key.camelot if key else "— none —",
-                key.classical if key else "— none —",
+                key.camelot if key else "— no key —",
+                key.classical if key else "— no key —",
+                s.pitch_label,
+                f"{note.frequency:.1f}" if note else "—",
             )
             for col, text in enumerate(vals):
                 self.table.setItem(row, col, QTableWidgetItem(text))
@@ -425,9 +434,9 @@ class SlotAssignmentPage(SkippablePage):
             "bank moves, so no existing sample's offsets are invalidated."
         )
         self.pools = _lcd("")
-        self.table = QTableWidget(0, 4)
+        self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
-            ["staged file", "packed name", "pool", "target slot"]
+            ["staged file", "packed name", "note", "pool", "target slot"]
         )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
@@ -514,6 +523,7 @@ class SlotAssignmentPage(SkippablePage):
             vals = (
                 os.path.basename(s.source_path),
                 s.slot_name(),
+                s.pitch_label,
                 "stereo" if channels > 1 else "mono",
                 target,
             )

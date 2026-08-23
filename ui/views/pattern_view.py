@@ -11,6 +11,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -63,13 +64,23 @@ class PatternView(QWidget):
         self.parts.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.parts.verticalHeader().setVisible(False)
         self.parts.setAlternatingRowColors(True)
-        self.parts.horizontalHeader().setStretchLastSection(True)
+        # Give the slack to the name column: stretching whatever is
+        # last makes an offset or a count absurdly wide.
+        self.parts.horizontalHeader().setStretchLastSection(False)
+        self.parts.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.Stretch
+        )
         self.fx = QTableWidget(0, 3)
         self.fx.setHorizontalHeaderLabels(["FX", "type", "motion"])
         self.fx.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.fx.verticalHeader().setVisible(False)
         self.fx.setAlternatingRowColors(True)
-        self.fx.horizontalHeader().setStretchLastSection(True)
+        # Give the slack to the name column: stretching whatever is
+        # last makes an offset or a count absurdly wide.
+        self.fx.horizontalHeader().setStretchLastSection(False)
+        self.fx.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
+        )
 
         detail = QVBoxLayout()
         row = QHBoxLayout()

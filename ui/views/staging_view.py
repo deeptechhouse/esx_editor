@@ -57,6 +57,7 @@ class StagingView(QWidget):
                 self.capabilities.detector,
                 SampleLimitPolicy(),
                 session,
+                pitch=self.capabilities.pitch,
             )
         self.bank = bank
         self._calc = BudgetCalculator()
@@ -154,9 +155,10 @@ class StagingView(QWidget):
             if s.duration_s is not None and s.spec is not None:
                 cost = self._calc.cost_bytes(s.duration_s, s.spec.rate, s.spec.channels)
                 used += cost
-            key = s.slot_name()
+            packed = s.slot_name()
+            key = s.key.classical if s.key else "no key"
             self._list.addItem(
                 f"{os.path.basename(s.source_path)}  →  {s.staging_filename()}  "
-                f"[{key}]  {cost:,} B"
+                f"[{packed}]  {key} · {s.pitch_label}  {cost:,} B"
             )
         self.meter.set_used(used)

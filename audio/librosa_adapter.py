@@ -96,6 +96,11 @@ DEFAULT_MAX_CHROMA_FLATNESS = 0.70
 #: Below this fraction of harmonic energy, treat the material as percussive.
 DEFAULT_MIN_HARMONIC_RATIO = 0.10
 
+#: Below this many samples the CQT window is longer than the signal, and
+#: librosa warns and pads. A clip that short is a one-shot transient with no
+#: key to find, so it is refused rather than analysed into a guess.
+MIN_SAMPLES = 4096
+
 #: Analysing more than this is wasted: key does not change, and a 5-minute file
 #: would otherwise cost 5 minutes of CQT (TDD §6.5).
 DEFAULT_MAX_SECONDS = 30.0
@@ -216,8 +221,8 @@ class LibrosaKeyDetector:
             # A file librosa cannot decode has no key. Failing the whole
             # staging flow over it would be worse than reporting "no key".
             return None
-        if y.size == 0 or not np.any(y):
-            return None
+        if y.size < MIN_SAMPLES or not np.any(y):
+            return None  # too short to have a key, or silent
 
         harmonic, percussive = librosa.effects.hpss(y)
         harmonic_energy = float(np.sum(harmonic**2))

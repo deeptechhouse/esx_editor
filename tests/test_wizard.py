@@ -223,9 +223,11 @@ def test_key_page_says_no_key_rather_than_guessing(qapp, tmp_path) -> None:
     page = wiz.page_at(4)
     page.refresh()
     assert page.table.rowCount() == 1
-    assert page.table.item(0, 1).text() == "— none —"
-    assert page.table.item(0, 2).text() == "— none —"
+    assert page.table.item(0, 1).text() == "— no key —"
+    assert page.table.item(0, 2).text() == "— no key —"
     assert "0 with a key" in page.status.text()
+    # A note is a separate claim from a key; the column exists either way.
+    assert page.table.item(0, 3) is not None
 
 
 # -- 6 Naming ----------------------------------------------------------------
@@ -293,7 +295,8 @@ def test_slot_page_lists_packed_names(qapp, tmp_path) -> None:
     page.refresh()
     assert page.table.rowCount() == 1
     assert page.table.item(0, 1).text() == model.samples()[0].slot_name()
-    assert page.table.item(0, 2).text() == "mono"
+    assert page.table.item(0, 2).text() == model.samples()[0].pitch_label
+    assert page.table.item(0, 3).text() == "mono"
 
 
 # -- 8 Part setup ------------------------------------------------------------

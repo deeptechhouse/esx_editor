@@ -71,10 +71,11 @@ def test_every_adapter_satisfies_its_port() -> None:
 def test_factory_reports_what_this_machine_can_do() -> None:
     factory.detect_capabilities.cache_clear()
     caps = factory.detect_capabilities()
-    assert len(caps.notes) == 2
+    assert len(caps.notes) == 3, "converter, key detector, pitch detector"
     assert all(note.strip() for note in caps.notes)
     assert caps.can_convert_any_format is ffmpeg_available()
     assert caps.can_detect_key is librosa_available()
+    assert caps.can_detect_note is (caps.pitch is not None)
     # Cached: probing costs an ffmpeg subprocess and a librosa import.
     assert factory.detect_capabilities() is caps
 
@@ -361,3 +362,184 @@ def test_staging_accepts_a_non_wav_when_ffmpeg_is_present(tmp_path, source_wav) 
     with wave.open(sample.converted_path, "rb") as w:
         assert w.getframerate() == 44100 and w.getnchannels() == 1
     assert os.path.exists(encoded), "the original is never modified"
+
+
+@needs_librosa
+def test_librosa_refuses_a_clip_shorter_than_its_analysis_window(tmp_path) -> None:
+    """A 15 ms one-shot has no key; analysing it would only produce a guess."""
+    import array
+
+    path = str(tmp_path / "blip.wav")
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(22050)
+        w.writeframes(array.array("h", [9000, -9000] * 150).tobytes())
+    assert LibrosaKeyDetector().detect(path) is None
+
+
+# -- dominant-note detection --------------------------------------------------
+def test_note_conversion_is_exact_at_the_anchors() -> None:
+    """A4 = 440 Hz is the definition; everything else follows from it."""
+    from audio.pitch import A4_HZ, frequency_to_note, note_to_frequency
+
+    name, octave, cents = frequency_to_note(A4_HZ)
+    assert (name, octave) == ("A", 4)
+    assert abs(cents) < 1e-9
+    assert note_to_frequency("A", 4) == pytest.approx(440.0)
+    assert note_to_frequency("C", 4) == pytest.approx(261.626, abs=0.01)
+    assert note_to_frequency("A", 1) == pytest.approx(55.0, abs=0.001)
+
+
+@pytest.mark.parametrize(
+    ("name", "octave"),
+    [("C", 1), ("F#", 2), ("A", 4), ("D#", 0), ("B", 6)],
+)
+def test_note_conversion_round_trips(name, octave) -> None:
+    from audio.pitch import frequency_to_note, note_to_frequency
+
+    got_name, got_octave, cents = frequency_to_note(note_to_frequency(name, octave))
+    assert (got_name, got_octave) == (name, octave)
+    assert abs(cents) < 0.01
+
+
+def test_cents_report_the_deviation_rather_than_rounding_it() -> None:
+    """A sound 30 cents sharp of A is A +30, not silently A or A#."""
+    from audio.pitch import frequency_to_note, note_to_frequency
+
+    sharp = note_to_frequency("A", 4) * 2 ** (30 / 1200)
+    name, octave, cents = frequency_to_note(sharp)
+    assert (name, octave) == ("A", 4)
+    assert cents == pytest.approx(30.0, abs=0.5)
+
+
+def test_note_conversion_refuses_a_non_positive_frequency() -> None:
+    from audio.pitch import frequency_to_note
+
+    for bad in (0.0, -1.0):
+        with pytest.raises(ValueError, match="positive"):
+            frequency_to_note(bad)
+
+
+def test_parabolic_refinement_is_a_no_op_at_the_edges() -> None:
+    from audio.pitch import refine_peak
+
+    assert refine_peak([1.0, 2.0, 3.0], 0) == 0.0
+    assert refine_peak([1.0, 2.0, 3.0], 2) == 2.0
+    # A symmetric peak stays put; an asymmetric one shifts toward the taller side.
+    assert refine_peak([1.0, 2.0, 1.0], 1) == pytest.approx(1.0)
+    assert refine_peak([1.0, 2.0, 1.5], 1) > 1.0
+
+
+def _write_tone(path, frequency, seconds=1.0, rate=44100):
+    import array
+    import math
+
+    frames = int(rate * seconds)
+    samples = array.array(
+        "h",
+        [
+            int(20000 * math.sin(2 * math.pi * frequency * i / rate))
+            for i in range(frames)
+        ],
+    )
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(samples.tobytes())
+    return str(path)
+
+
+@needs_librosa
+@pytest.mark.parametrize(
+    ("frequency", "expected"),
+    [(440.0, "A4"), (55.0, "A1"), (82.41, "E2"), (146.83, "D3")],
+)
+def test_pitch_detector_names_a_pure_tone(tmp_path, frequency, expected) -> None:
+    from audio.pitch import SpectralPitchDetector
+
+    path = _write_tone(tmp_path / "tone.wav", frequency)
+    result = SpectralPitchDetector().detect_note(path)
+    assert result is not None
+    assert result.label == expected
+    assert abs(result.cents) < 25
+    assert result.frequency == pytest.approx(frequency, rel=0.02)
+
+
+@needs_librosa
+def test_pitch_detector_returns_nothing_for_broadband_noise(tmp_path) -> None:
+    """White noise genuinely has no dominant pitch — naming one would invent it."""
+    import array
+    import random
+
+    from audio.pitch import SpectralPitchDetector
+
+    rng = random.Random(3)
+    samples = array.array("h", [rng.randint(-12000, 12000) for _ in range(44100)])
+    path = str(tmp_path / "noise.wav")
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(samples.tobytes())
+    assert SpectralPitchDetector().detect_note(path) is None
+
+
+@needs_librosa
+def test_pitch_detector_returns_nothing_for_silence(tmp_path) -> None:
+    from audio.pitch import SpectralPitchDetector
+
+    path = _write_tone(tmp_path / "quiet.wav", 440.0)
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"\x00\x00" * 44100)
+    assert SpectralPitchDetector().detect_note(path) is None
+
+
+def test_pitch_detector_refuses_to_construct_without_numpy(monkeypatch) -> None:
+    from audio import pitch as pitch_module
+
+    monkeypatch.setattr(pitch_module, "available", lambda: False)
+    with pytest.raises(ImportError, match="numpy"):
+        pitch_module.SpectralPitchDetector()
+
+
+@needs_librosa
+def test_staged_samples_carry_a_note_even_with_no_key(tmp_path) -> None:
+    """The point of the feature: a drum has no key but does have a pitch."""
+    from audio.pitch import SpectralPitchDetector
+    from workspace.limits import SampleLimitPolicy
+    from workspace.staging import SessionWorkspace, StagingBank
+
+    path = _write_tone(tmp_path / "tone55.wav", 55.0)
+    staging = StagingBank(
+        WavPassthroughConverter(),
+        NullKeyDetector(),
+        SampleLimitPolicy(),
+        SessionWorkspace(temp_root=str(tmp_path)),
+        pitch=SpectralPitchDetector(),
+    )
+    sample = staging.add(path, ConversionSpec(44100, 1))
+    assert sample.key is None, "NullKeyDetector never guesses a key"
+    assert sample.note is not None, "but the pitch is still measurable"
+    assert sample.note.label == "A1"
+    assert sample.pitch_label.startswith("A1")
+
+
+def test_a_sample_with_no_pitch_detector_reports_no_note(tmp_path) -> None:
+    from workspace.limits import SampleLimitPolicy
+    from workspace.staging import SessionWorkspace, StagingBank
+
+    path = _write_tone(tmp_path / "t.wav", 440.0, seconds=0.2)
+    staging = StagingBank(
+        WavPassthroughConverter(),
+        NullKeyDetector(),
+        SampleLimitPolicy(),
+        SessionWorkspace(temp_root=str(tmp_path)),
+    )
+    sample = staging.add(path, ConversionSpec(44100, 1))
+    assert sample.note is None
+    assert sample.pitch_label == "—"

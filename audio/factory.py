@@ -16,19 +16,24 @@ from __future__ import annotations
 import functools
 
 from audio.passthrough import NullKeyDetector, WavPassthroughConverter
-from audio.ports import AudioConverter, KeyDetector
+from audio.ports import AudioConverter, KeyDetector, PitchDetector
 
 
 class Capabilities:
     """What this machine can actually do, and the adapters that do it."""
 
-    __slots__ = ("_converter", "_detector", "_notes")
+    __slots__ = ("_converter", "_detector", "_pitch", "_notes")
 
     def __init__(
-        self, converter: AudioConverter, detector: KeyDetector, notes: tuple[str, ...]
+        self,
+        converter: AudioConverter,
+        detector: KeyDetector,
+        pitch: PitchDetector | None,
+        notes: tuple[str, ...],
     ):
         self._converter = converter
         self._detector = detector
+        self._pitch = pitch
         self._notes = notes
 
     @property
@@ -38,6 +43,15 @@ class Capabilities:
     @property
     def detector(self) -> KeyDetector:
         return self._detector
+
+    @property
+    def pitch(self) -> PitchDetector | None:
+        """The dominant-pitch detector, or None when unavailable."""
+        return self._pitch
+
+    @property
+    def can_detect_note(self) -> bool:
+        return self._pitch is not None
 
     @property
     def notes(self) -> tuple[str, ...]:
@@ -97,6 +111,23 @@ def build_detector() -> tuple[KeyDetector, str]:
 
 
 @functools.lru_cache(maxsize=1)
+def build_pitch_detector() -> tuple[PitchDetector | None, str]:
+    """The dominant-pitch detector, plus a line describing it."""
+    from audio import pitch as pitch_module
+
+    if pitch_module.available():
+        try:
+            return (
+                pitch_module.SpectralPitchDetector(),
+                "Dominant note via spectral peak — works on drums, not just "
+                "tonal material",
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            return None, f"No note detection — unusable ({exc})"
+    return None, "No note detection — needs numpy and librosa"
+
+
+@functools.lru_cache(maxsize=1)
 def detect_capabilities() -> Capabilities:
     """Probe the machine ONCE and return the adapters to use.
 
@@ -110,4 +141,7 @@ def detect_capabilities() -> Capabilities:
     """
     converter, converter_note = build_converter()
     detector, detector_note = build_detector()
-    return Capabilities(converter, detector, (converter_note, detector_note))
+    pitch, pitch_note = build_pitch_detector()
+    return Capabilities(
+        converter, detector, pitch, (converter_note, detector_note, pitch_note)
+    )

@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QTableWidget,
     QTableWidgetItem,
@@ -34,7 +35,12 @@ class BankView(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        # Give the slack to the name column: stretching whatever is
+        # last makes an offset or a count absurdly wide.
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
         head = QHBoxLayout()
         head.addWidget(QLabel("Sample memory"))
         head.addWidget(self.meter, 1)

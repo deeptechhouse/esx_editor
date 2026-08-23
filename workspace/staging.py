@@ -26,7 +26,14 @@ import time
 from collections.abc import Sequence
 
 import codec.layout as L
-from audio.ports import AudioConverter, ConversionSpec, KeyDetector, KeyResult
+from audio.ports import (
+    AudioConverter,
+    ConversionSpec,
+    KeyDetector,
+    KeyResult,
+    NoteResult,
+    PitchDetector,
+)
 from core.errors import InvariantError
 from workspace.budget import BudgetCalculator
 from workspace.errors import StagingBlockedError
@@ -123,13 +130,21 @@ class SessionWorkspace:
 class StagingSample:
     """One candidate sample as it moves through the staging workflow."""
 
-    __slots__ = ("_source_path", "_converted_path", "_spec", "_key", "_duration_s")
+    __slots__ = (
+        "_source_path",
+        "_converted_path",
+        "_spec",
+        "_key",
+        "_note",
+        "_duration_s",
+    )
 
     def __init__(self, source_path: str):
         self._source_path = source_path
         self._converted_path: str | None = None
         self._spec: ConversionSpec | None = None
         self._key: KeyResult | None = None
+        self._note: NoteResult | None = None
         self._duration_s: float | None = None
 
     @property
@@ -153,6 +168,22 @@ class StagingSample:
         """The detected KeyResult or None (not analysed / not tonal)."""
         return self._key
 
+    @property
+    def note(self) -> NoteResult | None:
+        """The dominant pitch, or None for genuinely broadband material.
+
+        Independent of `key`. A kick drum has a note and no key; a chord has
+        both. This is the number you tune a drum to a bassline with.
+        """
+        return self._note
+
+    @property
+    def pitch_label(self) -> str:
+        """'A1 -3c', or '—' when there is no measurable pitch."""
+        if self._note is None:
+            return "—"
+        return f"{self._note.label} {self._note.cents:+.0f}c"
+
     def staging_filename(self) -> str:
         """The on-disk name carrying the full both-notation name (TDD §5.3)."""
         classical = self._key.classical if self._key else None
@@ -172,7 +203,15 @@ class StagingBank:
     swappable and the whole flow is testable with fakes.
     """
 
-    __slots__ = ("_converter", "_detector", "_limits", "_session", "_samples", "_calc")
+    __slots__ = (
+        "_converter",
+        "_detector",
+        "_pitch",
+        "_limits",
+        "_session",
+        "_samples",
+        "_calc",
+    )
 
     def __init__(
         self,
@@ -180,9 +219,11 @@ class StagingBank:
         detector: KeyDetector,
         limits: SampleLimitPolicy,
         session: SessionWorkspace,
+        pitch: PitchDetector | None = None,
     ):
         self._converter = converter
         self._detector = detector
+        self._pitch = pitch
         self._limits = limits
         self._session = session
         self._samples: list[StagingSample] = []
@@ -226,6 +267,12 @@ class StagingBank:
         sample._duration_s = duration_s
         if analyse_ok:
             sample._key = self._detector.detect(dest)
+            # A key and a note are independent claims. Percussion has no key
+            # but almost always has a pitch, and that pitch is what you tune a
+            # drum to a track with — so ask for it whether or not a key was
+            # found.
+            if self._pitch is not None:
+                sample._note = self._pitch.detect_note(dest)
         # Rename the converted copy to the both-notation staging filename.
         named = os.path.join(session_dir, sample.staging_filename())
         if named != dest:
