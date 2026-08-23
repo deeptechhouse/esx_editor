@@ -274,3 +274,112 @@ not touched except where noted below.
 - Motion tab still binds pattern 0 on open, then follows the Pattern tab
   selection. Song/global decoding, `Bank.commit_sample`, and `Part.sample_number`
   remain `NotImplementedError` by design.
+
+---
+
+## 2026-08-23 — WF8 (commit_sample + three format discoveries)
+
+Implementing `Bank.commit_sample` — the one thing the app existed for and could
+not do — required decoding fields that were sitting inside a verbatim blob. That
+led to three findings against real data, one of which **corrects the TDD**.
+
+### DISCOVERY 1 — the stereo sample header layout (CORRECTS TDD §2.3)
+
+`Chronic-Interactive.esx` contains **40 populated stereo slots**. The hardware
+checklist recorded "both banks mono-only" — true of e4/e5, but the checklist was
+written before Chronic was in the corpus, so item 2 was never re-evaluated
+against it. No hardware was needed to close this.
+
+The TDD inferred the 44-byte stereo layout from BLANK slots and inserted a
+`loopStart` at 32, pushing `sampleRate` to 36 and `sampleTune` to 40. Real data
+contradicts that. The actual layout:
+
+```
+ 0..7   name                 16..19 offsetChannel2Start   28..31 end
+ 8..11  offsetChannel1Start  20..23 offsetChannel2End     32..35 sampleRate
+12..15  offsetChannel1End    24..27 start                 36..37 sampleTune
+                                                          38..43 playLevel + unknown
+```
+
+There is **no loopStart in the stereo header**; the extra 4 bytes over the mono
+header are the second channel-offset pair.
+
+Evidence, all 40/40:
+- `u32@32` is a legal import rate (32000). `u32@36` is 2,234,974,208 — not a
+  rate under any reading (0/40 for the TDD's claimed position).
+- `u16@36` decodes via the VERIFIED tune packing to −5.55 semitones, and
+  `12·log2(32000/44100) = −5.55`. The tune field independently confirms the rate
+  field's position, because one is derived from the other. Delta 0.002.
+- `ch2start == align_up(ch1end + 2, 4)` and `len(ch1) == len(ch2)`.
+- Across the whole bank, 180 PCM ranges (100 mono + 2×40 stereo) tile with
+  **zero overlaps** and 179/179 follow the allocation rule.
+
+### DISCOVERY 2 — the PCM region is big-endian, confirmed from the audio itself
+
+TDD §2.1 says big-endian. Rather than take that on trust: reading a real sample
+both ways gives a lag-1 autocorrelation of **+0.98 big-endian vs +0.19
+little-endian**, and big-endian wins on **20 of 20** samples. Audio is strongly
+correlated sample to sample; the wrong byte order is nearly noise.
+
+This matters because nothing downstream would catch it. A little-endian bank
+loads, validates, and round-trips perfectly — it just plays static. `tests/
+test_pcm.py::test_real_bank_pcm_is_big_endian` now guards it with the same
+measurement.
+
+### DISCOVERY 3 — the 16-byte PCM trailer mirrors currentOffset
+
+On all four corpus banks the PCM region is **exactly currentOffset + 16 bytes**,
+and bytes 4..7 of that trailer are a big-endian copy of currentOffset:
+
+```
+80 00 7f ff | <currentOffset u32> | 01 7f ff fe | 00 ff ff ff
+```
+
+Chronic 0x005D466C = 6,112,876; e5 0x00BAFA34 = 12,253,748; e4 0x001FC388 =
+2,081,672 — each that bank's currentOffset. The last 12 bytes were identical on
+all three machine-written banks. Committing without updating this would leave
+the file internally contradictory, so `Bank._sync_trailer` patches those four
+bytes and carries the rest verbatim.
+
+### REFINEMENT — currentOffset is align_up(highest_end + 2, 4)
+
+The documented rule was `highest_end + 2`. That holds on e5 only because its
+highest end happens to be 4-aligned. Chronic needs the align_up: 6,112,872 →
+6,112,876. (e4 satisfies neither, because 16 of its 18 headers are stale — it is
+the incoherent fixture.)
+
+### BUG FOUND AND FIXED — commit would overwrite a stereo sample's channel 2
+
+`_highest_end()` used `slot.offset_end`, which for a stereo slot is **channel
+1's** end. The true high-water mark is often a channel-2 end. Committing into
+Chronic placed the new sample at 6,070,916 — inside existing channel-2 data.
+Caught by committing into a real bank and diffing every existing sample's bytes;
+now covered by `test_commit_into_a_real_bank_corrupts_nothing`.
+
+### ARCHITECTURE — the sample-area header left the verbatim blob
+
+The counts and currentOffset at 0x1B0020..0x1B002B are VERIFIED, but the reader
+swept them into `mid` along with the songs and the undecoded gaps, making them
+unwritable. `mid` is now split into `mid` / `magic2` / decoded `SampleArea` /
+`hdr_gap`. "Unknown regions are never modified" still holds structurally —
+`RawRegions` still has no setter. These twelve bytes were simply never unknown.
+Round-trip re-verified byte-identical on all four corpus banks after the split.
+
+### DELIBERATELY NOT DONE
+- **Stereo commit.** The layout is now known and readable, and `set_stereo_ranges`
+  exists, but no stereo bank this app WROTE has been loaded by hardware. Reading
+  a layout is weaker evidence than writing one and having the machine accept it.
+- **Compaction of a stereo bank.** Refused loudly: a stereo slot owns two ranges
+  that must stay adjacent and equal-length.
+- **`pack_slot_name` tail truncation.** TDD §5.3 states the tail rule is
+  deliberate ("trailing characters distinguish numbered variants"), so it stands
+  — but `bass_loop` → `ASS_LOOP` and `snare_hat` → `NARE_HAT` in real use. Still
+  a user decision.
+
+### RESULT
+`Bank.commit_sample` / `clear_sample` / `compact_pcm`, `SampleSlot.set_range` /
+`set_stereo_ranges` / `set_sample_rate` / `stored_tune` / `musical_tune` /
+`set_musical_tune` / `channel2_range`, `audio/pcm.py` (endianness, folding,
+splitting, 8-bit widening), `StagingBank.commit_to` (all-or-nothing batch), the
+wizard's screen 7 commit button, and the bank view now showing a real stereo
+rate plus musical tune. **297 tests passing**; codec/ 100%, project 92%.

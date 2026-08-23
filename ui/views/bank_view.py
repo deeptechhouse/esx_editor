@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 import codec.layout as L
 from core.bank import Bank
+from core.errors import InvariantError
 from ui.theme import PALETTE
 from ui.widgets.budget_meter import BudgetMeter
 
@@ -25,9 +26,9 @@ class BankView(QWidget):
         self.meter = BudgetMeter()
         self._counts = QLabel("mono 0/256   stereo 0/128")
         self._counts.setStyleSheet(f"color: {PALETTE.lcd};")
-        self.table = QTableWidget(0, 6)
+        self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(
-            ["#", "name", "pool", "rate", "start", "end"]
+            ["#", "name", "pool", "rate", "tune", "start", "end"]
         )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -41,6 +42,20 @@ class BankView(QWidget):
         layout = QVBoxLayout(self)
         layout.addLayout(head)
         layout.addWidget(self.table)
+
+    @staticmethod
+    def _tune_text(slot) -> str:
+        """Musical transposition, with rate compensation removed.
+
+        The stored field mixes two concerns; the number a user means by
+        "transpose" is the one with the rate compensation taken back out. An
+        unreadable rate makes the whole calculation meaningless, so say so
+        rather than print a number derived from nonsense.
+        """
+        try:
+            return f"{slot.musical_tune():+.2f}"
+        except InvariantError:
+            return "—"
 
     def bind_bank(self, bank: Bank | None) -> None:
         self._bank = bank
@@ -69,12 +84,15 @@ class BankView(QWidget):
         self.table.setRowCount(len(occupied))
         for row, s in enumerate(occupied):
             pool = "stereo" if s.stereo else "mono"
-            rate = "—" if s.stereo else str(s.sample_rate)
+            # The stereo rate offset was unconfirmed until 2026-08-23, when the
+            # 40 populated stereo slots in Chronic-Interactive.esx settled it.
+            # Both pools now read their real rate (see codec/layout.py).
             vals = (
                 str(s.index),
                 s.name,
                 pool,
-                rate,
+                str(s.sample_rate),
+                self._tune_text(s),
                 f"0x{s.offset_start:X}",
                 f"0x{s.offset_end:X}",
             )

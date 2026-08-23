@@ -39,10 +39,12 @@ from PySide6.QtWidgets import (
 
 import codec.layout as L
 from codec.errors import CodecError
+from core.errors import InvariantError
 from ui.theme import PALETTE, TYPE
 from ui.views.staging_view import StagingView
 from ui.widgets.budget_meter import BudgetMeter
 from workspace.budget import CAPACITY, BudgetCalculator
+from workspace.errors import StagingBlockedError
 from workspace.naming import CAMELOT, pack_slot_name
 
 NAME_STYLES = (
@@ -415,19 +417,29 @@ class SlotAssignmentPage(SkippablePage):
         self.reason(
             "Mono samples occupy 256 slots, stereo 128 — separate header tables "
             "at separate offsets, so a stereo file cannot borrow a free mono slot. "
-            "Committing PCM into a slot lands with the staging workflow "
-            "(Bank.commit_sample still raises NotImplementedError); this screen "
-            "shows what would be written, and nothing is written yet."
+            "Committing writes the audio into the bank's PCM region at the next "
+            "free position and fills in the slot header; nothing already in the "
+            "bank moves, so no existing sample's offsets are invalidated."
         )
         self.pools = _lcd("")
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["staged file", "packed name", "pool"])
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(
+            ["staged file", "packed name", "pool", "target slot"]
+        )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.commit_button = QPushButton("Commit staged samples to the bank")
+        self.commit_button.clicked.connect(self.commit)
+        self.status = _lcd("")
+        row = QHBoxLayout()
+        row.addWidget(self.commit_button)
+        row.addStretch(1)
         self.layout.addWidget(self.pools)
         self.layout.addWidget(self.table, 1)
+        self.layout.addLayout(row)
+        self.layout.addWidget(self.status)
 
     def free_slots(self) -> tuple[int, int]:
         """(free mono, free stereo) in the open bank; full pools when none open."""
@@ -439,21 +451,68 @@ class SlotAssignmentPage(SkippablePage):
         stereo = sum(1 for s in samples[L.NUM_SAMPLES_MONO :] if s.empty)
         return mono, stereo
 
+    def targets(self) -> tuple[int, ...]:
+        """The slots the staged samples would be written into."""
+        bank = self._ctx.session.bank
+        staging = self._ctx.staging_bank
+        if bank is None or staging is None:
+            return ()
+        return staging.next_free_slots(bank, len(staging.samples()))
+
+    def commit(self) -> int:
+        """Write every staged sample into the bank. Returns how many landed."""
+        bank = self._ctx.session.bank
+        staging = self._ctx.staging_bank
+        if bank is None:
+            self.status.setText("No bank open — open one on screen 1 first.")
+            return 0
+        staged = staging.samples() if staging else ()
+        if not staged:
+            self.status.setText("Nothing staged — add samples on screen 3.")
+            return 0
+        targets = self.targets()
+        if len(targets) < len(staged):
+            self.status.setText(
+                f"Only {len(targets)} free mono slot(s) for {len(staged)} sample(s)."
+            )
+            return 0
+        try:
+            filled = staging.commit_to(bank, list(zip(staged, targets, strict=False)))
+        except (StagingBlockedError, InvariantError) as exc:
+            self.status.setText(f"Commit refused: {exc}")
+            return 0
+        self._ctx.session.mark_dirty()
+        self._ctx.notify_changed()
+        self.refresh()
+        used = bank.pcm_used_bytes()
+        self.status.setText(
+            f"Committed {len(filled)} sample(s) into slot(s) "
+            f"{', '.join(str(i) for i in filled)}. "
+            f"{used:,} B of {CAPACITY:,} B now used. "
+            "Nothing is on disk until screen 11 writes the bank."
+        )
+        return len(filled)
+
     def refresh(self) -> None:
         mono, stereo = self.free_slots()
         self.pools.setText(
             f"free mono {mono}/{L.NUM_SAMPLES_MONO}   "
-            f"free stereo {stereo}/{L.NUM_SAMPLES_STEREO}   "
-            "— commit-to-slot lands with the staging workflow."
+            f"free stereo {stereo}/{L.NUM_SAMPLES_STEREO}"
         )
         staged = self._ctx.staged_samples()
+        targets = self.targets()
+        self.commit_button.setEnabled(
+            bool(staged) and self._ctx.session.bank is not None
+        )
         self.table.setRowCount(len(staged))
         for row, s in enumerate(staged):
             channels = s.spec.channels if s.spec is not None else 1
+            target = str(targets[row]) if row < len(targets) else "— no free slot —"
             vals = (
                 os.path.basename(s.source_path),
                 s.slot_name(),
                 "stereo" if channels > 1 else "mono",
+                target,
             )
             for col, text in enumerate(vals):
                 self.table.setItem(row, col, QTableWidgetItem(text))

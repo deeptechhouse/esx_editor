@@ -74,13 +74,25 @@ def test_bank_view_counts_pools_separately(qapp, bank) -> None:
     assert f"/{L.NUM_SAMPLES_MONO}" in text and f"/{L.NUM_SAMPLES_STEREO}" in text
 
 
-def test_bank_view_hides_unconfirmed_stereo_rate(qapp, bank) -> None:
-    """Stereo sample-rate offset is unconfirmed — the view must print '—'."""
+def test_bank_view_shows_the_verified_stereo_rate(qapp, stereo_bank) -> None:
+    """Stereo rate was printed as "—" while its offset was unconfirmed.
+
+    The 40 populated stereo slots in Chronic-Interactive.esx settled it on
+    2026-08-23, so both pools now show a real rate. A vacuous version of this
+    test passed for weeks because the default fixture bank has no stereo rows —
+    hence the explicit stereo_bank fixture.
+    """
     v = BankView()
-    v.bind_bank(bank)
-    for row in range(v.table.rowCount()):
-        if v.table.item(row, 2).text() == "stereo":
-            assert v.table.item(row, 3).text() == "—"
+    v.bind_bank(stereo_bank)
+    stereo_rows = [
+        r for r in range(v.table.rowCount()) if v.table.item(r, 2).text() == "stereo"
+    ]
+    assert stereo_rows, "the stereo_bank fixture guarantees these exist"
+    for row in stereo_rows:
+        rate = int(v.table.item(row, 3).text())
+        assert L.MIN_IMPORT_RATE_HZ <= rate <= L.MAX_IMPORT_RATE_HZ
+        # Imported material carries pure rate compensation.
+        assert abs(float(v.table.item(row, 4).text())) < 0.05
 
 
 def test_bank_view_unbinds_cleanly(qapp, bank) -> None:

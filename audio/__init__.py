@@ -13,6 +13,7 @@ caller.
 """
 
 from .passthrough import NullKeyDetector, WavPassthroughConverter
+from .pcm import WavPcmReader, fold_to_mono, split_stereo, swap_endianness
 from .ports import (
     AudioConverter,
     ConversionSpec,
@@ -29,4 +30,8 @@ __all__ = [
     "ConversionSpec",
     "WavPassthroughConverter",
     "NullKeyDetector",
+    "WavPcmReader",
+    "swap_endianness",
+    "fold_to_mono",
+    "split_stereo",
 ]

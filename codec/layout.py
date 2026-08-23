@@ -163,6 +163,71 @@ PATTERN_NAME_LEN = 8
 SAMPLE_NAME_LEN = 8
 
 # ---------------------------------------------------------------------------
+# Sample header field offsets, within one header chunk.
+# ---------------------------------------------------------------------------
+# MONO (40 B) -- VERIFIED in Spike A.
+SMP_OFF_NAME = 0
+SMP_OFF_CH1_START = 8
+SMP_OFF_CH1_END = 12
+MONO_OFF_START = 16
+MONO_OFF_END = 20
+MONO_OFF_LOOP_START = 24
+MONO_OFF_SAMPLE_RATE = 28
+MONO_OFF_SAMPLE_TUNE = 32
+MONO_OFF_PLAY_LEVEL = 34
+MONO_OFF_STRETCH_STEP = 36
+
+# STEREO (44 B) -- VERIFIED 2026-08-23 against the 40 populated stereo slots in
+# corpus/Chronic-Interactive.esx.
+#
+#   CORRECTION TO TDD 2.3. The TDD inferred this layout from BLANK slots only
+#   and inserted a loopStart field at 32, pushing sampleRate to 36 and
+#   sampleTune to 40. Real data says otherwise. Evidence, all 40/40:
+#     - u32@32 is a legal import rate (32000); u32@36 is 2,234,974,208, which
+#       is not a rate under any reading (0/40).
+#     - u16@36 decodes via the VERIFIED tune packing to -5.55 semitones, and
+#       12*log2(32000/44100) = -5.55. The tune field independently confirms
+#       the rate field's position, since one is derived from the other.
+#     - ch2start == align_up(ch1end + 2, 4) and len(ch1) == len(ch2).
+#     - Across the whole bank, 180 PCM ranges (100 mono + 2x40 stereo) tile
+#       with zero overlaps and 179/179 follow the allocation rule.
+#   There is no loopStart in the stereo header; the extra 4 bytes over the
+#   mono header are the second channel-offset pair, not a loop point.
+STEREO_OFF_CH2_START = 16
+STEREO_OFF_CH2_END = 20
+STEREO_OFF_START = 24
+STEREO_OFF_END = 28
+STEREO_OFF_SAMPLE_RATE = 32
+STEREO_OFF_SAMPLE_TUNE = 36
+STEREO_OFF_PLAY_LEVEL = 38
+
+# Sample tune packing -- VERIFIED (TDD 2.3).
+#   bit 15   : sign
+#   bits 8-14: whole semitones (0..127)
+#   bits 0-7 : hundredths (0..99)
+# The stored value carries rate compensation: 12*log2(rate/44100) plus any
+# musical offset the user dialled in.
+TUNE_SIGN_BIT = 0x8000
+TUNE_SEMITONE_SHIFT = 8
+TUNE_SEMITONE_MASK = 0x7F
+TUNE_HUNDREDTHS_MASK = 0xFF
+
+# PCM allocation -- VERIFIED across 279 factory + user samples, and again
+# across the 180 ranges of Chronic-Interactive.esx.
+#   next_start    = align_up(previous_end + 2, 4)
+#   currentOffset = align_up(highest_end + 2, 4), or 0 when no sample exists
+PCM_ALIGN = 4
+PCM_GAP = 2
+
+# PCM trailer -- VERIFIED 2026-08-23 on all four corpus banks. The PCM region
+# is always exactly currentOffset + 16 bytes, and bytes 4..7 of the trailing 16
+# are a big-endian copy of currentOffset. The remaining 12 bytes were identical
+# across all three machine-written banks.
+PCM_TRAILER_LEN = 16
+PCM_TRAILER_OFF_CURRENT = 4
+PCM_TRAILER_DEFAULT = bytes.fromhex("80007fff00000000017ffffe00ffffff")
+
+# ---------------------------------------------------------------------------
 # Unknown regions -- preserved verbatim, never interpreted.
 # Each entry is (name, start, end) where end is exclusive.
 # The end of each is the start of the next known region.

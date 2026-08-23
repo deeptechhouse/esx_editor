@@ -49,6 +49,9 @@ class BankWriter:
         for pattern in bank.patterns():
             out += pattern.to_bytes()
         out += raw.get("mid")
+        out += raw.get("magic2")
+        out += bank.sample_area.to_bytes()
+        out += raw.get("hdr_gap")
 
         samples = bank.samples()
         for slot in samples[: L.NUM_SAMPLES_MONO]:

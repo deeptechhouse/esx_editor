@@ -23,11 +23,14 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import Sequence
 
+import codec.layout as L
 from audio.ports import AudioConverter, ConversionSpec, KeyDetector, KeyResult
+from core.errors import InvariantError
 from workspace.budget import BudgetCalculator
 from workspace.errors import StagingBlockedError
-from workspace.limits import SampleLimitPolicy, Severity
+from workspace.limits import Finding, SampleLimitPolicy, Severity
 from workspace.naming import pack_slot_name
 from workspace.naming import staging_filename as _staging_filename
 
@@ -236,6 +239,95 @@ class StagingBank:
 
     def samples(self) -> tuple[StagingSample, ...]:
         return tuple(self._samples)
+
+    def commit_to(
+        self,
+        bank,
+        assignments: Sequence[tuple[StagingSample, int]],
+        *,
+        reader=None,
+    ) -> tuple[int, ...]:
+        """Write staged samples into a Bank's slots. Returns the slots filled.
+
+        ALL-OR-NOTHING
+            Every sample is decoded and every slot checked BEFORE the first
+            byte is committed, so a failure half-way through cannot leave the
+            bank with three of five samples in it and a cursor nobody can
+            reason about. The bank is mutated only once everything is known
+            to be placeable.
+
+        The audio is read through a PcmReader, so the little-endian WAV becomes
+        the big-endian form the file stores (see audio.pcm).
+        """
+        from audio.pcm import WavPcmReader
+
+        pcm_reader = reader or WavPcmReader()
+        prepared: list[tuple[int, bytes, int, str]] = []
+        free = {i for i, slot in enumerate(bank.samples()) if slot.empty}
+        budget = bank.pcm_free_bytes()
+
+        for sample, slot_index in assignments:
+            if slot_index not in free:
+                raise StagingBlockedError(
+                    (
+                        Finding(
+                            Severity.BLOCK,
+                            "slot_unavailable",
+                            f"slot {slot_index} is already occupied or already "
+                            "claimed by another sample in this batch",
+                        ),
+                    )
+                )
+            if sample.converted_path is None or sample.spec is None:
+                raise StagingBlockedError(
+                    (
+                        Finding(
+                            Severity.BLOCK,
+                            "not_staged",
+                            f"{os.path.basename(sample.source_path)} has not been "
+                            "converted yet",
+                        ),
+                    )
+                )
+            block, source_rate, _channels = pcm_reader.read(
+                sample.converted_path, channels=1
+            )
+            if not isinstance(block, bytes):  # pragma: no cover - channels=1
+                raise InvariantError("a mono read must return a single block")
+            pcm = block
+            # The passthrough converter copies rather than resamples, so the
+            # stored rate must be the rate the bytes are actually AT, not the
+            # tier that was requested. Writing the requested rate would make
+            # the hardware's pitch compensation wrong by exactly the ratio.
+            budget -= len(pcm)
+            if budget < 0:
+                raise StagingBlockedError(
+                    (
+                        Finding(
+                            Severity.BLOCK,
+                            "exceeds_capacity",
+                            f"the batch needs more than the {bank.pcm_free_bytes():,} B "
+                            "free in this bank",
+                        ),
+                    )
+                )
+            prepared.append((slot_index, pcm, source_rate, sample.slot_name()))
+            free.discard(slot_index)
+
+        for slot_index, pcm, rate, name in prepared:
+            bank.commit_sample(
+                slot_index, pcm, stereo=False, sample_rate=rate, name=name
+            )
+        return tuple(index for index, _, _, _ in prepared)
+
+    def next_free_slots(self, bank, count: int) -> tuple[int, ...]:
+        """The first `count` free MONO slots in `bank`, in order."""
+        free = [
+            i
+            for i, slot in enumerate(bank.samples()[: L.NUM_SAMPLES_MONO])
+            if slot.empty
+        ]
+        return tuple(free[:count])
 
     def clear(self) -> None:
         """Reset the staging bank and remove converted copies."""

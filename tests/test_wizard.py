@@ -275,7 +275,8 @@ def test_slot_page_reports_free_pools_separately(qapp, opened) -> None:
     samples = opened.bank.samples()
     assert mono == sum(1 for s in samples[: L.NUM_SAMPLES_MONO] if s.empty)
     assert stereo == sum(1 for s in samples[L.NUM_SAMPLES_MONO :] if s.empty)
-    assert "commit-to-slot lands with the staging workflow" in page.pools.text()
+    assert f"/{L.NUM_SAMPLES_MONO}" in page.pools.text()
+    assert f"/{L.NUM_SAMPLES_STEREO}" in page.pools.text()
 
 
 def test_slot_page_full_pools_with_no_bank(qapp) -> None:
@@ -523,3 +524,104 @@ def test_validate_page_ready_message_names_the_target(qapp, opened) -> None:
     page = wiz.page_at(10)
     page.refresh()
     assert opened.path in page.status.text()
+
+
+# -- 7 Slot assignment: the commit path ---------------------------------------
+def test_slot_page_commits_staged_samples_into_the_bank(qapp, tmp_path) -> None:
+    """The screen that finally does the thing the app exists for."""
+    from codec.reader import BankReader
+    from tests.synthetic import build as build_bank
+
+    session = BankSession()
+    session._bank = BankReader().read_auto(build_bank(num_mono=0, pcm_bytes=16))
+    model = make_staging(tmp_path)
+    model.add(make_wav(str(tmp_path / "kick.wav")), ConversionSpec(44100, 1))
+    model.add(make_wav(str(tmp_path / "snare.wav")), ConversionSpec(44100, 1))
+
+    wiz = SetupWizard(session, staging_bank=model)
+    page = wiz.page_at(6)
+    page.refresh()
+    assert page.targets() == (0, 1)
+    assert page.commit_button.isEnabled()
+
+    assert page.commit() == 2
+    bank = session.bank
+    assert bank.sample_area_header()[:2] == (2, 0)
+    assert not bank.samples()[0].empty and not bank.samples()[1].empty
+    assert session.dirty is True
+    assert "Committed 2 sample(s)" in page.status.text()
+    assert "Nothing is on disk" in page.status.text()
+
+
+def test_slot_page_commit_survives_a_write_and_reread(qapp, tmp_path) -> None:
+    from codec.reader import BankReader
+    from tests.synthetic import build as build_bank
+
+    session = BankSession()
+    session._bank = BankReader().read_auto(build_bank(num_mono=0, pcm_bytes=16))
+    model = make_staging(tmp_path)
+    model.add(make_wav(str(tmp_path / "tom.wav")), ConversionSpec(44100, 1))
+
+    wiz = SetupWizard(session, staging_bank=model)
+    assert wiz.page_at(6).commit() == 1
+
+    final = wiz.page_at(10)
+    assert final.run_validate() == 0, "a committed bank must stay coherent"
+    dest = str(tmp_path / "committed.esx")
+    assert final.run_write(dest) is True
+
+    reread = BankReader().read_file(dest)
+    assert reread.sample_area_header()[:2] == (1, 0)
+    slot = reread.samples()[0]
+    assert not slot.empty
+    assert slot.sample_rate == 44100
+    assert slot.offset_end > slot.offset_start
+
+
+def test_slot_page_refuses_when_nothing_is_staged(qapp) -> None:
+    from codec.reader import BankReader
+    from tests.synthetic import build as build_bank
+
+    session = BankSession()
+    session._bank = BankReader().read_auto(build_bank(num_mono=0, pcm_bytes=16))
+    wiz = build(session)
+    page = wiz.page_at(6)
+    page.refresh()
+    assert page.commit() == 0
+    assert "Nothing staged" in page.status.text()
+    assert not page.commit_button.isEnabled()
+
+
+def test_slot_page_refuses_with_no_bank_open(qapp, tmp_path) -> None:
+    model = make_staging(tmp_path)
+    model.add(make_wav(str(tmp_path / "x.wav")), ConversionSpec(44100, 1))
+    wiz = SetupWizard(BankSession(), staging_bank=model)
+    page = wiz.page_at(6)
+    page.refresh()
+    assert page.commit() == 0
+    assert "No bank open" in page.status.text()
+
+
+def test_slot_page_refuses_when_there_are_too_few_free_slots(qapp, tmp_path) -> None:
+    """A full bank must say so, not commit a partial batch."""
+    from codec.reader import BankReader
+    from tests.synthetic import build as build_bank
+
+    session = BankSession()
+    bank = BankReader().read_auto(build_bank(num_mono=0, pcm_bytes=16))
+    session._bank = bank
+    model = make_staging(tmp_path)
+    for i in range(3):
+        model.add(make_wav(str(tmp_path / f"m{i}.wav")), ConversionSpec(44100, 1))
+
+    wiz = SetupWizard(session, staging_bank=model)
+    page = wiz.page_at(6)
+    # Only one free slot: fill every other mono slot first.
+    for i in range(1, L.NUM_SAMPLES_MONO):
+        bank.commit_sample(
+            i, b"\x00" * 4, stereo=False, sample_rate=44100, name=f"F{i}"
+        )
+    page.refresh()
+    assert page.commit() == 0
+    assert "Only 1 free mono slot" in page.status.text()
+    assert bank.sample_area_header()[0] == L.NUM_SAMPLES_MONO - 1

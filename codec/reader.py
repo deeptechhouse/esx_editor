@@ -10,8 +10,13 @@ CONTRACT
 DECOMPOSITION (guarantees byte-identity with codec.writer)
     pre    = [0x0 .. ADDR_PATTERN_DATA)   magic + globals + unknown_1
     patterns x256
-    mid    = [pat_end .. ADDR_SAMPLE_HEADER_MONO)   unknown_2 + songs +
-             song_events + unknown_3 + magic_2 + counts  (verbatim)
+    mid    = [pat_end .. ADDR_MAGIC_2)   unknown_2 + songs + song_events +
+             unknown_3  (verbatim)
+    magic2 = [ADDR_MAGIC_2 .. ADDR_NUM_MONO_SAMPLES)   (verbatim)
+    counts = [ADDR_NUM_MONO_SAMPLES .. +12)   DECODED into Bank.sample_area:
+             num_mono, num_stereo, currentOffset. Decoded rather than kept
+             verbatim because committing a sample must update them.
+    hdr_gap= [counts_end .. ADDR_SAMPLE_HEADER_MONO)   (verbatim)
     mono   sample headers x256
     stereo sample headers x128
     tail   = [stereo_end .. ADDR_SAMPLE_DATA)   unknown_4 + slices + unknown_5
@@ -27,7 +32,7 @@ from __future__ import annotations
 
 import codec.layout as L
 from codec.errors import FormatError
-from core.bank import SAVE_ALL, SAVE_PSG, Bank, RawRegions
+from core.bank import SAVE_ALL, SAVE_PSG, Bank, RawRegions, SampleArea
 from core.global_params import GlobalParameters
 from core.pattern import Pattern
 from core.sample import SampleSlot
@@ -89,17 +94,22 @@ class BankReader:
                 )
             )
 
+        counts_at = L.ADDR_NUM_MONO_SAMPLES
+        counts_end = counts_at + 12
         raw = RawRegions(
             {
                 "magic": data[L.ADDR_MAGIC_1 : L.ADDR_GLOBAL_PARAMETERS],
                 "unknown_1": data[L.ADDR_UNKNOWN_1 : L.ADDR_PATTERN_DATA],
-                "mid": data[pat_end : L.ADDR_SAMPLE_HEADER_MONO],
+                "mid": data[pat_end : L.ADDR_MAGIC_2],
+                "magic2": data[L.ADDR_MAGIC_2 : counts_at],
+                "hdr_gap": data[counts_end : L.ADDR_SAMPLE_HEADER_MONO],
                 "gap_hdr": data[mono_end : L.ADDR_SAMPLE_HEADER_STEREO],
                 "tail": data[stereo_end : L.ADDR_SAMPLE_DATA],
             }
         )
+        sample_area = SampleArea.from_bytes(data[counts_at:counts_end])
         pcm = data[L.ADDR_SAMPLE_DATA :]
-        return Bank(globals_, patterns, [], samples, pcm, raw, SAVE_ALL)
+        return Bank(globals_, patterns, [], samples, pcm, raw, SAVE_ALL, sample_area)
 
     def read_psg(self, data: bytes) -> Bank:
         """Parse a Save-PSG image (no sample area) into a Bank.

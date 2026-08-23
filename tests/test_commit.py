@@ -1,0 +1,317 @@
+"""
+Committing a sample into a bank — the thing the app exists to do.
+
+Until now the staging bank could cost and name a sample but not put it
+anywhere: `Bank.commit_sample` raised. These tests cover the allocation rule,
+every refusal path, and the two bookkeeping fields a commit has to keep
+consistent (the sample-area counts and the PCM trailer).
+
+They also pin the stereo header layout, which was established from real data on
+2026-08-23 and CORRECTS the TDD — see codec/layout.py for the evidence.
+"""
+
+from __future__ import annotations
+
+import struct
+
+import pytest
+
+import codec.layout as L
+from codec.reader import BankReader
+from codec.validator import BankValidator
+from codec.writer import BankWriter
+from core.errors import InvariantError
+from tests.synthetic import build
+
+
+def empty_bank(pcm_bytes: int = 16):
+    return BankReader().read_auto(build(num_mono=0, pcm_bytes=pcm_bytes))
+
+
+def loaded_bank(num_mono: int = 3):
+    return BankReader().read_auto(build(num_mono=num_mono))
+
+
+# -- the happy path -----------------------------------------------------------
+def test_commit_writes_pcm_header_and_counts() -> None:
+    bank = empty_bank()
+    payload = bytes(range(256)) * 4
+    bank.commit_sample(0, payload, stereo=False, sample_rate=44100, name="KICK01")
+
+    slot = bank.samples()[0]
+    assert not slot.empty
+    assert slot.name.strip() == "KICK01"
+    assert slot.sample_rate == 44100
+    assert bytes(bank.pcm[slot.offset_start : slot.offset_end]) == payload
+    assert bank.sample_area_header()[:2] == (1, 0)
+
+
+def test_commit_follows_the_verified_allocation_rule() -> None:
+    """next_start = align_up(previous_end + 2, 4)."""
+    bank = empty_bank()
+    first = b"\x01\x02" * 501  # 1002 B — deliberately not 4-aligned
+    second = b"\x03\x04" * 10
+    bank.commit_sample(0, first, stereo=False, sample_rate=44100, name="A")
+    bank.commit_sample(1, second, stereo=False, sample_rate=44100, name="B")
+
+    a, b = bank.samples()[0], bank.samples()[1]
+    assert a.offset_start == 0 and a.offset_end == len(first)
+    expected = -(-(a.offset_end + L.PCM_GAP) // L.PCM_ALIGN) * L.PCM_ALIGN
+    assert b.offset_start == expected
+    assert b.offset_start % L.PCM_ALIGN == 0
+    assert b.offset_start - a.offset_end in (2, 3, 4)
+    assert bytes(bank.pcm[b.offset_start : b.offset_end]) == second
+
+
+def test_commit_defaults_the_tune_to_rate_compensation() -> None:
+    """A 32 kHz sample must play at natural pitch, as the hardware writes it."""
+    bank = empty_bank()
+    bank.commit_sample(0, b"\x00" * 100, stereo=False, sample_rate=32000, name="X")
+    slot = bank.samples()[0]
+    assert abs(slot.musical_tune()) < 0.01
+    assert abs(slot.stored_tune - slot.rate_compensation()) < 0.01
+    assert slot.stored_tune < 0, "a sub-44.1k sample is tuned down"
+
+
+def test_commit_can_carry_a_musical_transposition() -> None:
+    bank = empty_bank()
+    bank.commit_sample(
+        0, b"\x00" * 100, stereo=False, sample_rate=44100, name="X", musical_tune=7.0
+    )
+    assert abs(bank.samples()[0].musical_tune() - 7.0) < 0.01
+
+
+def test_commit_keeps_the_trailer_consistent() -> None:
+    """The PCM region is currentOffset + 16, and the trailer mirrors it."""
+    bank = empty_bank()
+    bank.commit_sample(0, b"\x00" * 400, stereo=False, sample_rate=44100, name="X")
+    _, _, cursor = bank.sample_area_header()
+    assert len(bank.pcm) == cursor + L.PCM_TRAILER_LEN
+    mirrored = struct.unpack_from(">I", bank.pcm, cursor + L.PCM_TRAILER_OFF_CURRENT)[0]
+    assert mirrored == cursor
+
+
+def test_a_committed_bank_validates_and_round_trips() -> None:
+    bank = empty_bank()
+    bank.commit_sample(0, b"\x11" * 512, stereo=False, sample_rate=44100, name="A")
+    bank.commit_sample(5, b"\x22" * 300, stereo=False, sample_rate=22050, name="B")
+    assert BankValidator().validate(bank).ok
+
+    data = BankWriter().write(bank)
+    again = BankReader().read_auto(data)
+    assert BankWriter().write(again) == data
+    assert again.samples()[5].name.strip() == "B"
+    assert (
+        bytes(
+            again.pcm[again.samples()[5].offset_start : again.samples()[5].offset_end]
+        )
+        == b"\x22" * 300
+    )
+
+
+# -- refusals -----------------------------------------------------------------
+def test_commit_refuses_an_occupied_slot() -> None:
+    bank = loaded_bank()
+    with pytest.raises(InvariantError, match="occupied"):
+        bank.commit_sample(0, b"\x00" * 10, stereo=False, sample_rate=44100, name="X")
+
+
+def test_commit_refuses_the_wrong_pool() -> None:
+    """Mono and stereo are separate header tables; a slot cannot be borrowed."""
+    bank = empty_bank()
+    with pytest.raises(InvariantError, match="mono slot"):
+        bank.commit_sample(0, b"\x00" * 10, stereo=True, sample_rate=44100, name="X")
+    with pytest.raises(InvariantError, match="stereo slot"):
+        bank.commit_sample(
+            L.NUM_SAMPLES_MONO, b"\x00" * 10, stereo=False, sample_rate=44100, name="X"
+        )
+
+
+def test_commit_refuses_an_out_of_range_rate() -> None:
+    bank = empty_bank()
+    for rate in (0, 8000, 192000):
+        with pytest.raises(InvariantError, match="rate"):
+            bank.commit_sample(
+                0, b"\x00" * 10, stereo=False, sample_rate=rate, name="X"
+            )
+
+
+def test_commit_refuses_an_odd_pcm_length() -> None:
+    """16-bit frames are always an even byte count."""
+    bank = empty_bank()
+    with pytest.raises(InvariantError, match="even"):
+        bank.commit_sample(0, b"\x00" * 11, stereo=False, sample_rate=44100, name="X")
+
+
+def test_commit_refuses_to_exceed_capacity_and_changes_nothing() -> None:
+    bank = empty_bank()
+    before = bytes(bank.pcm)
+    too_big = b"\x00" * (L.MAX_SAMPLE_BYTES + 2)
+    with pytest.raises(InvariantError, match="exceeds free space"):
+        bank.commit_sample(0, too_big, stereo=False, sample_rate=44100, name="X")
+    assert bank.samples()[0].empty
+    assert bytes(bank.pcm) == before
+    assert bank.sample_area_header()[:2] == (0, 0)
+
+
+def test_commit_refuses_a_bad_slot_index() -> None:
+    bank = empty_bank()
+    for index in (-1, L.NUM_SAMPLES):
+        with pytest.raises(InvariantError, match="out of range"):
+            bank.commit_sample(
+                index, b"\x00" * 10, stereo=False, sample_rate=44100, name="X"
+            )
+
+
+# -- clear and compact --------------------------------------------------------
+def test_clear_empties_the_slot_and_updates_the_count() -> None:
+    bank = loaded_bank(num_mono=3)
+    assert bank.sample_area_header()[0] == 3
+    bank.clear_sample(1)
+    assert bank.samples()[1].empty
+    assert bank.sample_area_header()[0] == 2
+    assert BankValidator().validate(bank).ok
+
+
+def test_clear_does_not_reclaim_pcm() -> None:
+    """Reclaiming would relocate every later sample — a delete must not do that."""
+    bank = loaded_bank(num_mono=3)
+    third_start = bank.samples()[2].offset_start
+    bank.clear_sample(0)
+    assert bank.samples()[2].offset_start == third_start
+
+
+def test_compact_reclaims_the_gap_and_keeps_the_audio() -> None:
+    bank = empty_bank()
+    a, b = b"\xaa" * 1000, b"\xbb" * 600
+    bank.commit_sample(0, a, stereo=False, sample_rate=44100, name="A")
+    bank.commit_sample(1, b, stereo=False, sample_rate=44100, name="B")
+    bank.clear_sample(0)
+
+    freed = bank.compact_pcm()
+    assert freed > 0
+    slot = bank.samples()[1]
+    assert slot.offset_start == 0
+    assert bytes(bank.pcm[slot.offset_start : slot.offset_end]) == b
+    assert BankValidator().validate(bank).ok
+    data = BankWriter().write(bank)
+    assert BankWriter().write(BankReader().read_auto(data)) == data
+
+
+def test_compact_refuses_a_bank_with_stereo_samples(stereo_bank) -> None:
+    """Two ranges per slot that must stay adjacent — not worth guessing at."""
+    with pytest.raises(InvariantError, match="stereo"):
+        stereo_bank.compact_pcm()
+
+
+# -- the stereo layout, established from real data ----------------------------
+@pytest.mark.corpus
+def test_stereo_header_layout_is_verified_against_real_slots(stereo_bank) -> None:
+    """CORRECTS TDD §2.3, which inferred this from blank slots only.
+
+    The TDD placed a loopStart at 32, pushing sampleRate to 36 and sampleTune
+    to 40. Real populated stereo slots say the rate is at 32 and the tune at
+    36, with no loopStart at all.
+    """
+    stereo = [s for s in stereo_bank.samples()[L.NUM_SAMPLES_MONO :] if not s.empty]
+    assert stereo, "the stereo_bank fixture guarantees these exist"
+
+    for slot in stereo:
+        raw = slot.to_bytes()
+        assert len(raw) == L.CHUNK_SAMPLE_HEADER_STEREO == 44
+
+        # The rate field is a legal import rate...
+        assert L.MIN_IMPORT_RATE_HZ <= slot.sample_rate <= L.MAX_IMPORT_RATE_HZ
+        # ...and the TDD's claimed rate position is not.
+        claimed = struct.unpack_from(">I", raw, 36)[0]
+        assert not (L.MIN_IMPORT_RATE_HZ <= claimed <= L.MAX_IMPORT_RATE_HZ)
+
+        # The tune field independently confirms the rate field's position:
+        # one is derived from the other.
+        assert abs(slot.stored_tune - slot.rate_compensation()) < 0.02
+
+        # Both channels, same length, following the allocation rule.
+        ch2 = slot.channel2_range
+        assert ch2 is not None
+        assert (slot.offset_end - slot.offset_start) == (ch2[1] - ch2[0])
+        expected = -(-(slot.offset_end + L.PCM_GAP) // L.PCM_ALIGN) * L.PCM_ALIGN
+        assert ch2[0] == expected
+
+
+@pytest.mark.corpus
+def test_no_pcm_range_in_a_real_bank_overlaps_another(bank) -> None:
+    """Counts channel 2 as well — missing it is what made commit overwrite it."""
+    ranges = []
+    for slot in bank.samples():
+        if slot.empty:
+            continue
+        ranges.append((slot.offset_start, slot.offset_end))
+        if slot.channel2_range:
+            ranges.append(slot.channel2_range)
+    ranges.sort()
+    for i in range(len(ranges) - 1):
+        assert ranges[i][1] <= ranges[i + 1][0], f"overlap at {ranges[i]}"
+
+
+@pytest.mark.corpus
+def test_the_pcm_trailer_mirrors_current_offset(bank) -> None:
+    _, _, cursor = bank.sample_area_header()
+    pcm = bank.pcm
+    if cursor + L.PCM_TRAILER_LEN > len(pcm):
+        pytest.skip("this bank's currentOffset is stale (e4 has 16/18 bad headers)")
+    assert len(pcm) == cursor + L.PCM_TRAILER_LEN
+    mirrored = struct.unpack_from(">I", pcm, cursor + L.PCM_TRAILER_OFF_CURRENT)[0]
+    assert mirrored == cursor
+
+
+@pytest.mark.corpus
+def test_factory_samples_decode_to_zero_musical_tune(bank) -> None:
+    """Imported material carries pure rate compensation, no transposition."""
+    occupied = [s for s in bank.samples() if not s.empty]
+    if not occupied:
+        pytest.skip("empty bank")
+    tuned = [s for s in occupied if abs(s.musical_tune()) > 0.05]
+    assert len(tuned) <= len(occupied) * 0.1, (
+        f"{len(tuned)}/{len(occupied)} slots have a musical transposition; "
+        "the tune decode is probably wrong"
+    )
+
+
+@pytest.mark.corpus
+def test_commit_into_a_real_bank_corrupts_nothing(coherent_bank) -> None:
+    """The regression that motivated stereo-aware allocation."""
+    bank = coherent_bank
+    snapshot = {}
+    for slot in bank.samples():
+        if slot.empty:
+            continue
+        snapshot[(slot.index, 1)] = bytes(bank.pcm[slot.offset_start : slot.offset_end])
+        if slot.channel2_range:
+            snapshot[(slot.index, 2)] = bytes(bank.pcm[slice(*slot.channel2_range)])
+    if not snapshot:
+        pytest.skip("empty bank")
+
+    free = next(
+        i for i, s in enumerate(bank.samples()[: L.NUM_SAMPLES_MONO]) if s.empty
+    )
+    before_cursor = bank.sample_area_header()[2]
+    payload = b"\x11\x22" * 400
+    bank.commit_sample(free, payload, stereo=False, sample_rate=44100, name="NEWONE")
+
+    assert bank.sample_area_header()[2] > before_cursor, "the cursor must advance"
+    for (index, channel), original in snapshot.items():
+        slot = bank.samples()[index]
+        current = (
+            bytes(bank.pcm[slot.offset_start : slot.offset_end])
+            if channel == 1
+            else bytes(bank.pcm[slice(*slot.channel2_range)])
+        )
+        assert current == original, f"slot {index} channel {channel} was overwritten"
+    assert (
+        bytes(
+            bank.pcm[
+                bank.samples()[free].offset_start : bank.samples()[free].offset_end
+            ]
+        )
+        == payload
+    )

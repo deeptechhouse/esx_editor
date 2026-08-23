@@ -76,6 +76,42 @@ def bank(corpus_path):
     return BankReader().read_file(corpus_path)
 
 
+@pytest.fixture
+def coherent_bank():
+    """The first corpus bank that validates clean, freshly parsed.
+
+    The default `bank` fixture resolves to e4.esx, which round-trips but has
+    16 of 18 sample headers pointing past EOF — deliberately, as a fixture for
+    the refusal paths. Tests that mutate a bank need one that is actually
+    coherent, and a fresh parse so mutations do not leak between tests.
+    """
+    from codec.reader import BankReader
+    from codec.validator import BankValidator
+
+    for path in available_corpus():
+        parsed = BankReader().read_file(path)
+        if BankValidator().validate(parsed).ok:
+            return parsed
+    pytest.skip("no coherent corpus bank available")
+
+
+@pytest.fixture
+def stereo_bank():
+    """The first corpus bank with populated stereo slots, freshly parsed.
+
+    Chronic-Interactive.esx has 40. They are what established the stereo header
+    layout on 2026-08-23 (see codec/layout.py).
+    """
+    import codec.layout as L
+    from codec.reader import BankReader
+
+    for path in available_corpus():
+        parsed = BankReader().read_file(path)
+        if any(s for s in parsed.samples()[L.NUM_SAMPLES_MONO :] if not s.empty):
+            return parsed
+    pytest.skip("no corpus bank with populated stereo slots")
+
+
 def make_wav(
     path: str, seconds: float = 0.05, rate: int = 44100, channels: int = 1
 ) -> str:
