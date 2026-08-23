@@ -120,3 +120,30 @@ Running log of user prompts for this chat session.
 - Wrote `WF6_HUMAN_TESTING.html` (manual test script) and `next_steps/`.
 
 **Awaiting confirmation:** whether to commit WF6, and whether to start WF7.
+
+---
+
+## Prompt 12 — 2026-08-23
+
+> commit WF6, start WF7 and continue to the other phases until all work from the TDD is complete, tested, and ready for human testing
+> *(reaffirmed: "continue working until all items from all phases of the TDD are complete, tested, and ready for human testing")*
+
+**Action taken:** Committed WF6, then ran WF7–WF12 as separate branches and commits.
+
+- **WF7** `eb94c63` — version pins, pyproject/ruff/black/mypy config, property + golden + integration tests, `tests/synthetic.py` (a coherent bank built in memory so CI can run the round-trip gate without the gitignored corpus), CI pipeline, pre-commit hooks, README/NAVIGATION/CHANGELOG. Property tests found a latent bug: 12 motion option counts would have encoded as the Disabl sentinel.
+- **WF8** `bca26c8` — `Bank.commit_sample`, the thing the app existed for and could not do. Required decoding the sample-area header out of a verbatim blob. Three format discoveries: the stereo header layout (**corrects TDD §2.3**), PCM big-endianness confirmed from the audio itself, and the PCM trailer mirroring currentOffset. Found a bug where committing would overwrite a stereo sample's second channel.
+- **WF9** `99f07f4` — ffmpeg and librosa adapters, both optional. Found that this ffmpeg has no libsoxr, that the mode-margin alone cannot reject noise, and that Camelot minor keys were a minor third out.
+- **WF10** `f8b0c7e` — pattern tempo decoded (1/128 BPM); length/beat/last-step proven **undeterminable** from the corpus.
+- **WF11** `ef00410` — part sample numbers (672/672 verified against an independent oracle) and step triggers (LSB-first, settled statistically). Song decoding proven impossible: all 64 songs in all 4 banks are byte-identical blanks.
+- **WF12** `2499b38` — dominant-note detection for material with no key (see prompt 13).
+- **Docs** `635c921`, `e350e87`.
+
+**Result:** 96 → **375 tests**, `codec/` 100%, project 91%, mypy and lint clean, CI green without corpus banks.
+
+---
+
+## Prompt 13 — 2026-08-23
+
+> regarding this "A 15 ms one-shot has no key anyway — better to return None than analyse noise." a noise still has a note correct? due to each frequency corresponding to a note frequency? for each sound that does not have a "key" i would like it to show what "note" it corresponds to
+
+**Action taken:** Correct for essentially all real material, so it was built as its own `PitchDetector` port (`audio/pitch.py`, commit `2499b38`). Key and note are now separate claims: a kick reports no key but a real note (A1, E1…), a chord reports both, and only genuinely broadband material reports neither. Two measured corrections were needed — skipping the attack (percussion is pitch-swept, so measuring the whole sound reads a semitone sharp) and combining frames with a median rather than a mean (mean error 32.7 → 2.4 cents). 12/12 correct on sines, kicks, toms and a snare. Surfaced in the Staging tab and wizard screens 5 and 7.
