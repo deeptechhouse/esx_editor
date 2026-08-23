@@ -1,0 +1,54 @@
+# ESX-1 hardware test session — one sitting
+#
+# Nothing here can be done from a computer. Do it once, do it in order.
+
+## Before you start
+# 1. You already have card backups on disk: corpus/card_backup_2026-08-22/
+#    Copy them somewhere else too. Two copies, two locations.
+# 2. Use a SPARE SmartMedia card if you have one. If not, the backup above
+#    is your undo.
+
+cd /Users/aaandy/_andy_ai_projects_2026/esx_editor
+
+## Generate the graduated test banks
+# Use a COHERENT source. Chronic-Interactive.esx validates clean; e4.esx does
+# not (16 stale headers), so a failure there could not be blamed on the editor.
+SITE=$(~/.venvs/esx/bin/python -c "import site; print(site.getsitepackages()[0])")
+PYTHONPATH="$SITE:$PWD" python3 deploy/make_hw_test_banks.py \
+  --source corpus/Chronic-Interactive.esx --out hw_test
+
+# Copy them to the card root, alongside your existing .esx files.
+# Keep the names short: your card already uses e4.esx / e5.esx.
+# cp hw_test/*.esx /Volumes/<YOUR CARD>/
+
+## On the machine, in this order. STOP at the first one that misbehaves.
+#   t0_identical  byte-identical      -> proves the card/transfer path only
+#   t1_tempo      2-byte field        -> confirms the 1/128 BPM scale
+#   t2_step       1 bit               -> confirms step bit order and origin
+#   t3_sample     1 field             -> confirms the sample-number field
+#   t5_motion     one motion slot     -> confirms motion writes
+#   t4_commit     a whole new sample  -> confirms the entire commit path
+#
+# The generator prints exactly what to look at for each. Write down what you
+# actually see, especially for anything that differs.
+
+## While the device is out, also capture these (research/HARDWARE_CHECKLIST.md)
+# Tag each save's filename with the keyword so the runner routes it:
+#   pitch    - motion-record a PITCH knob sweep across one full pattern
+#   stereo   - get one STEREO sample in, Save All
+#   rename   - SHIFT+WRITE/RENAME, dial through EVERY character, note if # exists
+#   psg      - Global > CARD > Save > PSG (not All)
+#   twicea   - Save All, change nothing
+#   twiceb   - Save All again immediately
+#   fxtypes  - set FX1 to each of the 16 effect types in turn, Save All each time
+#              (or once per type if that is quicker) - this is the only way to
+#              learn which index is which effect
+#
+# Also: load e4.esx itself. It has 16 of 18 sample headers pointing past EOF.
+# Whether the machine loads, refuses, or plays silence decides whether the
+# editor should repair such banks or refuse them.
+
+## After the session
+PYTHONPATH="$SITE:$PWD" python3 spike_a/esx_probe.py verify   corpus/*.esx
+PYTHONPATH="$SITE:$PWD" python3 spike_a/esx_probe.py validate corpus/*.esx
+cd spike_a && python3 hw_session.py     # evaluates the whole batch at once
