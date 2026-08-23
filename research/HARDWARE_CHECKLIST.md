@@ -57,6 +57,30 @@ exists but `commit_sample` refuses stereo until this is done:
 
 ---
 
+## 2b. Save ONE song — BLOCKS a requested feature  **(added 2026-08-23)**
+
+**Why:** "Add patterns to songs" was asked for and cannot be built. The manual
+confirms the machine does it ("You can edit a song by inserting or deleting
+patterns", p.5904), but **all 64 songs in all four corpus banks are
+byte-identical blanks** — zero bytes vary across 256 song blocks. There is no
+signal to decode from, and inventing a song format would write bytes no machine
+has ever produced into a region the writer currently preserves verbatim.
+
+**Do:**
+1. Pick **four** patterns you can identify, far apart and in a memorable order —
+   e.g. `A.01`, `A.20`, `B.03`, `A.51` (indices 0, 19, 66, 50).
+2. Song mode → build a song using exactly those, in that order.
+3. Name it something recognisable, e.g. `SONGTST`.
+4. Save All to card as `song.esx`, and **write down the order you used**.
+
+**Expect:** those four indices to appear, in order, inside the 528-byte song
+block or the 8-byte event area. Because the indices are already known they can
+be searched for directly — four distinct non-adjacent values in a known order is
+about the strongest signal one save can carry. That should give the event format
+almost immediately.
+
+---
+
 ## 3. Displayable character set — affects the slot-naming convention
 
 **Why:** Lowercase round-trips in the file, but those names came from truncated

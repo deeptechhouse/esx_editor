@@ -32,12 +32,32 @@ PYTHONPATH="$SITE:$PWD" python3 deploy/make_hw_test_banks.py \
 # The generator prints exactly what to look at for each. Write down what you
 # actually see, especially for anything that differs.
 
+## HIGHEST VALUE: make a SONG. This is the one blocking a requested feature.
+#
+# "Add patterns to songs" cannot be built because all 64 songs in all four
+# corpus banks are byte-identical blanks - there is nothing to decode from.
+# One saved song fixes that, and a deliberately structured one fixes it fast:
+#
+#   1. Pick FOUR patterns you can identify, ideally far apart and in a
+#      memorable order, e.g.  A.01, A.20, B.03, A.51
+#   2. Song mode -> create a song using exactly those, in that order.
+#   3. Give the song a name you will recognise, e.g. SONGTST
+#   4. Save All to card as  song.esx
+#
+# Why this shape: the pattern indices are already known (A.01=0, A.20=19,
+# B.03=66, A.51=50), so they can be searched for directly in the 528-byte song
+# block and the 8-byte event area. Four distinct, non-adjacent values in a known
+# order is about the strongest signal a single save can carry.
+#
+# Write down the exact patterns and order you used.
+
 ## While the device is out, also capture these (research/HARDWARE_CHECKLIST.md)
 # Tag each save's filename with the keyword so the runner routes it:
 #   pitch    - motion-record a PITCH knob sweep across one full pattern
 #   stereo   - get one STEREO sample in, Save All
 #   rename   - SHIFT+WRITE/RENAME, dial through EVERY character, note if # exists
 #   psg      - Global > CARD > Save > PSG (not All)
+#   song     - a song built from four known patterns (see above)
 #   twicea   - Save All, change nothing
 #   twiceb   - Save All again immediately
 #   fxtypes  - set FX1 to each of the 16 effect types in turn, Save All each time
