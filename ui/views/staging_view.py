@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from audio.passthrough import NullKeyDetector, WavPassthroughConverter
+from audio.factory import detect_capabilities
 from audio.ports import ConversionSpec
 from ui.theme import PALETTE
 from ui.widgets.budget_meter import BudgetMeter
@@ -45,12 +45,16 @@ class StagingView(QWidget):
         """
         super().__init__(parent)
         self.setAcceptDrops(True)
+        # Which backends are live is a property of the machine, not a constant:
+        # ffmpeg is an external binary and librosa an optional dependency, so
+        # the view asks rather than assumes, and tells the user what it got.
+        self.capabilities = detect_capabilities()
         if bank is None:
             session = SessionWorkspace(temp_root=temp_root)
             session.sweep_orphans()
             bank = StagingBank(
-                WavPassthroughConverter(),
-                NullKeyDetector(),
+                self.capabilities.converter,
+                self.capabilities.detector,
                 SampleLimitPolicy(),
                 session,
             )
@@ -62,7 +66,7 @@ class StagingView(QWidget):
         for label, rate in TIERS:
             self._tier.addItem(f"{label} ({rate} Hz)", rate)
         self._list = QListWidget()
-        self._hint = QLabel("Drop WAV files here — originals are never modified.")
+        self._hint = QLabel(self._hint_text())
         self._hint.setStyleSheet(f"color: {PALETTE.muted};")
         add = QPushButton("Add files…")
         add.clicked.connect(self._pick)
@@ -79,6 +83,18 @@ class StagingView(QWidget):
         layout.addLayout(top)
         layout.addWidget(self._hint)
         layout.addWidget(self._list)
+
+    def _hint_text(self) -> str:
+        caps = self.capabilities
+        formats = "audio files" if caps.can_convert_any_format else "WAV files"
+        line = f"Drop {formats} here — originals are never modified."
+        return line + "\n" + "  ·  ".join(caps.notes)
+
+    def accepts(self, path: str) -> bool:
+        """Whether this machine can read `path` at all."""
+        converter = self.capabilities.converter
+        extensions = getattr(converter, "formats", lambda: ("wav",))()
+        return path.lower().rsplit(".", 1)[-1] in extensions
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
@@ -98,12 +114,19 @@ class StagingView(QWidget):
     def add_path(self, path: str) -> None:
         if not path:
             return
-        if not path.lower().endswith(".wav"):
+        if not self.accepts(path):
+            supported = ", ".join(
+                getattr(self.capabilities.converter, "formats", lambda: ("wav",))()
+            )
             QMessageBox.information(
                 self,
-                "WAV only for now",
-                "The passthrough converter reads WAV headers. "
-                "Other formats wait on the ffmpeg adapter.",
+                "Unsupported format",
+                f"This machine can read: {supported}.\n\n"
+                + (
+                    ""
+                    if self.capabilities.can_convert_any_format
+                    else "Install ffmpeg (brew install ffmpeg) to read everything else."
+                ),
             )
             return
         rate = int(self._tier.currentData() or DEFAULT_RATE)

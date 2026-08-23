@@ -37,12 +37,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Audio adapters. ffmpeg is an external binary, not a Python package, so the
-# converter has no entry here — it shells out and is skipped when absent.
+# Audio adapters, all OPTIONAL. ffmpeg is an external binary, not a Python
+# package, so the converter has no entry here — it shells out, and the app
+# degrades to WAV-only when it is absent.
+#
+# These pins are the versions that actually install on the development machine
+# (macOS 12, Intel, CPython 3.13). librosa 0.11 does NOT: it pins an older
+# numba whose llvmlite has no cp313 x86_64 wheel, so pip tries to build it from
+# source and needs an LLVM toolchain. librosa 1.0 resolves to numba 0.62 /
+# llvmlite 0.45, which ship wheels. Install with --only-binary=:all: to keep it
+# that way.
 audio = [
-    "librosa==0.11.0",
-    "soundfile==0.13.1",
-    "numpy==2.2.6",
+    "librosa==1.0.0",
+    "soundfile==0.14.0",
+    "numpy==2.3.5",
 ]
 dev = [
     "pytest==8.4.2",

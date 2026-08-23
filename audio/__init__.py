@@ -12,6 +12,7 @@ satisfy the ports structurally, so swapping in ffmpeg/librosa later touches no
 caller.
 """
 
+from .factory import Capabilities, detect_capabilities
 from .passthrough import NullKeyDetector, WavPassthroughConverter
 from .pcm import WavPcmReader, fold_to_mono, split_stereo, swap_endianness
 from .ports import (
@@ -31,6 +32,8 @@ __all__ = [
     "WavPassthroughConverter",
     "NullKeyDetector",
     "WavPcmReader",
+    "Capabilities",
+    "detect_capabilities",
     "swap_endianness",
     "fold_to_mono",
     "split_stereo",

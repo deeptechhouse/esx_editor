@@ -36,8 +36,19 @@ class WavPassthroughConverter:
                 if rate <= 0:
                     raise ValueError(f"wav {src_path!r} has non-positive rate")
                 return (w.getnframes() / rate, rate, w.getnchannels())
-        except wave.Error as exc:
-            raise ValueError(f"{src_path!r} is not a readable WAV: {exc}") from exc
+        except (wave.Error, EOFError) as exc:
+            # EOFError, not just wave.Error: a TRUNCATED wav (a partial
+            # download, a file still being written) hits the end of the stream
+            # mid-chunk and the wave module raises EOFError, which is not a
+            # subclass of wave.Error. Catching only wave.Error left that path
+            # crashing the app exactly as the original bug did.
+            raise ValueError(
+                f"{src_path!r} is not a readable WAV: {exc or type(exc).__name__}"
+            ) from exc
+
+    def formats(self) -> tuple[str, ...]:
+        """Container extensions this adapter can read: WAV only."""
+        return ("wav",)
 
     def convert(self, src_path: str, dst_path: str, spec: ConversionSpec) -> None:
         shutil.copy2(src_path, dst_path)

@@ -383,3 +383,80 @@ Round-trip re-verified byte-identical on all four corpus banks after the split.
 splitting, 8-bit widening), `StagingBank.commit_to` (all-or-nothing batch), the
 wizard's screen 7 commit button, and the bank view now showing a real stereo
 rate plus musical tune. **297 tests passing**; codec/ 100%, project 92%.
+
+---
+
+## 2026-08-23 — WF9 (real audio adapters: ffmpeg + librosa)
+
+The ports were frozen in WF1 and only the WAV passthrough existed. Both v1
+adapters now ship, and both are OPTIONAL: the app runs, and says what it can do,
+on a machine with neither.
+
+### RESULT
+- `audio/ffmpeg_adapter.py` — header-only probe via ffprobe, conversion via
+  ffmpeg with anti-aliased resampling, triangular dither, and metadata stripped
+  (an inherited `smpl` chunk silently redefines where a sample ENDS, manual
+  p.88). Verified against wav / mp3 / flac / aiff / m4a / ogg.
+- `audio/librosa_adapter.py` — CQT chroma + Krumhansl-Schmuckler, **24/24 exact**
+  on synthesised triad progressions in every key.
+- `audio/factory.py` — probes the machine once and reports what is live.
+- `audio/pcm.py` — endianness, channel folding/splitting, 8-bit widening.
+- Staging and the wizard now use whatever backend exists; the Staging tab prints
+  which, rather than implying a capability it does not have.
+- **330 tests** passing; codec/ 100%, project 92%, audio/ 94%.
+
+### FINDING — this ffmpeg has no libsoxr
+The TDD assumed soxr. `ffmpeg -buildconf` on this machine has no
+`--enable-libsoxr`, and asking for an unavailable engine does NOT degrade: the
+conversion fails outright with "Requested resampling engine is unavailable".
+The adapter now probes the build once and falls back to `swr:filter_size=256`,
+and `resampler_engine` reports which is in use so the UI does not advertise a
+quality it did not deliver.
+
+### FINDING — the margin metric alone cannot reject noise
+The first key detector confidently labelled **white noise "Fm"**. HPSS treats
+steady broadband content as harmonic, so the percussiveness gate passed, and a
+flat chroma still correlates best with *something*: white noise scored a
+mode-margin of 0.258, **higher than a real C major progression's 0.238**.
+
+Added a chroma-flatness gate (geometric mean over arithmetic mean of the chroma
+vector). Measured, not guessed:
+
+```
+  C major progression  0.372      white noise      0.999
+  A minor progression  0.368      white noise (2)  0.999
+  Am pad + hard kick   0.238      pink-ish noise   0.970
+                                  kick drum        0.888
+```
+
+Threshold 0.70 sits in the empty band between 0.38 and 0.89. After the gate: all
+24 keys still exact, and noise / clicks / kick / silence all correctly return
+None, while an A-minor pad buried under a heavy kick is still found.
+
+### BUG FOUND AND FIXED — Camelot minor keys were a minor third out
+`camelot_for` placed a minor key at its own root's wheel position. The wheel
+pairs RELATIVE keys — 8A (A minor) sits beside 8B (C major), not beside C minor
+— so a minor key takes its relative major's position, three semitones up. All
+12 minor codes were wrong; all 12 major codes were right, which is exactly the
+kind of half-correct bug that survives a spot check. Now derived from the circle
+of fifths and asserted against all 24 entries of `workspace.naming.CAMELOT`.
+
+### BUG FOUND AND FIXED — EOFError still escaped the WAV reader
+The WF6 fix translated `wave.Error` but not `EOFError`, which is what a
+TRUNCATED wav raises (a partial download, a file still being written) and is
+not a subclass of `wave.Error`. Same crash, different door. Both adapters now
+catch it, with a test that feeds a half-written RIFF header.
+
+### PERFORMANCE — capability detection had to be cached
+Probing costs an ffmpeg subprocess plus a librosa import (seconds, via
+numba/llvmlite). Every widget construction paid it, taking the suite from 35 s
+to over two minutes. `detect_capabilities()` is now `lru_cache`d; the answer
+cannot change while the process runs.
+
+### PACKAGING — librosa 0.11 will not install here
+It pins an older numba whose llvmlite has no cp313 x86_64 wheel, so pip tries a
+source build and needs an LLVM toolchain. librosa **1.0.0** resolves to numba
+0.62 / llvmlite 0.45, which ship wheels. Pinned in `requirements-audio.txt` with
+a note to install `--only-binary=:all:`. This contradicts PLAN Rev 2's claim
+that "numba / llvmlite cp313 x86_64 wheels exist" — true only for recent
+versions, not for the ones librosa 0.11 pins.

@@ -1,0 +1,11 @@
+# Optional audio backends. Everything works without these — the app falls back
+# to WAV-only import and no key detection, and says so in the Staging tab.
+#
+# Install wheels only; building numba/llvmlite from source needs an LLVM
+# toolchain and is not worth it:
+#     pip install --only-binary=:all: -r requirements-audio.txt
+#
+# ffmpeg is a separate, non-Python dependency:  brew install ffmpeg
+librosa==1.0.0
+soundfile==0.14.0
+numpy==2.3.5

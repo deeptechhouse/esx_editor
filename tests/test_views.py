@@ -137,7 +137,10 @@ def test_staging_view_ignores_empty_path(qapp, tmp_path) -> None:
     assert v._list.count() == 0
 
 
-def test_staging_view_refuses_non_wav(qapp, tmp_path, monkeypatch) -> None:
+def test_staging_view_refuses_a_format_no_backend_can_read(
+    qapp, tmp_path, monkeypatch
+) -> None:
+    """The refusal follows the machine's real capabilities, not a hard-coded list."""
     import ui.views.staging_view as mod
 
     shown = []
@@ -145,11 +148,39 @@ def test_staging_view_refuses_non_wav(qapp, tmp_path, monkeypatch) -> None:
         mod.QMessageBox, "information", lambda *a, **k: shown.append(a[-1])
     )
     v = StagingView(bank=make_staging(tmp_path))
-    other = tmp_path / "loop.aiff"
-    other.write_bytes(b"FORM")
+    other = tmp_path / "notes.txt"
+    other.write_text("definitely not audio")
     v.add_path(str(other))
     assert v._list.count() == 0
-    assert shown and "ffmpeg" in shown[0]
+    assert shown and "can read" in shown[0]
+
+
+def test_staging_view_accepts_what_the_converter_advertises(qapp, tmp_path) -> None:
+    v = StagingView(bank=make_staging(tmp_path))
+    assert v.accepts("kick.wav")
+    assert v.accepts("KICK.WAV"), "extension matching must be case-insensitive"
+    assert not v.accepts("readme.txt")
+    # Whether mp3 is accepted depends on ffmpeg being installed — assert the
+    # rule, not the outcome.
+    assert v.accepts("loop.mp3") is v.capabilities.can_convert_any_format
+
+
+def test_staging_view_surfaces_a_truncated_wav(qapp, tmp_path, monkeypatch) -> None:
+    """A part-written .wav raises EOFError, not wave.Error — it must not crash."""
+    import ui.views.staging_view as mod
+
+    warned = []
+    monkeypatch.setattr(
+        mod.QMessageBox,
+        "warning",
+        lambda _p, title, text, *a, **k: warned.append(title),
+    )
+    v = StagingView(bank=make_staging(tmp_path))
+    truncated = tmp_path / "half.wav"
+    truncated.write_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt ")
+    v.add_path(str(truncated))
+    assert v._list.count() == 0
+    assert warned == ["Could not add"]
 
 
 # -- pattern view ------------------------------------------------------------

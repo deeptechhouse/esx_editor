@@ -118,8 +118,11 @@ class WavPcmReader:
                 src_channels = w.getnchannels()
                 rate = w.getframerate()
                 frames = w.readframes(w.getnframes())
-        except wave.Error as exc:
-            raise InvariantError(f"{path!r} is not a readable WAV: {exc}") from exc
+        except (wave.Error, EOFError) as exc:
+            # EOFError covers a truncated file; it is not a wave.Error.
+            raise InvariantError(
+                f"{path!r} is not a readable WAV: {exc or type(exc).__name__}"
+            ) from exc
 
         if width == 1:
             frames = expand_8bit(frames)
