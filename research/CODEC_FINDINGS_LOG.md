@@ -745,3 +745,53 @@ item: build a short song on the ESX-1 with a handful of known patterns in a
 known order, Save All, and the diff against a blank song gives the event format
 almost immediately — the pattern indices are already known, so they can be
 searched for directly.
+
+---
+
+## 2026-08-23 — WF14 (card capacity is a separate limit from sampler RAM)
+
+User observation: *"the smart media card can hold more data (128 mb)."*
+
+Correct, and it exposed a real gap: the app showed only ONE of two limits, and
+labelled it in a way that invited the wrong conclusion.
+
+```
+  sample RAM   25,165,824 B  = 24.0 MiB   285 s mono, manual p.468
+                                          A property of the MACHINE.
+                                          A bank past it will not load.
+  card         4-128 MB                   manual p.6435.
+                                          A property of the CARD.
+                                          Holds several banks.
+```
+
+The budget meter measures the first and read `5.8 / 24.0 MB` — next to a 128 MB
+card that looks like the card is nearly a quarter full. It now reads
+`5.8 / 24.0 MB sampler RAM`.
+
+The 24 MB cap **cannot be raised**. It is the machine's internal sampling area,
+and a bank exceeding it would not load.
+
+### NEW — `workspace/card.py`
+Answers the question the meter cannot: what is on the card and will another bank
+fit.
+
+- A maximum bank is **27,590,672 B ≈ 26.31 MiB** (2.31 MiB fixed structure +
+  24 MiB PCM + the 16-byte trailer), so a 128 MB card holds **4** full-size
+  banks, or many more part-full ones.
+- The user's own card backup: e4 (4.30 MiB) + e5 (14.00 MiB) = 18.3 MiB of
+  128 MiB, **109.7 MiB free**.
+- Scanning reads each bank's twelve-byte sample-area header at a known offset
+  rather than parsing the file — listing a card of 26 MB banks must not cost
+  hundreds of MB of reads.
+- `detect_capacity` uses the filesystem's real size, clamped to 128 MB: a
+  scratch folder on the internal disk is not a 2 TB "card".
+- Unreadable files are reported, never raised. A card can contain anything and a
+  listing must not fail on one bad file.
+
+### UI
+File → **Card overview…** lists the banks in a chosen folder with size, sample
+counts and each one's share of sampler RAM. Saving into a folder without room
+now asks first instead of failing part-way.
+
+### RESULT
+**402 tests** passing. codec/ 100%, project 91%.

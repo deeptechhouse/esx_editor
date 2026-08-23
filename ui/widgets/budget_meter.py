@@ -1,7 +1,19 @@
-"""BudgetMeter — live 25 MB scoreboard (TDD §6.1 / §10.1).
+"""BudgetMeter — live sample-memory scoreboard (TDD §6.1 / §10.1).
 
 Renders used/capacity as an LCD-style bar plus remaining seconds at CD mono.
 Widgets only paint; callers push numbers via set_used().
+
+WHAT THIS MEASURES, AND WHAT IT DOES NOT
+    The capacity here is the ESX-1's INTERNAL SAMPLE MEMORY: 25,165,824 bytes,
+    285 seconds of mono (manual p.468). It is a property of the machine, not of
+    the card, and it cannot be raised — a bank past it will not load.
+
+    The SmartMedia card is a separate, much larger limit: the ESX-1 accepts
+    4-128 MB cards (manual p.6435), so a 128 MB card holds about four
+    full-size banks. Card space is reported by workspace.card, not here.
+
+    The label says "RAM" explicitly because "24.0 MB" next to a 128 MB card
+    invites exactly the wrong conclusion.
 """
 
 from __future__ import annotations
@@ -55,7 +67,7 @@ class BudgetMeter(QWidget):
         remain_s = max(0, self._capacity - self._used) / (DEFAULT_RATE * 2)
         label = (
             f"{self._used / 1_048_576:.1f} / "
-            f"{self._capacity / 1_048_576:.1f} MB   "
+            f"{self._capacity / 1_048_576:.1f} MB sampler RAM   "
             f"{remain_s:.0f}s CD left"
         )
         p.setPen(QColor(PALETTE.txt if not over else PALETTE.red))

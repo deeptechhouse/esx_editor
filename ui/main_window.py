@@ -29,6 +29,7 @@ from ui.theme import PALETTE
 from ui.views import BankView, GlobalView, PatternView, SongView, StagingView
 from ui.widgets.budget_meter import BudgetMeter
 from ui.wizard import SetupWizard
+from workspace import card
 
 APP_TITLE = "ESX Bank Studio"
 
@@ -101,6 +102,7 @@ class MainWindow(QMainWindow):
         )
         file_menu.addSeparator()
         self._act("Guided setup…", file_menu, self.open_wizard)
+        self._act("Card overview…", file_menu, self.show_card_overview)
         file_menu.addSeparator()
         self._act("Quit", file_menu, self.close, QKeySequence.StandardKey.Quit)
 
@@ -208,6 +210,56 @@ class MainWindow(QMainWindow):
         wizard.show()
         return wizard
 
+    def show_card_overview(self, directory: str | None = None) -> str:
+        """List the banks on a card (or any folder) and how full it is.
+
+        The budget meter shows the machine's 24 MB sample RAM. That is a
+        different limit from the card's, and a 128 MB card holds about four
+        full-size banks — so "how much room is left on the card" needs its own
+        answer rather than being inferred from the meter.
+        """
+        if directory is None:
+            directory = QFileDialog.getExistingDirectory(
+                self, "Choose the card (or a folder of .esx banks)"
+            )
+            if not directory:
+                return ""
+        contents = card.scan(directory, card.detect_capacity(directory))
+        lines = [contents.summary(), ""]
+        if not contents.banks:
+            lines.append("No .esx banks here.")
+        for bank in contents.banks:
+            if not bank.readable:
+                lines.append(f"{bank.name}  —  not a readable bank")
+                continue
+            lines.append(
+                f"{bank.name}   {bank.size / 1_048_576:6.2f} MiB   "
+                f"{bank.samples:3d} samples "
+                f"({bank.num_mono} mono + {bank.num_stereo} stereo)   "
+                f"{bank.ram_fraction * 100:.0f}% of sampler RAM"
+            )
+        text = "\n".join(lines)
+        QMessageBox.information(self, f"Card — {directory}", text)
+        return text
+
+    def card_warning_for(self, path: str) -> str:
+        """Warn if saving to `path` would not fit on its card. '' when fine."""
+        directory = os.path.dirname(os.path.abspath(path))
+        contents = card.scan(directory, card.detect_capacity(directory))
+        existing = os.path.getsize(path) if os.path.exists(path) else 0
+        needed = (
+            card.MAX_BANK_BYTES
+            if self.session.bank is None
+            else (card.FIXED_BYTES + self.session.pcm_used() + 16)
+        )
+        if needed - existing <= contents.free + existing:
+            return ""
+        return (
+            f"This bank needs about {needed / 1_048_576:.1f} MiB but only "
+            f"{(contents.free + existing) / 1_048_576:.1f} MiB is free there.\n\n"
+            "The ESX-1 accepts 4–128 MB cards; delete a bank or use a larger card."
+        )
+
     def _on_wizard_changed(self) -> None:
         self.bankChanged.emit()
         self.staging_view.reload()
@@ -259,6 +311,16 @@ class MainWindow(QMainWindow):
             self._write(path)
 
     def _write(self, path: str) -> None:
+        warning = self.card_warning_for(path)
+        if warning:
+            reply = QMessageBox.question(
+                self,
+                "Not enough room",
+                warning + "\n\nTry the write anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
         try:
             self.session.save(path)
         except CodecError as exc:

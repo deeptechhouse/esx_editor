@@ -274,3 +274,62 @@ def test_bind_motion_tolerates_a_bank_with_no_patterns(win, monkeypatch) -> None
 
     monkeypatch.setattr(type(win.session), "bank", property(lambda self: _Empty()))
     win._bind_motion()  # must not raise or bind anything
+
+
+# -- card overview ------------------------------------------------------------
+def test_card_overview_lists_the_banks_in_a_folder(win, monkeypatch, tmp_path):
+    """Card space is a different question from the sampler's RAM budget."""
+    from tests.synthetic import build
+
+    shown = []
+    monkeypatch.setattr(
+        mw.QMessageBox, "information", lambda _p, title, text: shown.append(text)
+    )
+    (tmp_path / "one.esx").write_bytes(build(num_mono=2, pcm_bytes=2048))
+    (tmp_path / "two.esx").write_bytes(build(num_mono=0, pcm_bytes=64))
+
+    text = win.show_card_overview(str(tmp_path))
+    assert "one.esx" in text and "two.esx" in text
+    assert "free" in text and "sampler RAM" in text
+    assert shown == [text]
+
+
+def test_card_overview_cancelled_shows_nothing(win, monkeypatch):
+    monkeypatch.setattr(mw.QFileDialog, "getExistingDirectory", lambda *a, **k: "")
+    assert win.show_card_overview() == ""
+
+
+def test_card_overview_handles_an_empty_folder(win, monkeypatch, tmp_path):
+    monkeypatch.setattr(mw.QMessageBox, "information", lambda *a, **k: None)
+    assert "No .esx banks here." in win.show_card_overview(str(tmp_path))
+
+
+def test_no_card_warning_when_there_is_room(win, monkeypatch, tmp_path, corpus_path):
+    Dialogs(monkeypatch)
+    win.open_path(corpus_path)
+    assert win.card_warning_for(str(tmp_path / "new.esx")) == ""
+
+
+def test_card_warning_when_the_card_is_too_small(
+    win, monkeypatch, tmp_path, corpus_path
+):
+    """A 4 MB card is legal, and most banks do not fit on one."""
+    Dialogs(monkeypatch)
+    win.open_path(corpus_path)
+    monkeypatch.setattr(mw.card, "detect_capacity", lambda _d: mw.card.MIN_CARD_BYTES)
+    warning = win.card_warning_for(str(tmp_path / "big.esx"))
+    assert "MiB is free" in warning
+    assert "4–128 MB" in warning
+
+
+def test_a_save_that_would_overflow_the_card_asks_first(
+    win, monkeypatch, tmp_path, corpus_path
+):
+    dialogs = Dialogs(monkeypatch, discard=False)  # Cancel the overflow prompt
+    win.open_path(corpus_path)
+    monkeypatch.setattr(mw.card, "detect_capacity", lambda _d: mw.card.MIN_CARD_BYTES)
+    seen = []
+    monkeypatch.setattr(win.session, "save", lambda p, **k: seen.append(p) or p)
+    win._write(str(tmp_path / "nope.esx"))
+    assert dialogs.questions == 1
+    assert seen == [], "cancelling the prompt must not write"
