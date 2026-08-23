@@ -87,3 +87,36 @@ Running log of user prompts for this chat session.
 - `MotionCanvas` (three-state, forced-TRIG stairs, length mask), `TargetPicker`, `MotionEditor` (n/24 refuse, overwrite guard, Start Point seconds/step) wired into the Motion tab.
 - Byte-verify suite: discrete N=2/3/4 encodings, Disabl=0x80, mask, on-disk 130 B form.
 - `pytest tests/` → **96 passed**.
+
+---
+
+## Prompt 9 — 2026-08-23
+
+> implement WF6
+
+**Action taken (incomplete — interrupted):** Created `feat/wf6-views-wizard`. Wrote uncommitted `audio/passthrough.py`, `ui/views/bank_view.py`, `ui/views/staging_view.py`, `ui/views/pattern_view.py`. Did not write song/global views, wizard, MainWindow wiring, or tests. Did not commit.
+
+---
+
+## Prompt 10 — 2026-08-23
+
+> create a handoff document for claude
+
+**Action taken:** Wrote `HANDOFF_claude_wf6.html` (agent-facing status, constraints, remaining WF6 steps) and `deploy/wf6_continue.txt` (exact pytest/venv command).
+
+---
+
+## Prompt 11 — 2026-08-23
+
+> /goal — do not stop working until this [HANDOFF_claude_wf6.html] document's goals are complete. i will check back in 8 hours for any confirmations that are needed, however i would like the program to be already tested, ready for human testing
+
+**Action taken:** Completed WF6 on `feat/wf6-views-wizard` (uncommitted, per the handoff's "do not commit unless asked"):
+- Wrote `ui/views/song_view.py`, `ui/views/global_view.py`, `ui/views/__init__.py`; exported the passthrough adapters from `audio/__init__.py`.
+- Built `ui/wizard/` — 11 skippable `QWizard` pages (TDD §9) over a shared `WizardContext`.
+- Rewired `ui/main_window.py`: five real views replace the placeholders, `bankChanged` binds them all, pattern selection re-binds the motion editor, File → "Guided setup…".
+- Added `BankSession.validate()` and `StagingView(bank=...)` (shared staging model).
+- Fixed two real bugs: `wave.Error` escaping the UI (app crash on a bad `.wav` drop) and garbage-collected `QMenu` wrappers.
+- Tests: `tests/test_views.py`, `tests/test_wizard.py`, `tests/test_shell_wiring.py` → `pytest tests/` **203 passed**; `codec/` 100%, every WF6 module 100%.
+- Wrote `WF6_HUMAN_TESTING.html` (manual test script) and `next_steps/`.
+
+**Awaiting confirmation:** whether to commit WF6, and whether to start WF7.

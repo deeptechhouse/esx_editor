@@ -1,0 +1,12 @@
+cd /Users/aaandy/_andy_ai_projects_2026/esx_editor
+git checkout feat/wf6-views-wizard
+
+# Confirm WF6 is still green before starting WF7 (expect: 203 passed)
+SITE=$(~/.venvs/esx/bin/python -c "import site; print(site.getsitepackages()[0])")
+QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
+
+# Launch the app for a manual look (see WF6_HUMAN_TESTING.html)
+PYTHONPATH="$PWD" ~/.venvs/esx/bin/python -m ui.app
+
+# Then start WF7 with:
+claude "Read next_steps/WF7_prompt.html and research/CODEC_FINDINGS_LOG.md, then implement WF7. Ask first whether to commit WF6."

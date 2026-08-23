@@ -12,6 +12,7 @@ from core.bank import Bank
 from codec.reader import BankReader
 from codec.writer import BankWriter
 from codec.template import BankTemplate
+from codec.validator import BankValidator, ValidationReport
 from codec.errors import CodecError
 
 
@@ -25,6 +26,7 @@ class BankSession:
         self._reader = BankReader()
         self._writer = BankWriter()
         self._template = BankTemplate()
+        self._validator = BankValidator()
 
     @property
     def bank(self) -> Bank | None:
@@ -69,6 +71,18 @@ class BankSession:
         self._path = dest
         self._dirty = False
         return dest
+
+    def validate(self) -> ValidationReport:
+        """Coherence-check the open bank (TDD §4.4).
+
+        Kept here rather than in a view so no widget has to import codec/: the
+        wizard's Validate & write screen asks the session, and the session is
+        already the single composition root for reader/writer/template.
+        Raises CodecError when nothing is open.
+        """
+        if self._bank is None:
+            raise CodecError("no bank is open")
+        return self._validator.validate(self._bank)
 
     def pcm_used(self) -> int:
         if self._bank is None:

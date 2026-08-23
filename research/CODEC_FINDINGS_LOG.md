@@ -195,3 +195,82 @@ continued in the parent session on branch `feat/wf4-ui-foundation`.
 - Binding to pattern N>0 (currently pattern 0 on bank open).
 - OSC EDIT 1/2 are not in the 313-target TSV, so they cannot be offered.
 - Pitch drawable mapping still needs the hardware knob sweep.
+
+---
+
+## 2026-08-23 — WF6 (views + 11-screen wizard)
+
+Continued from `HANDOFF_claude_wf6.html` on `feat/wf6-views-wizard`. WF1–WF5 were
+not touched except where noted below.
+
+### RESULT
+- `ui/views/song_view.py`, `ui/views/global_view.py`, `ui/views/__init__.py`.
+- `ui/wizard/` — `context.py` (WizardContext), `pages.py` (11 pages), `wizard.py`
+  (SetupWizard). Every page `isComplete() == True`.
+- `ui/main_window.py` rewired: placeholders replaced with the five real views,
+  `bankChanged` → `bind_bank` on all of them, pattern select → `motion_editor
+  .bind_pattern`, File → "Guided setup…", Edit → "Clear staging".
+- `audio/__init__.py` now exports `WavPassthroughConverter` / `NullKeyDetector`.
+- Tests: `tests/test_views.py`, `tests/test_wizard.py`, `tests/test_shell_wiring.py`.
+  `pytest tests/` = **203 passed** (was 96). `codec/` back to **100%**; every WF6
+  module (5 views, 4 wizard modules, main_window, passthrough) at **100%**.
+
+### BUG FOUND AND FIXED — `wave.Error` escaped the UI
+- `WavPassthroughConverter.probe_duration` let `wave.Error` propagate.
+  `StagingView.add_path` catches `(OSError, ValueError)`, and `wave.Error`
+  is neither, so **dropping a non-WAV file with a `.wav` extension crashed the
+  app**. Reproduced in a test before fixing.
+- Fixed in the ADAPTER, not the view: `probe_duration` now translates
+  `wave.Error` → `ValueError`. Callers hold the `AudioConverter` port, not the
+  `wave` module, so they cannot reasonably be asked to catch a backend type.
+  This is the ports-and-adapters boundary doing its job (TDD §5.1).
+
+### BUG FOUND AND FIXED — menus unreachable from code
+- `MainWindow._build_menus` kept no Python reference to the `QMenu`s returned by
+  `addMenu()`. The wrappers were garbage-collected, so the menus still rendered
+  but `RuntimeError: Internal C++ object already deleted` on any later access.
+  Now retained in `self.menus`.
+
+### COVERAGE GAP CLOSED (WF5 leftover)
+- `codec/operation_table.py:193` (the audio-in Pitch/Start/Reverse filter) was
+  the one uncovered line in `codec/`, because the shipped 313-target table has no
+  such AudioIn targets — the guard is dead code against real data. Covered with a
+  synthetic table, so a future table addition cannot silently expose Pitch.
+
+### DESIGN DECISIONS
+- **`BankSession.validate()` added** rather than importing `codec.validator` in the
+  wizard's finish page. The handoff allowed the finish page to be a composition
+  root; routing through the session is strictly tighter and keeps *every* widget
+  free of codec imports (TDD §10.2).
+- **`StagingView(bank=...)`** — the wizard's Add-samples screen renders the SAME
+  `StagingBank` the Staging tab does, so a drop in one appears in the other. Two
+  views over one model; no widget reparenting.
+- **Song view shows bytes, not songs.** `Bank.songs()` is empty on purpose; the
+  data lives in raw region `mid`. The view reports the region size and dumps the
+  first 16 B of each 528 B block at the VERIFIED offset `ADDR_SONG_DATA`. Reading
+  bytes at a verified region offset is not decoding; no field is interpreted.
+- **Global view shows a hex dump.** `midi_channel` still raises
+  `NotImplementedError` and the view never calls it (asserted by a test).
+- **Part setup screen shows kind/index/chunk size/first 8 B.** `sample_number`
+  and `sequence()` both raise `NotImplementedError`; the page calls neither.
+- **Pattern basics screen shows header hex only.** No tempo/length/last-step.
+- Wizard dialogs report failures IN-PAGE (a status label), not via `QMessageBox`,
+  so a bad file cannot trap the user behind a modal — and offscreen tests do not
+  stall.
+
+### UI POLISH (theme, additive)
+- `ui/theme.py` gained `QListWidget` / `QTableWidget` / `QHeaderView` /
+  `QPlainTextEdit` rules: the default bright-blue selection clashed badly with the
+  amber chassis. Selection is now `amber_dim` on `chassis`.
+- WF6 tables hide the row-number gutter (the `#` column already carries it),
+  alternate row colours, and stretch the last section.
+
+### OPEN / DEFERRED
+- `pack_slot_name` takes the LAST 8 characters of a basename, so `bass_loop`
+  packs as `ASS_LOOP`. That is the frozen TDD §5.3 rule and was not changed —
+  but it is a real usability wart and needs a user decision.
+- `ui/widgets/placeholder.py` is now dead code (no view uses it). Left in place;
+  removal is a WF7 call.
+- Motion tab still binds pattern 0 on open, then follows the Pattern tab
+  selection. Song/global decoding, `Bank.commit_sample`, and `Part.sample_number`
+  remain `NotImplementedError` by design.

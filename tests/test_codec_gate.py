@@ -495,3 +495,32 @@ def test_layout_region_map_is_ordered_and_covers_file() -> None:
 def test_error_hierarchy() -> None:
     assert issubclass(FormatError, CodecError)
     assert issubclass(RoundTripError, CodecError)
+
+
+def test_audioin_hides_pitch_start_and_reverse_if_a_table_ever_lists_them() -> None:
+    """The audio-in guard is dead code against the 313 table — prove it works.
+
+    The shipped table has no 'AudioIn Pitch' / 'Start Point' / 'Reverse' target,
+    so targets_for_part's audio-in filter never fires on real data. That is the
+    only line in codec/ the suite does not otherwise reach, and leaving it
+    unexercised means a future table addition could silently expose Pitch —
+    which is exactly what TDD §12 says must not happen while its encoding is
+    OPEN. A synthetic table exercises the guard directly.
+    """
+    from codec.operation_table import MotionTarget, OperationTable as OT
+
+    def target(tid, name):
+        return MotionTarget(tid, name, name.split(" ", 1)[0], "continuous", 0, False)
+
+    table = OT({
+        1: target(1, "AudioIn Level"),
+        2: target(2, "AudioIn Pitch"),
+        3: target(3, "AudioIn Start Point"),
+        4: target(4, "AudioIn Reverse"),
+    })
+    names = [t.name for t in table.targets_for_part("audioin")]
+    assert names == ["AudioIn Level"]
+    # Even with the global pitch guard off, audio-in still hides all three.
+    names = [t.name for t in
+             table.targets_for_part("audioin", hide_unverified_pitch=False)]
+    assert names == ["AudioIn Level"]

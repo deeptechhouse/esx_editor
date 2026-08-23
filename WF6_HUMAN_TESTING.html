@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ESX Bank Studio — WF6 human testing script</title>
+<style>
+  :root{
+    --bg:#12100d; --panel:#1b1814; --panel2:#231f19; --line:#3a332a;
+    --amber:#ff9d2e; --amber-dim:#c9761b; --lcd:#ffb454; --green:#7fd68a;
+    --red:#ff6b5e; --blue:#6fb6ff; --txt:#e8e0d4; --muted:#9d9384;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:0 0 80px}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+  header{border-bottom:2px solid var(--amber);background:linear-gradient(180deg,#1f1a13,#12100d);padding:40px 0 26px}
+  h1{margin:0 0 8px;font-size:28px} h1 span{color:var(--amber)}
+  .sub{color:var(--muted);max-width:820px}
+  .meta{margin-top:14px;font-family:var(--mono);font-size:12px;color:var(--amber-dim);line-height:1.8}
+  h2{margin:40px 0 8px;font-size:20px;color:var(--lcd);border-left:3px solid var(--amber);padding-left:12px}
+  h3{margin:22px 0 6px;font-size:15.5px;border-bottom:1px solid var(--line);padding-bottom:4px}
+  code{font-family:var(--mono);font-size:.88em;background:var(--panel2);padding:1px 6px;border-radius:3px;color:var(--lcd)}
+  pre{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber-dim);
+    padding:14px 16px;border-radius:5px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.55}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--lcd)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:16px 18px;margin:14px 0}
+  .flag{border-left:4px solid var(--red);background:#241715}
+  .win{border-left:4px solid var(--green);background:#15201a}
+  .warn{border-left:4px solid var(--amber);background:#241d13}
+  .note{border-left:4px solid var(--blue);background:#141b24}
+  .card h3{margin-top:0;border:0}
+  .yes{color:var(--green);font-weight:600}.no{color:var(--red);font-weight:600}
+  ul{padding-left:22px} li{margin:5px 0}
+  ol.checks{padding-left:22px} ol.checks li{margin:10px 0}
+  .exp{color:var(--muted);display:block;font-size:13.5px}
+  img{max-width:100%;border:1px solid var(--line);border-radius:5px;margin:8px 0}
+  .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+  .shots figure{margin:0} .shots figcaption{color:var(--muted);font-size:12.5px;font-family:var(--mono)}
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>ESX Bank Studio — <span>WF6 human testing</span></h1>
+  <p class="sub">WF6 (five views + the eleven-screen wizard) is finished, wired into the shell, and automatically tested.
+     This is the manual script: how to launch it, what to click, and what "correct" looks like on each screen.</p>
+  <p class="meta">
+    WRITTEN 2026-08-23 · BRANCH <code>feat/wf6-views-wizard</code> · NOT COMMITTED<br>
+    SUITE <code>203 passed</code> (was 96 at WF5) · <code>codec/</code> 100% · every WF6 module 100%<br>
+    ENV macOS 12.7.6 · Python 3.13.12 · PySide6 6.9.3 (<code>~/.venvs/esx</code>, pinned)
+  </p>
+</div></header>
+
+<div class="wrap">
+
+<h2>1. Launch it</h2>
+<pre>cd /Users/aaandy/_andy_ai_projects_2026/esx_editor
+PYTHONPATH="$PWD" ~/.venvs/esx/bin/python -m ui.app</pre>
+<p>A 1100×720 window opens with six tabs and an empty status bar reading <code>no bank</code>.
+   Then <b>File → Open…</b> and pick <code>corpus/card_backup_2026-08-22/e4.esx</code>.</p>
+
+<div class="card note">
+  <h3>Re-run the automated suite first if you want</h3>
+<pre>SITE=$(~/.venvs/esx/bin/python -c "import site; print(site.getsitepackages()[0])")
+QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
+# expect: 203 passed</pre>
+</div>
+
+<h2>2. What each tab should show</h2>
+<table>
+  <tr><th>Tab</th><th>What it does</th><th>Correct on <code>e4.esx</code></th></tr>
+  <tr><td><b>Bank</b></td>
+      <td>Every occupied slot of the 384 (256 mono + 128 stereo), with the usage meter and pool counts.</td>
+      <td>18 rows, <code>mono 18/256   stereo 0/128</code>, meter ≈ 2.0 / 24.0 MB. Any stereo row prints <code>—</code> for rate (that offset is unconfirmed).</td></tr>
+  <tr><td><b>Staging</b></td>
+      <td>Drop WAVs; tier selector; live scoreboard. Originals are copied, never modified.</td>
+      <td>Drop a <code>.wav</code> → one line <code>src → staged [PACKEDNAME] N B</code> and the meter moves. <b>Clear</b> empties it.</td></tr>
+  <tr><td><b>Pattern</b></td>
+      <td>All 256 patterns, name edit, parts table, FX table, motion budget, 16-byte header as hex.</td>
+      <td>256 list rows; header line ends <code>…offsets unproven: 40 00 03 20 …</code>; <code>0/24 motion</code>; 16 parts; 3 FX.</td></tr>
+  <tr><td><b>Motion</b></td>
+      <td>WF5 drawable canvas. Follows the Pattern tab's selection.</td>
+      <td>Selecting pattern 5 on the Pattern tab re-binds this canvas to pattern 5's slots.</td></tr>
+  <tr><td><b>Song</b></td>
+      <td>Honest report: the song area is preserved verbatim and not decoded.</td>
+      <td>"64 songs + events preserved verbatim", <code>mid</code> = 673,536 B, and 64 rows of raw hex at <code>0x130000</code> onward.</td></tr>
+  <tr><td><b>Global</b></td>
+      <td>The 192-byte global block as an offset/hex/ASCII dump.</td>
+      <td>12 dump lines starting at <code>00000020</code>. No MIDI-channel control anywhere — that field is undecoded.</td></tr>
+</table>
+
+<div class="card warn">
+  <h3>Why three tabs show hex instead of controls</h3>
+  <p>Pattern tempo/length/last-step, the song blocks, the MIDI channel, and a part's sample number all live at
+     <b>offsets that have never been proven</b> — the model raises <code>NotImplementedError</code> for every one of them.
+     Rendering a plausible "Tempo: 120" spinbox would be a guess the user could not distinguish from a fact, and writing
+     a wrong byte back into a pattern is exactly the corruption this project exists to prevent. So those regions are
+     shown as bytes until a hardware diff pins the fields. This is deliberate, not unfinished.</p>
+</div>
+
+<h2>3. Manual test script</h2>
+<ol class="checks">
+  <li><b>Open a bank.</b> File → Open… → <code>e4.esx</code>.
+      <span class="exp">Expect: title bar shows <code>e4.esx</code>, status bar shows the full path, all six tabs populate.</span></li>
+  <li><b>Bank tab.</b> Read the pool counts and the meter.
+      <span class="exp">Expect: 18 occupied rows; meter fill matches "2.0 / 24.0 MB".</span></li>
+  <li><b>Pattern tab.</b> Click pattern 005, then switch to Motion.
+      <span class="exp">Expect: Motion canvas now shows pattern 005's 24 slots, not pattern 000's.</span></li>
+  <li><b>Rename a pattern.</b> Pattern tab → type <code>TESTNAME</code> in Name → press Tab.
+      <span class="exp">Expect: the list row updates, the title bar gains a <code>•</code>, and the status bar shows <code>modified</code>.</span></li>
+  <li><b>Stage a sample.</b> Drag any <code>.wav</code> onto the Staging tab.
+      <span class="exp">Expect: one row appears, the scoreboard moves, and the ORIGINAL file is untouched (check its mtime).</span></li>
+  <li><b>Drop a bad file.</b> Rename a text file to <code>fake.wav</code> and drop it.
+      <span class="exp">Expect: a "Could not add" warning — <b>not</b> a crash. This was a real bug found and fixed in WF6.</span></li>
+  <li><b>Drop a non-WAV.</b> Drop an <code>.aiff</code> or <code>.mp3</code>.
+      <span class="exp">Expect: "WAV only for now" — the ffmpeg adapter is not written yet, and the app says so rather than faking a decode.</span></li>
+  <li><b>Open the wizard.</b> File → Guided setup….
+      <span class="exp">Expect: an 11-page wizard. <b>Next is never greyed out</b> — walk from screen 1 to 11 without entering anything.</span></li>
+  <li><b>Wizard ↔ Staging share one model.</b> On wizard screen 3, add a WAV. Close the wizard. Look at the Staging tab.
+      <span class="exp">Expect: the same sample is there. One staging bank, two views.</span></li>
+  <li><b>Wizard screen 9 writes back.</b> Rename pattern 000 there, close the wizard.
+      <span class="exp">Expect: the Pattern tab list shows the new name and the window is marked modified.</span></li>
+  <li><b>Wizard screen 11 — validate.</b> Press <b>Validate</b>.
+      <span class="exp">Expect on <code>e4.esx</code>: <b>17 findings, 17 errors</b>, all <code>offset_past_eof</code>. That bank has stale sample headers; it is a known-good fixture, not a bug in the app.</span></li>
+  <li><b>Wizard screen 11 — refuse.</b> Press <b>Write bank</b> with the override unchecked, saving to a scratch path.
+      <span class="exp">Expect: "Write refused: refusing to write an incoherent bank (17 error(s)…)" and <b>no file created</b>.</span></li>
+  <li><b>Wizard screen 11 — override.</b> Tick <i>Write anyway</i>, press Write bank again.
+      <span class="exp">Expect: "Wrote …(verified by re-read; previous kept as .bak)". Write it twice and confirm a <code>.esx.bak</code> appears.</span></li>
+  <li><b>Round-trip proof.</b> <code>cmp</code> the file you just wrote against <code>e4.esx</code>.
+      <span class="exp">Expect: byte-identical. The automated suite asserts this too, but it is worth seeing once.</span>
+      <pre>cmp /path/to/written.esx corpus/card_backup_2026-08-22/e4.esx &amp;&amp; echo IDENTICAL</pre></li>
+  <li><b>Unsaved-changes guard.</b> Make an edit, then close the window and press Cancel.
+      <span class="exp">Expect: the window stays open. Press Discard and it closes.</span></li>
+  <li><b>Keyboard only.</b> Tab through a view; use <code>Ctrl+1</code>…<code>Ctrl+6</code> to switch tabs.
+      <span class="exp">Expect: visible amber focus rings, every control reachable (WCAG 2.1 AA target).</span></li>
+</ol>
+
+<div class="card flag">
+  <h3>Do NOT test against your real card backup as the write target</h3>
+  <p>Write to a scratch path. The writer is defensive (temp file → re-read verify → atomic replace → <code>.bak</code>)
+     and the round-trip gate is green on all four corpus banks, but the hardware checklist in
+     <code>research/HARDWARE_CHECKLIST.md</code> is still open: <b>no file this app wrote has yet been loaded by a real ESX-1</b>.
+     That is the next real-world milestone, and it is a hardware task, not a software one.</p>
+</div>
+
+<h2>4. The eleven wizard screens</h2>
+<table>
+  <tr><th>#</th><th>Screen</th><th>What it decides</th><th>Honesty note</th></tr>
+  <tr><td>1</td><td>Start</td><td>New from the blank template, or open an <code>.esx</code></td><td>"New" loads a bank a real ESX-1 wrote — never synthesised from zeros.</td></tr>
+  <tr><td>2</td><td>Card check</td><td>Back up the card before anything is written</td><td>Names the exact <code>.bak</code> path the write will produce.</td></tr>
+  <tr><td>3</td><td>Add samples</td><td>Drop files; scoreboard fills</td><td>Renders the Staging tab's own model.</td></tr>
+  <tr><td>4</td><td>Quality budget</td><td>Staged cost vs 25,165,824 B</td><td>Proposes trim → fold → rate drop, in that order. Applies nothing.</td></tr>
+  <tr><td>5</td><td>Key analysis</td><td>Confirm or suppress detected keys</td><td>Reports "— none —" for everything: <code>NullKeyDetector</code> never guesses.</td></tr>
+  <tr><td>6</td><td>Naming</td><td>Slot-name policy, live 8-char preview</td><td>Always exactly 8 characters; the Camelot prefix costs 3 of them.</td></tr>
+  <tr><td>7</td><td>Slot assignment</td><td>Mono vs stereo pools</td><td>Says plainly that commit-to-slot is not implemented and writes nothing.</td></tr>
+  <tr><td>8</td><td>Part setup</td><td>Pattern 000's 16 parts</td><td>kind / index / chunk size / first 8 bytes. No sample numbers — that offset is unproven.</td></tr>
+  <tr><td>9</td><td>Pattern basics</td><td>Pattern name</td><td>Header shown as hex. No tempo/length/last-step controls.</td></tr>
+  <tr><td>10</td><td>Motion</td><td>Slot budget</td><td>Points at the Motion tab; does not duplicate the canvas.</td></tr>
+  <tr><td>11</td><td>Validate &amp; write</td><td>Findings, then a verified write</td><td>Findings are reported, never auto-repaired. Incoherent = refused unless overridden.</td></tr>
+</table>
+
+<h2>5. Reference screenshots</h2>
+<p class="sub">Rendered offscreen from <code>e4.esx</code> with three staged WAVs. Files live in <code>deploy/wf6_screens/</code>.</p>
+<div class="shots">
+  <figure><img src="deploy/wf6_screens/tab_1_bank.png" alt="Bank tab"><figcaption>tab_1_bank.png</figcaption></figure>
+  <figure><img src="deploy/wf6_screens/tab_2_staging.png" alt="Staging tab"><figcaption>tab_2_staging.png</figcaption></figure>
+  <figure><img src="deploy/wf6_screens/tab_3_pattern.png" alt="Pattern tab"><figcaption>tab_3_pattern.png</figcaption></figure>
+  <figure><img src="deploy/wf6_screens/tab_4_motion.png" alt="Motion tab"><figcaption>tab_4_motion.png</figcaption></figure>
+  <figure><img src="deploy/wf6_screens/tab_5_song.png" alt="Song tab"><figcaption>tab_5_song.png</figcaption></figure>
+  <figure><img src="deploy/wf6_screens/tab_6_global.png" alt="Global tab"><figcaption>tab_6_global.png</figcaption></figure>
+  <figure><img src="deploy/wf6_screens/wizard_01.png" alt="Wizard 1"><figcaption>wizard_01.png — Start</figcaption></figure>
+  <figure><img src="deploy/wf6_screens/wizard_04.png" alt="Wizard 4"><figcaption>wizard_04.png — Quality budget</figcaption></figure>
+  <figure><img src="deploy/wf6_screens/wizard_07.png" alt="Wizard 7"><figcaption>wizard_07.png — Slot assignment</figcaption></figure>
+  <figure><img src="deploy/wf6_screens/wizard_11.png" alt="Wizard 11"><figcaption>wizard_11.png — Validate &amp; write</figcaption></figure>
+</div>
+
+<h2>6. Two things that need your decision</h2>
+<div class="card warn">
+  <h3>a. <code>bass_loop</code> packs as <code>ASS_LOOP</code></h3>
+  <p><code>workspace.naming.pack_slot_name</code> takes the <b>last</b> 8 characters of a basename when there is no key,
+     because the tail usually carries the distinguishing part of a filename. On <code>bass_loop</code> that produces
+     <code>ASS_LOOP</code>. It is the frozen TDD §5.3 rule so WF6 did not change it, but it is worth a decision:
+     keep the tail rule, switch to a leading truncation, or add a small profanity guard.</p>
+</div>
+<div class="card warn">
+  <h3>b. Commit WF6, and start WF7?</h3>
+  <p>Nothing is committed — the handoff said not to without your say-so. The branch
+     <code>feat/wf6-views-wizard</code> currently holds WF6 entirely as working-tree changes.
+     WF7 is property/golden/integration tests, CI + pre-commit hooks, <code>README.html</code>,
+     <code>NAVIGATION.md</code>, and the <code>_annotated</code> companions.</p>
+</div>
+
+<h2>7. Known limits (by design, not by omission)</h2>
+<ul>
+  <li>Songs, global fields, part sample numbers, pattern tempo/length/last-step: undecoded, shown as bytes.</li>
+  <li><code>Bank.commit_sample</code> raises <code>NotImplementedError</code> — staged samples are costed and named but not yet written into slots.</li>
+  <li>WAV only. The ffmpeg converter and librosa key detector are later adapters; the ports are already frozen so swapping them in touches no caller.</li>
+  <li>Motion preview is silent (visual only) — the FX renderer is phase 2.</li>
+  <li>Pitch is not offered as a drawable motion target; its encoding is still OPEN.</li>
+  <li><code>ui/widgets/placeholder.py</code> is now unused. Left in place; deleting it is a WF7 call.</li>
+</ul>
+
+<footer>
+  Companion files: <code>research/CODEC_FINDINGS_LOG.md</code> (WF6 section — bugs, decisions, reasoning) ·
+  <code>next_steps/</code> (WF7 prompt + command) · <code>HANDOFF_claude_wf6.html</code> (the brief this work was done against).
+</footer>
+</div>
+</body>
+</html>

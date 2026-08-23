@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ESX Bank Studio — Claude handoff (WF6 in progress)</title>
+<style>
+  :root{
+    --bg:#12100d; --panel:#1b1814; --panel2:#231f19; --line:#3a332a;
+    --amber:#ff9d2e; --amber-dim:#c9761b; --lcd:#ffb454; --green:#7fd68a;
+    --red:#ff6b5e; --blue:#6fb6ff; --txt:#e8e0d4; --muted:#9d9384;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:0 0 80px}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+  header{border-bottom:2px solid var(--amber);background:linear-gradient(180deg,#1f1a13,#12100d);padding:40px 0 26px}
+  h1{margin:0 0 8px;font-size:28px} h1 span{color:var(--amber)}
+  .sub{color:var(--muted);max-width:820px}
+  .meta{margin-top:14px;font-family:var(--mono);font-size:12px;color:var(--amber-dim);line-height:1.8}
+  h2{margin:40px 0 8px;font-size:20px;color:var(--lcd);border-left:3px solid var(--amber);padding-left:12px}
+  h3{margin:22px 0 6px;font-size:15.5px;border-bottom:1px solid var(--line);padding-bottom:4px}
+  code{font-family:var(--mono);font-size:.88em;background:var(--panel2);padding:1px 6px;border-radius:3px;color:var(--lcd)}
+  pre{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber-dim);
+    padding:14px 16px;border-radius:5px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.55}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--lcd)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:16px 18px;margin:14px 0}
+  .flag{border-left:4px solid var(--red);background:#241715}
+  .win{border-left:4px solid var(--green);background:#15201a}
+  .warn{border-left:4px solid var(--amber);background:#241d13}
+  .note{border-left:4px solid var(--blue);background:#141b24}
+  .card h3{margin-top:0;border:0}
+  .yes{color:var(--green);font-weight:600}.no{color:var(--red);font-weight:600}
+  ul{padding-left:22px} li{margin:5px 0}
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>ESX Bank Studio — <span>Claude handoff</span></h1>
+  <p class="sub">Pick up here. Do not restart WF1–WF5. Finish <b>WF6</b> (views + 11-screen wizard), then stop unless the user asks for WF7 or a commit.</p>
+  <p class="meta">
+    WRITTEN 2026-08-23 · FOR A FRESH CLAUDE / CURSOR SESSION<br>
+    PROJECT <code>/Users/aaandy/_andy_ai_projects_2026/esx_editor</code><br>
+    BRANCH <code>feat/wf6-views-wizard</code> (HEAD commit is still WF5 <code>2e0a4ef</code>)<br>
+    USER likes short progress checkpoints while working.
+  </p>
+</div></header>
+
+<div class="wrap">
+
+<div class="card flag">
+  <h3>STOP — read this first</h3>
+  <ul>
+    <li>You are mid-WF6. Three view files exist on disk and are <b>uncommitted / unwired</b>. <code>main_window.py</code> still shows placeholders for Bank/Staging/Pattern/Song/Global.</li>
+    <li>Do <b>not</b> invent pattern-header field offsets (tempo / length / lastStep). Show the 16-byte header as hex. Offsets are unproven.</li>
+    <li>Do <b>not</b> expose Pitch as a drawable target. Encoding is OPEN (see <code>research/CODEC_FINDINGS_LOG.md</code>).</li>
+    <li>Do <b>not</b> commit unless the user asks. Do not push. Do not force-push.</li>
+    <li>Claude CLI was weekly-limited earlier; implement directly if CLI still fails.</li>
+    <li>PySide6 is pinned to <b>6.9.3</b> in <code>~/.venvs/esx</code> (macOS 12). Do not upgrade.</li>
+    <li>Widgets never import <code>codec/</code>. Only composition roots do: <code>ui/session.py</code>, wizard finish page.</li>
+  </ul>
+</div>
+
+<h2>1. What is done (do not redo)</h2>
+<table>
+  <tr><th>WF</th><th>Commit</th><th>Status</th></tr>
+  <tr><td>WF1 contract freeze</td><td><code>a73bd56</code> on <code>main</code></td><td class="yes">done</td></tr>
+  <tr><td>WF2 codec + core bodies</td><td><code>542c406</code></td><td class="yes">round-trip identical on 4 banks</td></tr>
+  <tr><td>WF3 gate barrier</td><td><code>f733bd4</code></td><td class="yes">100% line coverage on <code>codec/</code>, 52 tests then</td></tr>
+  <tr><td>WF4 UI foundation + workspace</td><td><code>cd7a067</code> on <code>feat/wf4-ui-foundation</code></td><td class="yes">theme, shell, widgets, budget/limits/staging</td></tr>
+  <tr><td>WF5 motion editor</td><td><code>2e0a4ef</code> on <code>feat/wf5-motion-editor</code></td><td class="yes">canvas/tools/picker + byte-verify; 96 tests</td></tr>
+  <tr><td>WF6 views + wizard</td><td>—</td><td class="no">IN PROGRESS — see §3</td></tr>
+  <tr><td>WF7 tests/CI/docs/annotated</td><td>—</td><td>not started</td></tr>
+</table>
+<p>Branch ancestry: <code>main</code> → WF1–3 → <code>feat/wf4-ui-foundation</code> → <code>feat/wf5-motion-editor</code> → <code>feat/wf6-views-wizard</code> (current). Nothing has been merged back to <code>main</code> after WF3. Nothing pushed required.</p>
+
+<h2>2. Authority documents</h2>
+<ol>
+  <li><code>TDD_esx_bank_studio.html</code> — spec. UI §10, staging §7, wizard §9 (11 screens), motion §8.</li>
+  <li><code>PLAN_multiagent_implementation.html</code> — WF definitions. WF6 = pattern+song+global, bank+staging, wizard.</li>
+  <li><code>research/CODEC_FINDINGS_LOG.md</code> — agent bug/decision log. Feed this before codec or motion changes.</li>
+  <li><code>PROMPTS_project_completeness_assessment.md</code> — every user prompt this chat. Append new ones.</li>
+  <li><code>codec/layout.py</code> — single source of truth for offsets. Do not duplicate.</li>
+</ol>
+
+<h2>3. WF6 — exact remaining work</h2>
+
+<div class="card warn">
+  <h3>Already written (uncommitted, not imported by the shell)</h3>
+  <pre>audio/passthrough.py          WavPassthroughConverter + NullKeyDetector
+ui/views/bank_view.py         384 occupied slots table + BudgetMeter + mono/stereo counts
+ui/views/staging_view.py      drop WAV, tier combo, StagingBank, Clear, scoreboard
+ui/views/pattern_view.py      256 list, rename, parts/FX tables, motion n/24, header hex</pre>
+  <p>These compile in isolation. They are <b>not</b> in <code>ui/views/__init__.py</code> (file missing). They are <b>not</b> in <code>ui/main_window.py</code>. <code>audio/__init__.py</code> does not export the passthrough classes.</p>
+</div>
+
+<h3>Still missing</h3>
+<table>
+  <tr><th>Item</th><th>What to build</th></tr>
+  <tr><td><code>ui/views/song_view.py</code></td><td>Honest: <code>Bank.songs()</code> is empty — song bytes live in raw region <code>mid</code>. Show “64 songs + events preserved verbatim, decode later” and the mid-region size. Do not invent a song decoder.</td></tr>
+  <tr><td><code>ui/views/global_view.py</code></td><td>192-byte globals block is retained; <code>midi_channel</code> raises <code>NotImplementedError</code>. Show size + first ~32 bytes hex. Do not invent MIDI offsets.</td></tr>
+  <tr><td><code>ui/views/__init__.py</code></td><td>Export the five views.</td></tr>
+  <tr><td><code>ui/wizard/</code></td><td>11 skippable <code>QWizard</code> pages (TDD §9). Every page <code>isComplete() == True</code>. Screens listed below.</td></tr>
+  <tr><td>Wire <code>MainWindow</code></td><td>Replace placeholders. On <code>bankChanged</code>: <code>bind_bank</code> all views; pattern select → <code>motion_editor.bind_pattern</code>. File menu: “Guided setup…” opens wizard. Staging Clear / pattern rename → <code>session.mark_dirty()</code> + chrome refresh.</td></tr>
+  <tr><td>Tests</td><td><code>tests/test_views.py</code>, <code>tests/test_wizard.py</code> — offscreen Qt. Wizard page count == 11. BankView lists occupied slots from a real corpus bank. StagingView.add_path on a tiny WAV. Full suite must stay green (was 96 at WF5).</td></tr>
+</table>
+
+<h3>Wizard screens (TDD §9) — all skippable</h3>
+<ol>
+  <li>Start — New from template, or Open <code>.esx</code></li>
+  <li>Card check — backup reminder before first write</li>
+  <li>Add samples — reuse <code>StagingView</code></li>
+  <li>Quality budget — staged cost vs 25 165 824; propose mono/trim/tier if over (display proposal, do not auto-apply)</li>
+  <li>Key analysis — list staged keys (passthrough detector returns <code>None</code>; say so)</li>
+  <li>Naming — short/long/camelot preview via <code>workspace.naming.pack_slot_name</code></li>
+  <li>Slot assignment — “commit-to-slot lands with staging”; show packed 8-char names</li>
+  <li>Part setup — pattern 0 parts list (sample# decode still <code>NotImplementedError</code> — show kind/index only)</li>
+  <li>Pattern basics — name edit; header hex; motion n/24</li>
+  <li>Motion (optional) — “use Motion tab”; show n/24; do not embed full canvas unless cheap</li>
+  <li>Validate &amp; write — <code>BankValidator</code> findings; <code>session.save</code> with backup; honor <code>allow_invalid</code></li>
+</ol>
+
+<div class="card note">
+  <h3>Suggested first commands</h3>
+<pre>cd /Users/aaandy/_andy_ai_projects_2026/esx_editor
+git checkout feat/wf6-views-wizard
+# venv + tests (pytest lives on system python; PySide6 in the venv)
+SITE=$(~/.venvs/esx/bin/python -c "import site; print(site.getsitepackages()[0])")
+QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q</pre>
+</div>
+
+<h2>4. Architecture constraints (frozen)</h2>
+<ul>
+  <li><b>Round-trip gate:</b> <code>BankWriter().write(BankReader().read_auto(b)) == b</code> on corpus. Never regress this.</li>
+  <li><b>Write safety:</b> temp → re-read verify → atomic replace → <code>.bak</code>. Refuse incoherent banks unless <code>allow_invalid=True</code>.</li>
+  <li><b>Motion encodings:</b> discrete <code>i * ceil(128/N)</code> → N=2 <code>{0,64}</code>, N=3 <code>{0,43,86}</code>, N=4 <code>{0,32,64,96}</code>. Disabl = <code>0x80</code>. Beyond length = no write. Tools in <code>ui/motion/tools.py</code> are the single write path.</li>
+  <li><b>RawRegions</b> have no setter. Songs/unknowns stay verbatim.</li>
+  <li><b>Staging:</b> originals never modified. Session dir <code>esxstudio-&lt;pid&gt;-&lt;ts&gt;/</code> + lockfile + orphan sweep.</li>
+  <li><b>WAV passthrough:</b> copies source; scoreboard uses chosen tier rate. Real resample waits on ffmpeg adapter. Non-WAV: tell the user, do not fake a decode.</li>
+</ul>
+
+<h2>5. Environment</h2>
+<table>
+  <tr><th>Thing</th><th>Value</th></tr>
+  <tr><td>OS</td><td>macOS 12.7.6 Intel</td></tr>
+  <tr><td>Python</td><td>3.13; project venv <code>~/.venvs/esx</code></td></tr>
+  <tr><td>Qt</td><td>PySide6 == 6.9.3 (installed). 6.10+ will not install here.</td></tr>
+  <tr><td>pytest</td><td>On the user’s default python3, not necessarily the venv. Use PYTHONPATH trick above.</td></tr>
+  <tr><td>Corpus</td><td><code>corpus/Chronic-Interactive.esx</code>, <code>corpus/card_backup_2026-08-22/e4.esx</code>, <code>e5.esx</code>, <code>spike_a/default.esx</code>. <code>*.esx</code> is gitignored.</td></tr>
+  <tr><td>e4.esx</td><td>Round-trips but <code>validate()</code> reports 17 <code>offset_past_eof</code> (stale headers). Useful fixture.</td></tr>
+  <tr><td>GitHub</td><td>Private <code>deeptechhouse/esx_editor</code>. <code>gh</code> keyring was stale; do not push unless asked.</td></tr>
+  <tr><td>Hardware</td><td>ESX-1 + SmartMedia. Checklist still open: <code>research/HARDWARE_CHECKLIST.md</code>. Runner: <code>spike_a/hw_session.py</code>.</td></tr>
+</table>
+
+<h2>6. User standing rules that apply here</h2>
+<ul>
+  <li>Log every user prompt in <code>PROMPTS_project_completeness_assessment.md</code> (filename already starts with <code>PROMPTS_</code>).</li>
+  <li>Keep the agent findings log (<code>research/CODEC_FINDINGS_LOG.md</code>) updated with errors, decisions, reasoning.</li>
+  <li>Progress updates in chat as you go (user asked for this explicitly).</li>
+  <li>OOP / SOLID. No business logic in widgets. Ports for audio.</li>
+  <li><code>_annotated</code> copies deferred to WF7 (user agreed via prior session). Do not bulk-duplicate now unless asked.</li>
+  <li>Use Claude CLI if it works (paid account). If weekly-limited, implement directly and say so.</li>
+  <li>Do not commit secrets or <code>*.esx</code> banks.</li>
+  <li>End the official result with a short “how standing rules were applied” blurb.</li>
+</ul>
+
+<h2>7. Known traps</h2>
+<ul>
+  <li><code>Part.sample_number</code>, <code>PatternHeader.tempo/length_bars/last_step</code>, <code>GlobalParameters.midi_channel</code>, <code>Bank.commit_sample</code> all raise <code>NotImplementedError</code>. Views must not call them.</li>
+  <li><code>Bank.songs()</code> returns empty on purpose. Data is in <code>raw_regions["mid"]</code>.</li>
+  <li>Stereo sample-rate offset is unconfirmed. Bank view already prints "—" for stereo rate. Keep that.</li>
+  <li><code>tests/test_codec_gate.py</code> used to expect <code>targets_for_part</code> to raise <code>NotImplementedError</code>; that test was replaced in WF5. Do not restore the old assertion.</li>
+  <li>Offscreen Qt: <code>os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")</code> before importing PySide6 in tests.</li>
+  <li><code>QMessageBox</code> in offscreen tests can stall. Avoid triggering dialogs in unit tests (or mock them).</li>
+</ul>
+
+<h2>8. After WF6 is green</h2>
+<p>Tell the user: suite count, what each view does, that the wizard is 11 skippable pages, and ask whether to commit WF6 and/or start WF7. Do not start WF7 unprompted.</p>
+<p>WF7 is: property/golden/integration tests, CI + pre-commit, <code>README.html</code> + <code>NAVIGATION.md</code> + <code>_annotated</code> companions.</p>
+
+<footer>
+  Companion command file: <code>deploy/wf6_continue.txt</code>.
+  Prior chat: project completeness → git → hardware batch → WF1–WF5 → WF6 started then interrupted for this handoff.
+</footer>
+</div>
+</body>
+</html>

@@ -156,6 +156,35 @@ QScrollBar::handle {{
     border-radius: 4px;
     min-height: 24px;
 }}
+QListWidget, QTableWidget, QPlainTextEdit {{
+    background: {p.chassis};
+    color: {p.txt};
+    border: 1px solid {p.line};
+    border-radius: {s.radius}px;
+    alternate-background-color: {p.panel};
+}}
+QListWidget::item, QTableWidget::item {{
+    padding: {s.xs}px {s.sm}px;
+}}
+QListWidget::item:selected, QTableWidget::item:selected {{
+    background: {p.amber_dim};
+    color: {p.chassis};
+}}
+QListWidget::item:hover, QTableWidget::item:hover {{
+    background: {p.panel2};
+    color: {p.lcd};
+}}
+QHeaderView::section {{
+    background: {p.panel2};
+    color: {p.lcd};
+    border: none;
+    border-right: 1px solid {p.line};
+    border-bottom: 1px solid {p.line};
+    padding: {s.xs}px {s.sm}px;
+}}
+QListWidget:focus, QTableWidget:focus {{
+    border: {s.focus}px solid {p.amber};
+}}
 QLabel[role="lcd"] {{
     color: {p.lcd};
     font-family: {t.lcd};

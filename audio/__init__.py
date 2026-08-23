@@ -5,6 +5,11 @@ Ports-and-adapters (TDD §5.1): the codec and UI depend only on the Protocols in
 audio.ports, never on ffmpeg/librosa directly, so any capability can be swapped
 without touching callers. v1 adapters (ffmpeg converter, librosa key detector)
 are added in a later workflow; WF1 freezes only the interfaces.
+
+WF6 ships the first adapters: audio.passthrough.WavPassthroughConverter (WAV
+header probe + byte copy) and NullKeyDetector (never guesses a key). Both
+satisfy the ports structurally, so swapping in ffmpeg/librosa later touches no
+caller.
 """
 
 from .ports import (
@@ -14,6 +19,7 @@ from .ports import (
     KeyResult,
     ConversionSpec,
 )
+from .passthrough import WavPassthroughConverter, NullKeyDetector
 
 __all__ = [
     "AudioConverter",
@@ -21,4 +27,6 @@ __all__ = [
     "FxRenderer",
     "KeyResult",
     "ConversionSpec",
+    "WavPassthroughConverter",
+    "NullKeyDetector",
 ]

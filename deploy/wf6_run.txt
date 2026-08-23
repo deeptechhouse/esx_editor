@@ -1,0 +1,11 @@
+# Launch ESX Bank Studio (WF6)
+cd /Users/aaandy/_andy_ai_projects_2026/esx_editor
+PYTHONPATH="$PWD" ~/.venvs/esx/bin/python -m ui.app
+
+# Run the automated suite (expect: 203 passed)
+SITE=$(~/.venvs/esx/bin/python -c "import site; print(site.getsitepackages()[0])")
+QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
+
+# Suite + coverage
+QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q \
+  --cov=ui --cov=audio --cov=codec --cov=workspace --cov=core --cov-report=term-missing

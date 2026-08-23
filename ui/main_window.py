@@ -1,9 +1,11 @@
 """
 ui.main_window — the application shell: menus, tabs, status, session (TDD §10.1).
 
-View tabs are placeholders in WF4; WF6 fills Bank/Staging/Pattern/Song/Global
-and WF5 fills Motion. The shell already wires File→New/Open/Save against
-BankSession so later views only have to bind to the live Bank.
+WF6 replaced the placeholder panes with the real views. The shell is the wiring
+layer and nothing else: it owns the BankSession (the single place codec/ is
+imported), and on every bank change it hands the live core.Bank to each view's
+`bind_bank`. Views render and emit intent; the shell turns intent into session
+calls and chrome refreshes.
 """
 
 from __future__ import annotations
@@ -20,8 +22,9 @@ from codec.errors import CodecError
 from ui.session import BankSession
 from ui.theme import PALETTE
 from ui.widgets.budget_meter import BudgetMeter
-from ui.widgets.placeholder import PlaceholderView
 from ui.motion.editor import MotionEditor
+from ui.views import BankView, StagingView, PatternView, SongView, GlobalView
+from ui.wizard import SetupWizard
 
 
 APP_TITLE = "ESX Bank Studio"
@@ -44,46 +47,73 @@ class MainWindow(QMainWindow):
         self.session = session or BankSession()
         self.setWindowTitle(APP_TITLE)
         self.resize(1100, 720)
+        self._wizard: SetupWizard | None = None
         self._build_tabs()
         self._build_menus()
         self._build_status()
-        self.bankChanged.connect(self._bind_motion)
+        self.bankChanged.connect(self._bind_views)
         self._refresh_chrome()
-        self._bind_motion()
+        self._bind_views()
 
+    # -- construction -------------------------------------------------------
     def _build_tabs(self) -> None:
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
-        self.motion_editor: MotionEditor | None = None
-        for name, hint in TABS:
-            if name == "Motion":
-                self.motion_editor = MotionEditor()
-                self.tabs.addTab(self.motion_editor, name)
-            else:
-                self.tabs.addTab(PlaceholderView(name, hint), name)
+        self.bank_view = BankView()
+        self.staging_view = StagingView()
+        self.pattern_view = PatternView()
+        self.motion_editor = MotionEditor()
+        self.song_view = SongView()
+        self.global_view = GlobalView()
+        self.views = {
+            "Bank": self.bank_view,
+            "Staging": self.staging_view,
+            "Pattern": self.pattern_view,
+            "Motion": self.motion_editor,
+            "Song": self.song_view,
+            "Global": self.global_view,
+        }
+        for name, _hint in TABS:
+            self.tabs.addTab(self.views[name], name)
         self.setCentralWidget(self.tabs)
 
+        # intent -> session. Widgets never touch the session themselves.
+        self.pattern_view.patternSelected.connect(self._on_pattern_selected)
+        self.pattern_view.patternEdited.connect(self._on_bank_edited)
+        self.staging_view.samplesChanged.connect(self._on_staging_changed)
+
     def _build_menus(self) -> None:
+        # Keep Python references to the menus: PySide does not own the wrappers
+        # returned by addMenu(), so a garbage-collected QMenu wrapper makes the
+        # menu unreachable from code even while it still renders.
+        self.menus: dict[str, object] = {}
         file_menu = self.menuBar().addMenu("&File")
+        self.menus["File"] = file_menu
         self._act("New bank", file_menu, self._on_new, QKeySequence.StandardKey.New)
         self._act("Open…", file_menu, self._on_open, QKeySequence.StandardKey.Open)
         self._act("Save", file_menu, self._on_save, QKeySequence.StandardKey.Save)
         self._act("Save As…", file_menu, self._on_save_as,
                   QKeySequence.StandardKey.SaveAs)
         file_menu.addSeparator()
+        self._act("Guided setup…", file_menu, self.open_wizard)
+        file_menu.addSeparator()
         self._act("Quit", file_menu, self.close, QKeySequence.StandardKey.Quit)
 
         edit_menu = self.menuBar().addMenu("&Edit")
-        edit_menu.addAction(QAction("(views land in later workflows)", self))
+        self.menus["Edit"] = edit_menu
+        self._act("Clear staging", edit_menu, self._on_clear_staging)
 
         view_menu = self.menuBar().addMenu("&View")
+        self.menus["View"] = view_menu
         for i, (name, _) in enumerate(TABS):
             act = QAction(name, self)
             act.setShortcut(QKeySequence(f"Ctrl+{i + 1}"))
-            act.triggered.connect(lambda _checked=False, idx=i: self.tabs.setCurrentIndex(idx))
+            act.triggered.connect(
+                lambda _checked=False, idx=i: self.tabs.setCurrentIndex(idx))
             view_menu.addAction(act)
 
         help_menu = self.menuBar().addMenu("&Help")
+        self.menus["Help"] = help_menu
         self._act("About", help_menu, self._on_about)
 
     def _act(self, text, menu, slot, shortcut=None) -> QAction:
@@ -105,6 +135,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self._dirty_label)
         self.statusBar().addPermanentWidget(self.meter)
 
+    # -- binding ------------------------------------------------------------
     def _refresh_chrome(self) -> None:
         path = self.session.path
         name = os.path.basename(path) if path else (
@@ -115,12 +146,62 @@ class MainWindow(QMainWindow):
         self._dirty_label.setText("modified" if self.session.dirty else "")
         self.meter.set_used(self.session.pcm_used())
 
+    def _bind_views(self) -> None:
+        """Hand the live bank to every view, then re-bind the motion editor."""
+        bank = self.session.bank
+        self.bank_view.bind_bank(bank)
+        self.pattern_view.bind_bank(bank)
+        self.song_view.bind_bank(bank)
+        self.global_view.bind_bank(bank)
+        self._bind_motion()
+
     def _bind_motion(self) -> None:
-        if self.motion_editor is None or self.session.bank is None:
+        bank = self.session.bank
+        if bank is None:
             return
-        patterns = self.session.bank.patterns()
+        patterns = bank.patterns()
         if patterns:
-            self.motion_editor.bind_pattern(patterns[0])
+            index = min(max(self.pattern_view.current_index, 0), len(patterns) - 1)
+            self.motion_editor.bind_pattern(patterns[index])
+
+    # -- intent from the views ---------------------------------------------
+    def _on_pattern_selected(self, row: int) -> None:
+        bank = self.session.bank
+        if bank is None:
+            return
+        patterns = bank.patterns()
+        if 0 <= row < len(patterns):
+            self.motion_editor.bind_pattern(patterns[row])
+
+    def _on_bank_edited(self) -> None:
+        """A view mutated the bank (pattern rename, …)."""
+        self.session.mark_dirty()
+        self._refresh_chrome()
+
+    def _on_staging_changed(self) -> None:
+        self.session.mark_dirty()
+        self._refresh_chrome()
+
+    def _on_clear_staging(self) -> None:
+        self.staging_view.clear_staging()
+
+    # -- menu actions -------------------------------------------------------
+    def open_wizard(self) -> SetupWizard:
+        """Open the eleven-screen guided setup on the live session."""
+        wizard = SetupWizard(
+            self.session,
+            staging_bank=self.staging_view.bank,
+            on_changed=self._on_wizard_changed,
+            parent=self)
+        self._wizard = wizard
+        wizard.finished.connect(lambda _result: self._on_wizard_changed())
+        wizard.show()
+        return wizard
+
+    def _on_wizard_changed(self) -> None:
+        self.bankChanged.emit()
+        self.staging_view.reload()
+        self._refresh_chrome()
 
     def _on_new(self) -> None:
         if not self._confirm_discard():
@@ -140,13 +221,18 @@ class MainWindow(QMainWindow):
             self, "Open ESX bank", "", "ESX banks (*.esx);;All files (*)")
         if not path:
             return
+        self.open_path(path)
+
+    def open_path(self, path: str) -> bool:
+        """Open a bank by path. Returns False and warns on failure."""
         try:
             self.session.open_path(path)
         except (CodecError, OSError) as exc:
             QMessageBox.warning(self, "Open failed", str(exc))
-            return
+            return False
         self.bankChanged.emit()
         self._refresh_chrome()
+        return True
 
     def _on_save(self) -> None:
         if self.session.path:
