@@ -47,9 +47,9 @@ class SongView(QWidget):
         self._detail.setStyleSheet(f"color: {PALETTE.muted};")
         self._detail.setWordWrap(True)
 
-        self.table = QTableWidget(0, 3)
+        self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
-            ["song", "file offset", f"first {PREVIEW_BYTES} bytes (undecoded)"]
+            ["song", "name", "tempo", "state", f"first {PREVIEW_BYTES} bytes"]
         )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -113,29 +113,44 @@ class SongView(QWidget):
             f"({L.NUM_SONGS} × {L.CHUNK_SONG} B = "
             f"{L.NUM_SONGS * L.CHUNK_SONG:,} B); the shared event area begins at "
             f"0x{L.ADDR_SONG_EVENT_DATA:X} ({L.CHUNK_SONG_EVENT} B per event, "
-            f"max {L.MAX_SONG_EVENTS:,}). No field offsets inside a song block "
-            "are proven, so none are shown as values."
+            f"max {L.MAX_SONG_EVENTS:,}).\n"
+            "Only the name and tempo are decodable: across all four corpus "
+            "banks every one of the 256 song blocks is identical, and the ONLY "
+            "non-zero bytes are the 8-byte name and the tempo at offset 8. "
+            "Length, tempo lock, mute hold and next-song live in the 519 bytes "
+            "that are zero everywhere, so they cannot be located — and there is "
+            "not one song event in the whole corpus. Save a real song on the "
+            "hardware and all of it falls out at once."
         )
         self._fill_rows(self._bank.raw_regions.get("mid"))
 
     # -- internals ----------------------------------------------------------
     def _fill_rows(self, mid: bytes) -> None:
         base = L.ADDR_SONG_DATA - MID_START
+        songs = self._bank.songs() if self._bank is not None else ()
         rows = []
         for i in range(L.NUM_SONGS):
             start = base + i * L.CHUNK_SONG
             if start < 0 or start + PREVIEW_BYTES > len(mid):
                 break
+            song = songs[i] if i < len(songs) else None
+            # Name and tempo are the only two fields the corpus can support;
+            # everything else in the 528 bytes is zero in every bank.
+            name = song.name if song else ""
+            tempo = f"{song.tempo:.1f}" if song else "—"
+            state = "empty" if (song and song.is_blank) else "has data"
             rows.append(
                 (
-                    i,
-                    L.ADDR_SONG_DATA + i * L.CHUNK_SONG,
+                    f"{i + 1:02d}",
+                    name or "— unnamed —",
+                    tempo,
+                    state,
                     mid[start : start + PREVIEW_BYTES].hex(" "),
                 )
             )
         self.table.setRowCount(len(rows))
-        for row, (i, addr, hexed) in enumerate(rows):
-            for col, text in enumerate((f"{i:02d}", f"0x{addr:X}", hexed)):
+        for row, values in enumerate(rows):
+            for col, text in enumerate(values):
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(
                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter

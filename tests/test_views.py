@@ -236,7 +236,10 @@ def test_pattern_view_unbinds_cleanly(qapp) -> None:
 def test_song_view_is_honest_about_undecoded_songs(qapp, bank) -> None:
     v = SongView()
     v.bind_bank(bank)
-    assert bank.songs() == (), "song decoding is deliberately not implemented"
+    # Songs are parsed for DISPLAY, but the region is still written verbatim
+    # and Song has no setters.
+    assert len(bank.songs()) == L.NUM_SONGS == 64
+    assert all(not hasattr(s, "set_name") for s in bank.songs()[:4])
     assert f"{L.NUM_SONGS} songs" in v._headline.text()
     assert "verbatim" in v._headline.text()
     assert v.mid_region_size() == len(bank.raw_regions.get("mid"))
@@ -249,8 +252,9 @@ def test_song_view_previews_bytes_at_verified_offsets(qapp, bank) -> None:
     assert v.table.rowCount() == L.NUM_SONGS
     mid = bank.raw_regions.get("mid")
     start = L.ADDR_SONG_DATA - MID_START
-    assert v.table.item(0, 1).text() == f"0x{L.ADDR_SONG_DATA:X}"
-    assert v.table.item(0, 2).text() == mid[start : start + PREVIEW_BYTES].hex(" ")
+    # The hex preview moved to the last column when name/tempo/state were added.
+    assert v.table.item(0, 4).text() == mid[start : start + PREVIEW_BYTES].hex(" ")
+    assert v.table.item(0, 0).text() == "01", "songs display 1-based, like the machine"
 
 
 def test_song_view_unbinds_cleanly(qapp) -> None:
@@ -599,3 +603,50 @@ def test_pattern_view_disables_tempo_with_no_bank(qapp) -> None:
     v = PatternView()
     v.bind_bank(None)
     assert not v._tempo.isEnabled()
+
+
+# -- songs: two fields decodable, the rest deliberately not -------------------
+def test_song_view_lists_names_and_tempos(qapp, bank) -> None:
+    v = SongView()
+    v.bind_bank(bank)
+    assert v.table.rowCount() == L.NUM_SONGS
+    # Every corpus song is at the machine default: blank name, 120.0 BPM.
+    assert v.table.item(0, 1).text() == "— unnamed —"
+    assert v.table.item(0, 2).text() == "120.0"
+    assert v.table.item(0, 3).text() == "empty"
+
+
+def test_song_view_explains_why_the_rest_is_missing(qapp, bank) -> None:
+    v = SongView()
+    v.bind_bank(bank)
+    detail = v._detail.text()
+    assert "zero everywhere" in detail
+    assert "not one song event" in detail
+
+
+def test_songs_decode_only_what_the_corpus_can_support(bank) -> None:
+    """Name and tempo are readable; everything else refuses."""
+    song = bank.songs()[0]
+    assert song.name == ""
+    assert song.tempo == pytest.approx(120.0, abs=0.01)
+    assert song.is_blank is True
+    assert len(song.to_bytes()) == L.CHUNK_SONG
+    for field in ("tempo_lock", "length", "mute_hold", "next_song"):
+        with pytest.raises(NotImplementedError, match="ZERO in every"):
+            getattr(song, field)
+
+
+def test_parsing_songs_does_not_affect_the_round_trip(corpus_path) -> None:
+    """Songs are read for display; the writer still replays the region.
+
+    Parses its OWN bank rather than using the shared session fixture, which
+    earlier tests deliberately mutate.
+    """
+    from codec.reader import BankReader
+    from codec.writer import BankWriter
+
+    with open(corpus_path, "rb") as handle:
+        original = handle.read()
+    fresh = BankReader().read_auto(original)
+    assert len(fresh.songs()) == L.NUM_SONGS
+    assert BankWriter().write(fresh) == original

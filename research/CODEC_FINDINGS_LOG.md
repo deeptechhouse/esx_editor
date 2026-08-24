@@ -873,3 +873,61 @@ explained. The corpus had contained the evidence all along.
 **404 tests** passing. codec/ 100%, project 91%. Round-trip still byte-identical
 on all four banks; a committed block is now structurally identical to a
 machine-written one.
+
+---
+
+## 2026-08-23 — WF16 (song blocks: two fields decodable, the rest confirmed impossible)
+
+A second SawLoop dump — its Song List and Song Details for the same bank.
+
+### IT CONFIRMS THE NEGATIVE RESULT, INDEPENDENTLY
+SawLoop's own Song Events page says, verbatim:
+
+> There are no song events configured for this file!
+
+and its Song List shows all 64 songs at the machine default — blank name, 120.0
+BPM, tempo lock Off, length 1, mute hold Off, next OFF, **0 events**. That is an
+independent tool reaching the same conclusion WF11 reached from the bytes. Song
+*editing* remains blocked on hardware, exactly as recorded.
+
+### DISCOVERY — only NINE bytes of the 528-byte song block are non-zero
+Across all four corpus banks, every one of the 256 song blocks is byte-identical
+and the only non-zero offsets are **0..8**:
+
+```
+  0..7   name   8 bytes, space-padded (0x20)
+  8..9   tempo  big-endian u16 at 1/128 BPM -> 0x3C00 = 120.0
+```
+
+The song block therefore opens exactly like a pattern chunk: an 8-byte name
+followed by a 1/128-scaled tempo at the same relative offset.
+
+`Song.name` and `Song.tempo` are now implemented, marked **DOCUMENTED** rather
+than VERIFIED: every observed song is at the default, so no varying value has
+been seen. Three things support the tempo reading — the bytes decode to exactly
+120.0 under a scale independently VERIFIED against 1,024 pattern headers,
+SawLoop independently reports 120.0, and the offset matches the pattern
+header's.
+
+Tempo Lock, Song Length, Mute Hold, Next Song and the event count are *named* by
+SawLoop but live somewhere in the **519 bytes that are zero in every bank**, so
+they cannot be located. They raise, with a message saying so.
+
+### READ-ONLY BY CONSTRUCTION
+The reader now builds 64 `Song` objects for display, but the writer still emits
+the whole span from the verbatim `mid` region and `Song` has **no setters**. A
+Song you could edit but not save would be worse than none at all. Round-trip
+re-verified byte-identical on all four banks after the change.
+
+### UI
+The Song tab lists 64 songs with name, tempo and empty/has-data, instead of a
+wall of hex, and says plainly which fields are missing and why.
+
+### A TEST-ISOLATION BUG THIS SURFACED
+A new round-trip assertion failed against the session-scoped `bank` fixture,
+because earlier tests deliberately rename pattern 0 in it. The test now parses
+its own bank. Worth noting: a shared mutable fixture is fine for read-only
+assertions and quietly wrong for byte-identity ones.
+
+### RESULT
+**408 tests** passing. codec/ 100%, project 91%.

@@ -181,10 +181,14 @@ class Bank:
         return tuple(self._patterns)
 
     def songs(self) -> tuple[Song, ...]:
-        """Immutable view of the songs.
+        """Immutable view of the 64 songs — READ ONLY.
 
-        WF2 keeps the song area inside RawRegions ('mid') verbatim, so this is
-        empty until song decoding is implemented; the data is never lost.
+        The song area is still replayed verbatim from the "mid" raw region, so
+        these objects are for display and never for writing. Song has no
+        setters, which keeps that structural rather than a convention.
+
+        Only the name and tempo are decodable; everything else about a song
+        lives in bytes that are zero in every corpus bank.
         """
         return tuple(self._songs)
 

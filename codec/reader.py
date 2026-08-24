@@ -11,7 +11,9 @@ DECOMPOSITION (guarantees byte-identity with codec.writer)
     pre    = [0x0 .. ADDR_PATTERN_DATA)   magic + globals + unknown_1
     patterns x256
     mid    = [pat_end .. ADDR_MAGIC_2)   unknown_2 + songs + song_events +
-             unknown_3  (verbatim)
+             unknown_3  (verbatim). The 64 song blocks inside it are ALSO
+             parsed into read-only Song objects for display; the writer still
+             replays this whole span byte for byte.
     magic2 = [ADDR_MAGIC_2 .. ADDR_NUM_MONO_SAMPLES)   (verbatim)
     counts = [ADDR_NUM_MONO_SAMPLES .. +12)   DECODED into Bank.sample_area:
              num_mono, num_stereo, currentOffset. Decoded rather than kept
@@ -36,6 +38,7 @@ from core.bank import SAVE_ALL, SAVE_PSG, Bank, RawRegions, SampleArea
 from core.global_params import GlobalParameters
 from core.pattern import Pattern
 from core.sample import SampleSlot
+from core.song import Song
 
 
 class BankReader:
@@ -108,8 +111,21 @@ class BankReader:
             }
         )
         sample_area = SampleArea.from_bytes(data[counts_at:counts_end])
+        # Songs are parsed FOR DISPLAY ONLY. The writer still emits this whole
+        # span from the verbatim "mid" region, never from these objects, and
+        # Song has no setters — so this cannot affect the round-trip gate.
+        songs = [
+            Song.from_bytes(
+                data[
+                    L.ADDR_SONG_DATA
+                    + i * L.CHUNK_SONG : L.ADDR_SONG_DATA
+                    + (i + 1) * L.CHUNK_SONG
+                ]
+            )
+            for i in range(L.NUM_SONGS)
+        ]
         pcm = data[L.ADDR_SAMPLE_DATA :]
-        return Bank(globals_, patterns, [], samples, pcm, raw, SAVE_ALL, sample_area)
+        return Bank(globals_, patterns, songs, samples, pcm, raw, SAVE_ALL, sample_area)
 
     def read_psg(self, data: bytes) -> Bank:
         """Parse a Save-PSG image (no sample area) into a Bank.
