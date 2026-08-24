@@ -219,13 +219,52 @@ TUNE_HUNDREDTHS_MASK = 0xFF
 PCM_ALIGN = 4
 PCM_GAP = 2
 
-# PCM trailer -- VERIFIED 2026-08-23 on all four corpus banks. The PCM region
-# is always exactly currentOffset + 16 bytes, and bytes 4..7 of the trailing 16
-# are a big-endian copy of currentOffset. The remaining 12 bytes were identical
-# across all three machine-written banks.
-PCM_TRAILER_LEN = 16
-PCM_TRAILER_OFF_CURRENT = 4
-PCM_TRAILER_DEFAULT = bytes.fromhex("80007fff00000000017ffffe00ffffff")
+# PCM BLOCK HEADER -- VERIFIED 2026-08-23, 204/204 blocks across two banks.
+#
+# The PCM region is not raw audio. It is a chain of BLOCKS, each opening with a
+# 16-byte header, and a sample slot's offsetStart/offsetEnd bracket the whole
+# block -- header included. The audio begins 16 bytes in.
+#
+#     0..3    0x80007FFF   magic, identical on every block
+#     4..7    start        this block's own offsetStart
+#     8..11   end          this block's own offsetEnd
+#     12      number       sample index WITHIN ITS POOL (mono 0-255, stereo 0-127)
+#     13      channel      0 = mono, 1 = stereo left, 2 = stereo right
+#     14..15  0xFFFF
+#
+# EVIDENCE
+#   - magic, start and end each matched on 180/180 blocks of
+#     Chronic-Interactive.esx and 24/24 of e5.esx.
+#   - byte 13 is 0 on exactly 100 blocks, 1 on 40 and 2 on 40 -- precisely the
+#     bank's 100 mono and 40 stereo samples.
+#   - (end - start - 16) is an exact whole number of 16-bit frames for every
+#     block, and matches an independent editor's reported audio length to the
+#     byte (sample 0: 8,488 frames / 16,976 B).
+#
+# This was MISSED until an independent tool's debug dump prompted the check.
+# Committing a sample without the header writes audio where the machine expects
+# magic, so it matters.
+PCM_BLOCK_HEADER_LEN = 16
+PCM_BLOCK_MAGIC = 0x80007FFF
+PCM_BLOCK_OFF_START = 4
+PCM_BLOCK_OFF_END = 8
+PCM_BLOCK_OFF_NUMBER = 12
+PCM_BLOCK_OFF_CHANNEL = 13
+PCM_BLOCK_TAIL = 0xFFFF
+
+#: Channel codes in byte 13.
+PCM_CHANNEL_MONO = 0
+PCM_CHANNEL_LEFT = 1
+PCM_CHANNEL_RIGHT = 2
+#: Byte 13 of the free-space block, which terminates the chain.
+PCM_CHANNEL_FREE = 0xFF
+
+#: The free block sits AT currentOffset and runs to the end of sample memory.
+#: Its "end" is MAX_SAMPLE_BYTES - 2 on every machine-written bank.
+PCM_FREE_BLOCK_END = MAX_SAMPLE_BYTES - 2
+
+# Retained names for the free block, which is just another block header.
+PCM_TRAILER_LEN = PCM_BLOCK_HEADER_LEN
 
 # ---------------------------------------------------------------------------
 # Unknown regions -- preserved verbatim, never interpreted.

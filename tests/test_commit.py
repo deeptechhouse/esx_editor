@@ -42,7 +42,9 @@ def test_commit_writes_pcm_header_and_counts() -> None:
     assert not slot.empty
     assert slot.name.strip() == "KICK01"
     assert slot.sample_rate == 44100
-    assert bytes(bank.pcm[slot.offset_start : slot.offset_end]) == payload
+    # The slot brackets the whole BLOCK; the audio starts 16 bytes in.
+    assert bytes(bank.pcm[slice(*slot.audio_range)]) == payload
+    assert slot.audio_bytes == len(payload)
     assert bank.sample_area_header()[:2] == (1, 0)
 
 
@@ -55,12 +57,13 @@ def test_commit_follows_the_verified_allocation_rule() -> None:
     bank.commit_sample(1, second, stereo=False, sample_rate=44100, name="B")
 
     a, b = bank.samples()[0], bank.samples()[1]
-    assert a.offset_start == 0 and a.offset_end == len(first)
+    assert a.offset_start == 0
+    assert a.offset_end == L.PCM_BLOCK_HEADER_LEN + len(first)
     expected = -(-(a.offset_end + L.PCM_GAP) // L.PCM_ALIGN) * L.PCM_ALIGN
     assert b.offset_start == expected
     assert b.offset_start % L.PCM_ALIGN == 0
     assert b.offset_start - a.offset_end in (2, 3, 4)
-    assert bytes(bank.pcm[b.offset_start : b.offset_end]) == second
+    assert bytes(bank.pcm[slice(*b.audio_range)]) == second
 
 
 def test_commit_defaults_the_tune_to_rate_compensation() -> None:
@@ -81,14 +84,34 @@ def test_commit_can_carry_a_musical_transposition() -> None:
     assert abs(bank.samples()[0].musical_tune() - 7.0) < 0.01
 
 
-def test_commit_keeps_the_trailer_consistent() -> None:
-    """The PCM region is currentOffset + 16, and the trailer mirrors it."""
+def test_commit_writes_a_proper_block_header() -> None:
+    """Every PCM block opens with magic + its own start and end (VERIFIED)."""
+    bank = empty_bank()
+    payload = b"\x11" * 400
+    bank.commit_sample(0, payload, stereo=False, sample_rate=44100, name="X")
+    slot = bank.samples()[0]
+    magic, start, end, number, channel, tail = struct.unpack_from(
+        ">IIIBBH", bank.pcm, slot.offset_start
+    )
+    assert magic == L.PCM_BLOCK_MAGIC
+    assert start == slot.offset_start
+    assert end == slot.offset_end
+    assert number == 0 and channel == L.PCM_CHANNEL_MONO
+    assert tail == L.PCM_BLOCK_TAIL
+    assert bytes(bank.pcm[slice(*slot.audio_range)]) == payload
+
+
+def test_commit_terminates_the_chain_with_a_free_block() -> None:
+    """The last 16 bytes are one more block header, marked free."""
     bank = empty_bank()
     bank.commit_sample(0, b"\x00" * 400, stereo=False, sample_rate=44100, name="X")
     _, _, cursor = bank.sample_area_header()
-    assert len(bank.pcm) == cursor + L.PCM_TRAILER_LEN
-    mirrored = struct.unpack_from(">I", bank.pcm, cursor + L.PCM_TRAILER_OFF_CURRENT)[0]
-    assert mirrored == cursor
+    assert len(bank.pcm) == cursor + L.PCM_BLOCK_HEADER_LEN
+    magic, start, end, _n, channel, _t = struct.unpack_from(">IIIBBH", bank.pcm, cursor)
+    assert magic == L.PCM_BLOCK_MAGIC
+    assert start == cursor, "the free block sits AT currentOffset"
+    assert end == L.PCM_FREE_BLOCK_END
+    assert channel == L.PCM_CHANNEL_FREE
 
 
 def test_a_committed_bank_validates_and_round_trips() -> None:
@@ -101,12 +124,7 @@ def test_a_committed_bank_validates_and_round_trips() -> None:
     again = BankReader().read_auto(data)
     assert BankWriter().write(again) == data
     assert again.samples()[5].name.strip() == "B"
-    assert (
-        bytes(
-            again.pcm[again.samples()[5].offset_start : again.samples()[5].offset_end]
-        )
-        == b"\x22" * 300
-    )
+    assert bytes(again.pcm[slice(*again.samples()[5].audio_range)]) == b"\x22" * 300
 
 
 # -- refusals -----------------------------------------------------------------
@@ -192,7 +210,7 @@ def test_compact_reclaims_the_gap_and_keeps_the_audio() -> None:
     assert freed > 0
     slot = bank.samples()[1]
     assert slot.offset_start == 0
-    assert bytes(bank.pcm[slot.offset_start : slot.offset_end]) == b
+    assert bytes(bank.pcm[slice(*slot.audio_range)]) == b
     assert BankValidator().validate(bank).ok
     data = BankWriter().write(bank)
     assert BankWriter().write(BankReader().read_auto(data)) == data
@@ -254,14 +272,45 @@ def test_no_pcm_range_in_a_real_bank_overlaps_another(bank) -> None:
 
 
 @pytest.mark.corpus
-def test_the_pcm_trailer_mirrors_current_offset(bank) -> None:
+def test_every_real_block_carries_a_valid_header(bank) -> None:
+    """204/204 across two banks when this was established. Never regress it."""
+    pcm = bank.pcm
+    checked = 0
+    for slot in bank.samples():
+        if slot.empty:
+            continue
+        ranges = [(slot.offset_start, slot.offset_end)]
+        if slot.channel2_range:
+            ranges.append(slot.channel2_range)
+        for start, end in ranges:
+            if start + L.PCM_BLOCK_HEADER_LEN > len(pcm):
+                continue  # e4 has stale headers pointing past EOF
+            checked += 1
+            magic, got_start, got_end, _n, channel, tail = struct.unpack_from(
+                ">IIIBBH", pcm, start
+            )
+            assert magic == L.PCM_BLOCK_MAGIC
+            assert got_start == start and got_end == end
+            assert channel in (
+                L.PCM_CHANNEL_MONO,
+                L.PCM_CHANNEL_LEFT,
+                L.PCM_CHANNEL_RIGHT,
+            )
+            assert tail == L.PCM_BLOCK_TAIL
+    if checked == 0:
+        pytest.skip("no readable blocks in this bank")
+
+
+@pytest.mark.corpus
+def test_the_free_block_terminates_a_real_chain(bank) -> None:
     _, _, cursor = bank.sample_area_header()
     pcm = bank.pcm
-    if cursor + L.PCM_TRAILER_LEN > len(pcm):
+    if cursor + L.PCM_BLOCK_HEADER_LEN > len(pcm):
         pytest.skip("this bank's currentOffset is stale (e4 has 16/18 bad headers)")
-    assert len(pcm) == cursor + L.PCM_TRAILER_LEN
-    mirrored = struct.unpack_from(">I", pcm, cursor + L.PCM_TRAILER_OFF_CURRENT)[0]
-    assert mirrored == cursor
+    magic, start, _end, _n, channel, _t = struct.unpack_from(">IIIBBH", pcm, cursor)
+    assert magic == L.PCM_BLOCK_MAGIC
+    assert start == cursor
+    assert channel == L.PCM_CHANNEL_FREE
 
 
 @pytest.mark.corpus
@@ -285,7 +334,7 @@ def test_commit_into_a_real_bank_corrupts_nothing(coherent_bank) -> None:
     for slot in bank.samples():
         if slot.empty:
             continue
-        snapshot[(slot.index, 1)] = bytes(bank.pcm[slot.offset_start : slot.offset_end])
+        snapshot[(slot.index, 1)] = bytes(bank.pcm[slice(*slot.audio_range)])
         if slot.channel2_range:
             snapshot[(slot.index, 2)] = bytes(bank.pcm[slice(*slot.channel2_range)])
     if not snapshot:
@@ -302,19 +351,12 @@ def test_commit_into_a_real_bank_corrupts_nothing(coherent_bank) -> None:
     for (index, channel), original in snapshot.items():
         slot = bank.samples()[index]
         current = (
-            bytes(bank.pcm[slot.offset_start : slot.offset_end])
+            bytes(bank.pcm[slice(*slot.audio_range)])
             if channel == 1
             else bytes(bank.pcm[slice(*slot.channel2_range)])
         )
         assert current == original, f"slot {index} channel {channel} was overwritten"
-    assert (
-        bytes(
-            bank.pcm[
-                bank.samples()[free].offset_start : bank.samples()[free].offset_end
-            ]
-        )
-        == payload
-    )
+    assert bytes(bank.pcm[slice(*bank.samples()[free].audio_range)]) == payload
 
 
 # -- the one decoded pattern-header field -------------------------------------

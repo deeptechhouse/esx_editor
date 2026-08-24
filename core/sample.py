@@ -169,6 +169,26 @@ class SampleSlot:
         return struct.unpack_from(">I", self._raw, self._rate_offset)[0]
 
     @property
+    def audio_range(self) -> tuple[int, int]:
+        """(start, end) of the AUDIO, skipping the 16-byte block header.
+
+        offset_start/offset_end bracket the whole block. Slicing the PCM with
+        those and calling it audio includes the header, which decodes as a
+        colossal sample value at the very start of every sound.
+        """
+        return (self.offset_start + L.PCM_BLOCK_HEADER_LEN, self.offset_end)
+
+    @property
+    def audio_bytes(self) -> int:
+        """Length of the audio alone."""
+        return max(0, self.offset_end - self.offset_start - L.PCM_BLOCK_HEADER_LEN)
+
+    @property
+    def frames(self) -> int:
+        """Number of 16-bit frames in this slot's audio."""
+        return self.audio_bytes // 2
+
+    @property
     def channel2_range(self) -> tuple[int, int] | None:
         """(start, end) of the second channel's PCM, or None for a mono slot."""
         if not self._stereo:

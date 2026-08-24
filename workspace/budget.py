@@ -65,14 +65,26 @@ class BudgetCalculator:
         return ((n + boundary - 1) // boundary) * boundary
 
     def cost_bytes(self, duration_s: float, rate: int, channels: int = 1) -> int:
-        """Exact bytes a sample occupies at a rate: align_up(frames*2*ch + 2, 4)."""
+        """Exact bytes a sample consumes, block header included.
+
+            align_up(16 + frames*2*channels + 2, 4)
+
+        The 16 is the PCM block header every sample carries (see
+        codec.layout). It was missing until 2026-08-23, which under-counted
+        every sample by 16 bytes — small per sample, but 384 of them is 6 KB of
+        phantom free space, and the scoreboard's whole job is to be exact.
+
+        Verified against real allocation: sample 0 of Chronic-Interactive.esx is
+        8,488 frames and the next sample starts at 16,996 — which is
+        align_up(16 + 16,976 + 2, 4).
+        """
         if duration_s < 0 or rate <= 0 or channels < 1:
             raise ValueError(
                 f"invalid cost inputs: duration={duration_s} rate={rate} ch={channels}"
             )
         frames = int(round(duration_s * rate))
         raw = frames * 2 * channels
-        return self.align_up(raw + 2, 4)
+        return self.align_up(L.PCM_BLOCK_HEADER_LEN + raw + 2, 4)
 
     def total_cost(
         self, items: Sequence[BudgetItem], rate_for: Callable[[str], int] | None = None

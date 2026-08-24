@@ -196,11 +196,17 @@ def test_align_up_is_the_smallest_aligned_value_at_or_above_n(
 def test_cost_follows_the_verified_allocation_rule(
     duration: float, rate: int, channels: int
 ) -> None:
-    """cost = align_up(frames * 2 * channels + 2, 4) — measured on 279 samples."""
+    """cost = align_up(16 + frames*2*channels + 2, 4).
+
+    The 16 is the PCM block header every sample carries — established
+    2026-08-23 and previously missing, which under-counted every sample.
+    """
     calc = BudgetCalculator()
     cost = calc.cost_bytes(duration, rate, channels)
     frames = int(round(duration * rate))
-    assert cost == BudgetCalculator.align_up(frames * 2 * channels + 2, 4)
+    assert cost == BudgetCalculator.align_up(
+        L.PCM_BLOCK_HEADER_LEN + frames * 2 * channels + 2, 4
+    )
     assert cost % 4 == 0
     assert cost >= 4
 
@@ -220,7 +226,9 @@ def test_cost_is_monotonic_in_duration(a: float, b: float, rate: int) -> None:
 def test_seconds_available_fits_inside_capacity(rate: int, channels: int) -> None:
     calc = BudgetCalculator()
     seconds = calc.seconds_available(rate, channels)
-    assert calc.cost_bytes(seconds, rate, channels) <= CAPACITY + 4
+    assert calc.cost_bytes(seconds, rate, channels) <= (
+        CAPACITY + L.PCM_BLOCK_HEADER_LEN + 4
+    )
 
 
 # -- naming -------------------------------------------------------------------

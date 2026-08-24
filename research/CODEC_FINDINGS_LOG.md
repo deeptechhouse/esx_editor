@@ -795,3 +795,81 @@ now asks first instead of failing part-way.
 
 ### RESULT
 **402 tests** passing. codec/ 100%, project 91%.
+
+---
+
+## 2026-08-23 — WF15 (the PCM region is a block chain, not raw audio)
+
+The user supplied a debug dump from another ESX editor (SawLoop) for the same
+bank, byte-identical to our corpus copy. Its "Sample Data" table listed an
+**Audio Length** and a **Data Length** that did not match the span between a
+slot's offsets — 16 bytes short on every row. Checking that found a serious bug.
+
+### DISCOVERY — every PCM block opens with a 16-byte header
+
+The PCM region is not raw audio. It is a chain of blocks, and a sample slot's
+`offsetStart`/`offsetEnd` bracket the whole **block**, header included. The
+audio begins 16 bytes in.
+
+```
+ 0..3    0x80007FFF   magic, identical on every block
+ 4..7    start        this block's own offsetStart
+ 8..11   end          this block's own offsetEnd
+ 12      number       sample index WITHIN ITS POOL (mono 0-255, stereo 0-127)
+ 13      channel      0 = mono, 1 = stereo left, 2 = stereo right
+ 14..15  0xFFFF
+```
+
+EVIDENCE
+- magic, start and end each matched **180/180** blocks of Chronic-Interactive
+  and **24/24** of e5.
+- byte 13 is 0 on exactly 100 blocks, 1 on 40 and 2 on 40 — precisely the
+  bank's 100 mono and 40 stereo samples.
+- `(end - start - 16)` is a whole number of frames on every block, and matches
+  SawLoop's reported audio length to the byte (sample 0: 8,488 frames /
+  16,976 B; sample 1: 4,338 / 8,676).
+
+### WHAT I HAD CALLED "THE PCM TRAILER" IS THE FREE BLOCK
+
+The 16 bytes at `currentOffset` are one more block header — start = the cursor,
+end = `MAX_SAMPLE_BYTES - 2`, channel `0xFF` marking it free rather than audio.
+It terminates the chain. WF8 got its *bytes* right by copying them, but for the
+wrong reason, and treating it as an opaque trailer meant the per-sample headers
+were never looked for.
+
+### BUG — commit_sample wrote no block header at all
+
+Committed samples had raw audio where the machine expects magic, and their
+`offsetEnd` was 16 bytes short. Nothing downstream would catch it: such a bank
+round-trips, validates, and re-reads perfectly. It would simply have failed on
+the hardware, and the graduated test plan would have blamed `t4_commit` without
+saying why.
+
+Fixed: `commit_sample` writes the header and sets `offsetEnd = start + 16 +
+len(audio)`; `compact_pcm` moves whole blocks and rewrites each header, because
+a relocated block whose header still names its old position is worse than not
+compacting; `SampleSlot.audio_range` / `audio_bytes` / `frames` expose the audio
+as distinct from the block.
+
+### CORRECTION — the cost model was 16 bytes short per sample
+
+`BudgetCalculator.cost_bytes` was `align_up(frames*2*ch + 2, 4)`, omitting the
+header. Now `align_up(16 + frames*2*ch + 2, 4)`, which reproduces the real
+allocation exactly: sample 0 is 8,488 frames and sample 1 starts at 16,996 =
+`align_up(16 + 16,976 + 2, 4)`. Verified against four real samples.
+
+### ALSO CONFIRMED BY THE DUMP
+Independent agreement on: mono count 100, stereo count 40, currentOffset
+6,112,876, the 212-byte gap at 0x1B002C between the counts and the mono headers,
+and 20,000 song events of 8 bytes at 0x00138400.
+
+### LESSON
+A second implementation's *output* is worth more than its conclusions. What
+found this was not SawLoop's field names but one arithmetic inconsistency —
+Data Length not matching the offset span — that pointed at bytes nobody had
+explained. The corpus had contained the evidence all along.
+
+### RESULT
+**404 tests** passing. codec/ 100%, project 91%. Round-trip still byte-identical
+on all four banks; a committed block is now structurally identical to a
+machine-written one.

@@ -27,11 +27,12 @@ def test_align_up_and_cost_bytes() -> None:
     assert calc.align_up(0, 4) == 0
     assert calc.align_up(1, 4) == 4
     assert calc.align_up(4, 4) == 4
-    # 1.0 s at 44100 mono: 44100 frames * 2 = 88200; +2 -> 88202; align_up -> 88204
-    assert calc.cost_bytes(1.0, 44100, 1) == 88204
-    # stereo is exactly 2x the PCM + same 2-4 B overhead
+    # 1.0 s at 44100 mono: 16 B block header + 88,200 B audio = 88,216;
+    # +2 -> 88,218; align_up(.,4) -> 88,220.
+    assert calc.cost_bytes(1.0, 44100, 1) == 88220
+    # Stereo doubles the AUDIO. The block header is per block, counted once.
     stereo = calc.cost_bytes(1.0, 44100, 2)
-    assert stereo == calc.align_up(44100 * 2 * 2 + 2, 4)
+    assert stereo == calc.align_up(16 + 44100 * 2 * 2 + 2, 4)
 
 
 def test_total_cost_honours_rate_for() -> None:

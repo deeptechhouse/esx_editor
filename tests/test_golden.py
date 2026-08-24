@@ -44,7 +44,12 @@ from tests.synthetic import SEED, build, sha256
 # pattern" — which a real bank very much does (204 of 256 in the busiest corpus
 # bank). Pattern Clear derives its bytes from that, so the fixture had to match
 # reality for it to be testable.
-GOLDEN_DEFAULT = "d214c0f31d135095d03b3eb42eadb2cee4990376e61aa3b627ea8965fbe78ac6"
+#
+# CHANGED again 2026-08-23 (WF15): every PCM block now carries its real 16-byte
+# header and the chain ends with a free block, because that is what a machine
+# writes. A fixture of bare audio would have hidden the very bug that prompted
+# this — commit_sample was writing no block header at all.
+GOLDEN_DEFAULT = "07426e0770f9958a71985b70e960313adf0fcb5ccd0192e3ee73f6ad22069932"
 GOLDEN_SIZE = 2428928
 
 

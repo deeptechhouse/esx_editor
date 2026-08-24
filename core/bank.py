@@ -139,7 +139,6 @@ class Bank:
         "_raw",
         "_save_type",
         "_sample_area",
-        "_trailer",
     )
 
     NUM_PATTERNS = L.NUM_PATTERNS
@@ -167,14 +166,6 @@ class Bank:
         self._raw = raw
         self._save_type = save_type
         self._sample_area = sample_area or SampleArea.empty()
-        # The 16-byte PCM trailer, captured where the bank says it lives rather
-        # than from the tail of the region: after a commit the tail is sample
-        # data, so reading it back then would silently store PCM as a trailer.
-        cursor = self._sample_area.current_offset
-        tail = bytes(self._pcm[cursor : cursor + L.PCM_TRAILER_LEN])
-        self._trailer = (
-            tail if len(tail) == L.PCM_TRAILER_LEN else L.PCM_TRAILER_DEFAULT
-        )
 
     @property
     def save_type(self) -> str:
@@ -338,24 +329,31 @@ class Bank:
             raise InvariantError(
                 f"PCM is {len(pcm)} bytes; 16-bit frames are always an even count"
             )
-        if len(pcm) > self.pcm_free_bytes():
+        needed = len(pcm) + L.PCM_BLOCK_HEADER_LEN
+        if needed > self.pcm_free_bytes():
             raise InvariantError(
-                f"sample of {len(pcm):,} B exceeds free space "
-                f"{self.pcm_free_bytes():,} B (cap {self.MAX_PCM_BYTES:,} B)"
+                f"sample of {len(pcm):,} B (+{L.PCM_BLOCK_HEADER_LEN} B block "
+                f"header) exceeds free space {self.pcm_free_bytes():,} B "
+                f"(cap {self.MAX_PCM_BYTES:,} B)"
             )
 
         start = self._next_start()
-        end = start + len(pcm)
+        # The slot's offsets bracket the whole BLOCK, header included; the
+        # audio begins 16 bytes in. Writing raw audio at `start` puts samples
+        # where the machine expects magic.
+        end = start + L.PCM_BLOCK_HEADER_LEN + len(pcm)
         if end > self.MAX_PCM_BYTES:
             raise InvariantError(
                 f"sample would end at {end:,} B, past the {self.MAX_PCM_BYTES:,} B cap"
             )
 
         # Grow the PCM region to reach `start` (the allocation rule leaves 2-4
-        # byte alignment gaps between samples; they are padding, not data).
+        # byte alignment gaps between blocks; they are padding, not data).
         if len(self._pcm) < start:
             self._pcm.extend(b"\x00" * (start - len(self._pcm)))
-        self._pcm[start:end] = pcm
+        number = slot_index if not stereo else slot_index - L.NUM_SAMPLES_MONO
+        block = pcm_block_header(start, end, number, L.PCM_CHANNEL_MONO) + pcm
+        self._pcm[start:end] = block
         if len(self._pcm) < end:
             self._pcm.extend(b"\x00" * (end - len(self._pcm)))
 
@@ -448,40 +446,52 @@ class Bank:
         return self._next_start()
 
     def _sync_trailer(self) -> None:
-        """Keep the 16-byte PCM trailer consistent with currentOffset.
+        """Rewrite the free-space block that terminates the PCM chain.
 
-        VERIFIED 2026-08-23: on all four corpus banks the PCM region is exactly
-        currentOffset + 16 bytes, and bytes 4..7 of that trailer are a
-        big-endian copy of currentOffset itself:
+        It is not a trailer in any special sense — it is one more block header,
+        sitting AT currentOffset and running to the end of sample memory, with
+        channel 0xFF marking it as free rather than as audio. Every
+        machine-written bank ends this way:
 
-            80 00 7f ff | <currentOffset u32> | 01 7f ff fe | 00 ff ff ff
-                          ^^^^^^^^^^^^^^^^^^
+            80 00 7f ff | currentOffset | 0x017FFFFE | 00 FF FF FF
 
-        Chronic 0x005D466C = 6,112,876; e5 0x00BAFA34 = 12,253,748; e4
-        0x001FC388 = 2,081,672 — each equal to that bank's currentOffset.
-        Committing a sample without updating this would leave the file
-        internally contradictory, so the trailer is carried and patched rather
-        than regenerated: the surrounding bytes stay exactly as the machine
-        wrote them.
+        Leaving it stale after a commit would tell the machine the free space
+        starts somewhere it does not.
         """
         cursor = self._sample_area.current_offset
         if cursor < self._highest_end():
             raise InvariantError(
-                f"refusing to place the PCM trailer at {cursor}, which is inside "
+                f"refusing to place the free block at {cursor}, which is inside "
                 f"sample data ending at {self._highest_end()}"
             )
-        trailer = bytearray(self._trailer)
-        struct.pack_into(">I", trailer, L.PCM_TRAILER_OFF_CURRENT, cursor)
-        self._trailer = bytes(trailer)
+        free = pcm_block_header(cursor, L.PCM_FREE_BLOCK_END, 0, L.PCM_CHANNEL_FREE)
         del self._pcm[cursor:]
         if len(self._pcm) < cursor:
             self._pcm.extend(b"\x00" * (cursor - len(self._pcm)))
-        self._pcm.extend(trailer)
+        self._pcm.extend(free)
 
     def _recount(self) -> None:
         mono = sum(1 for s in self._samples[: L.NUM_SAMPLES_MONO] if not s.empty)
         stereo = sum(1 for s in self._samples[L.NUM_SAMPLES_MONO :] if not s.empty)
         self._sample_area.set_counts(mono, stereo)
+
+
+def pcm_block_header(start: int, end: int, number: int, channel: int) -> bytes:
+    """The 16 bytes that open every PCM block (VERIFIED — see codec.layout).
+
+    `number` is the sample's index WITHIN ITS POOL, not the 0-383 slot index:
+    mono sample 5 and stereo sample 5 both write 5, and byte 13 distinguishes
+    them.
+    """
+    return struct.pack(
+        ">IIIBBH",
+        L.PCM_BLOCK_MAGIC,
+        start,
+        end,
+        number,
+        channel,
+        L.PCM_BLOCK_TAIL,
+    )
 
 
 def _align_up(value: int, boundary: int) -> int:

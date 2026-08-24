@@ -143,13 +143,29 @@ def build(
 
     # Fill num_mono slots using the VERIFIED allocation rule:
     #   next_start = align_up(previous_end + 2, 4)
+    # Each block opens with a 16-byte header; the slot offsets bracket the
+    # whole block, so a fixture that writes only audio does not look like a
+    # real bank and would hide exactly the bug that motivated this.
     cursor = 0
     highest_end = 0
-    per_sample = max(4, (pcm_bytes - 16) // max(num_mono, 1) - 8) & ~1
+    budget = max(pcm_bytes - L.PCM_BLOCK_HEADER_LEN, 8)
+    per_audio = max(2, budget // max(num_mono, 1) - 24) & ~1
+    per_sample = L.PCM_BLOCK_HEADER_LEN + per_audio
     for i in range(num_mono):
         off = L.ADDR_SAMPLE_HEADER_MONO + i * L.CHUNK_SAMPLE_HEADER_MONO
         start = cursor
         end = start + per_sample
+        struct.pack_into(
+            ">IIIBBH",
+            buf,
+            L.ADDR_SAMPLE_DATA + start,
+            L.PCM_BLOCK_MAGIC,
+            start,
+            end,
+            i,
+            L.PCM_CHANNEL_MONO,
+            L.PCM_BLOCK_TAIL,
+        )
         buf[off : off + 8] = f"SYN{i:05d}"[:8].encode("ascii")
         struct.pack_into(">I", buf, off + 8, start)  # channel 1 start
         struct.pack_into(">I", buf, off + 12, end)  # channel 1 end
@@ -167,10 +183,29 @@ def build(
         )
 
     # -- counts + currentOffset ---------------------------------------------
+    cursor_value = (
+        -(-(highest_end + L.PCM_GAP) // L.PCM_ALIGN) * L.PCM_ALIGN if num_mono else 0
+    )
+    # The PCM region must have room for the free block that terminates the
+    # chain, whatever pcm_bytes the caller asked for.
+    needed = L.ADDR_SAMPLE_DATA + cursor_value + L.PCM_BLOCK_HEADER_LEN
+    if len(buf) < needed:
+        buf.extend(bytes(needed - len(buf)))
     struct.pack_into(">I", buf, L.ADDR_NUM_MONO_SAMPLES, num_mono)
     struct.pack_into(">I", buf, L.ADDR_NUM_STEREO_SAMPLES, num_stereo)
+    struct.pack_into(">I", buf, L.ADDR_CURRENT_OFFSET, cursor_value)
+
+    # The free block terminates the PCM chain, exactly as a real bank does.
     struct.pack_into(
-        ">I", buf, L.ADDR_CURRENT_OFFSET, highest_end + 2 if num_mono else 0
+        ">IIIBBH",
+        buf,
+        L.ADDR_SAMPLE_DATA + cursor_value,
+        L.PCM_BLOCK_MAGIC,
+        cursor_value,
+        L.PCM_FREE_BLOCK_END,
+        0,
+        L.PCM_CHANNEL_FREE,
+        L.PCM_BLOCK_TAIL,
     )
 
     return bytes(buf)
