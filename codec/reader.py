@@ -10,10 +10,11 @@ CONTRACT
 DECOMPOSITION (guarantees byte-identity with codec.writer)
     pre    = [0x0 .. ADDR_PATTERN_DATA)   magic + globals + unknown_1
     patterns x256
-    mid    = [pat_end .. ADDR_MAGIC_2)   unknown_2 + songs + song_events +
-             unknown_3  (verbatim). The 64 song blocks inside it are ALSO
-             parsed into read-only Song objects for display; the writer still
-             replays this whole span byte for byte.
+    pre_songs  = [pat_end .. ADDR_SONG_DATA)   unknown_2 (verbatim)
+    post_songs = [song_end .. ADDR_MAGIC_2)    the area the TDD called song
+             events, plus unknown_3 (verbatim). The 64 song blocks between
+             them are parsed into Song objects and re-emitted from those,
+             so a song can be edited without disturbing either neighbour.
     magic2 = [ADDR_MAGIC_2 .. ADDR_NUM_MONO_SAMPLES)   (verbatim)
     counts = [ADDR_NUM_MONO_SAMPLES .. +12)   DECODED into Bank.sample_area:
              num_mono, num_stereo, currentOffset. Decoded rather than kept
@@ -99,11 +100,13 @@ class BankReader:
 
         counts_at = L.ADDR_NUM_MONO_SAMPLES
         counts_end = counts_at + 12
+        song_end = L.ADDR_SONG_DATA + L.NUM_SONGS * L.CHUNK_SONG
         raw = RawRegions(
             {
                 "magic": data[L.ADDR_MAGIC_1 : L.ADDR_GLOBAL_PARAMETERS],
                 "unknown_1": data[L.ADDR_UNKNOWN_1 : L.ADDR_PATTERN_DATA],
-                "mid": data[pat_end : L.ADDR_MAGIC_2],
+                "pre_songs": data[pat_end : L.ADDR_SONG_DATA],
+                "post_songs": data[song_end : L.ADDR_MAGIC_2],
                 "magic2": data[L.ADDR_MAGIC_2 : counts_at],
                 "hdr_gap": data[counts_end : L.ADDR_SAMPLE_HEADER_MONO],
                 "gap_hdr": data[mono_end : L.ADDR_SAMPLE_HEADER_STEREO],
@@ -111,14 +114,14 @@ class BankReader:
             }
         )
         sample_area = SampleArea.from_bytes(data[counts_at:counts_end])
-        # Songs are parsed FOR DISPLAY ONLY. The writer still emits this whole
-        # span from the verbatim "mid" region, never from these objects, and
-        # Song has no setters — so this cannot affect the round-trip gate.
+        # The writer emits the song area from these objects, so the split of
+        # the old verbatim "mid" region into pre_songs / songs / post_songs is
+        # what keeps the round-trip gate byte-identical: a Song patches only
+        # decoded fields into the block it was read from.
         songs = [
             Song.from_bytes(
                 data[
-                    L.ADDR_SONG_DATA
-                    + i * L.CHUNK_SONG : L.ADDR_SONG_DATA
+                    L.ADDR_SONG_DATA + i * L.CHUNK_SONG : L.ADDR_SONG_DATA
                     + (i + 1) * L.CHUNK_SONG
                 ]
             )

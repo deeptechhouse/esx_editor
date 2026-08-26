@@ -931,3 +931,89 @@ assertions and quietly wrong for byte-identity ones.
 
 ### RESULT
 **408 tests** passing. codec/ 100%, project 91%.
+
+---
+
+## 2026-08-26 — WF17 (the song chain, decoded from hardware — the blocker is gone)
+
+A bank saved on the ESX-1 **with a song in it**: `Chronic-Interactive-3.esx`,
+the same bank as the corpus copy, resaved after building two songs on the
+machine. This is the one piece of evidence the last three work-fronts were
+waiting on.
+
+### THE DIFF IS TWENTY BYTES
+
+Diffing it against the untouched original changed **20 bytes in 8,537,724** —
+all of them inside the song area, none anywhere else in the image:
+
+```
+  song 0  +0..7    20 20 20 20 20 20 20 20  ->  62 69 62 31 00 00 00 00   "bib1"
+  song 0  +11      00                       ->  03
+  song 0  +16..19  00 00 00 00              ->  01 00 03 05
+  song 1  +0..7    20 20 20 20 20 20 20 20  ->  62 69 62 32 00 00 00 00   "bib2"
+```
+
+Song 1 was named and left otherwise empty; song 0 is the real one. So:
+
+```
+   0..7   name, 8 bytes. A BLANK song pads with SPACE (0x20); a NAMED one
+          pads with NUL. Both are stripped on read.
+   8..9   tempo, big-endian u16 at 1/128 BPM (unchanged at 120.0)
+  10..11  chain length MINUS ONE
+  16..    the chain: ONE BYTE PER POSITION, a 0-based pattern index
+```
+
+### WHY THIS READING AND NOT THE OTHER ONE
+
+Two readings fit four bytes. This one is chosen on three grounds:
+
+1. **A chain position holds 0.** That proves indices are 0-based — a 1-based
+   scheme would make position 2 decode to pattern -1. This is a proof, not a
+   preference.
+2. **`length - 1` is what makes the default coherent.** The untouched byte is
+   0, and SawLoop independently reports "Song Length **1**" for those untouched
+   songs. On the hardware a song always has at least one position; a zero-length
+   song is not a thing the machine can hold.
+3. The alternative — a lone unknown byte at +16 with the chain starting at +17 —
+   would make every untouched song zero-length, contradicting both of the above.
+
+`Song.length`, `Song.chain` and `Song.chain_labels()` are implemented on that
+basis, marked **DOCUMENTED**: one saved song is one observation, and the chain
+order still wants confirming against what was actually entered on the device.
+
+### THE "SONG EVENT" AREA IS NOT SONG EVENTS
+
+The region the TDD labels `song_events` at 0x138400 **did not change by a single
+byte** when a four-position song was added. It is also already non-zero in banks
+that contain no songs at all — 8,618 non-zero bytes in Chronic, 14,280 in both
+card banks, and identical between those two. Whatever lives there, it is not
+the song arrangement, and the pattern chain does not need it. The name is
+retained in `codec/layout.py` only so the address constant keeps matching the
+TDD; the area is written back verbatim.
+
+### THE WRITER NOW EMITS SONGS FROM OBJECTS
+
+The verbatim `mid` region — everything between the patterns and magic2 — is
+split into `pre_songs` / 64 Songs / `post_songs`. That is what lets a song be
+edited without touching either neighbour. A `Song` holds the 528-byte block it
+was read from and patches only decoded fields into it, so bytes 12..15 and the
+whole undecoded tail survive a read/modify/write **by construction**, not by
+remembering to copy them. Round-trip re-verified byte-identical on all three
+corpus banks *and* on the song bank.
+
+`tempo_lock`, `mute_hold` and `next_song` still raise: they are zero both with
+and without a song, so a saved song did not locate them either.
+
+### A FIXTURE BUG HYPOTHESIS FOUND
+
+`hypothesis` was missing from the environment and had been silently skipping.
+Reinstalled, it immediately found a real defect — in the test fixture, not the
+codec: `synthetic.build(num_mono=4, pcm_bytes=64)` wrote past the end of the
+image, because each PCM block carries a 16-byte header of its own and the
+floor is per-slot, not per-image. The fixture now grows the image to hold what
+it was asked for. Worth recording that a dependency quietly absent from the
+venv is indistinguishable from a passing test.
+
+### RESULT
+**393 tests** passing, 16 skipped (librosa absent at the time of the run).
+Round-trip byte-identical on every bank available, including the new one.

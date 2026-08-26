@@ -33,6 +33,11 @@ CORPUS_CANDIDATES = (
     os.path.join(PROJECT, "spike_a", "default.esx"),
 )
 
+#: The one bank saved on the hardware WITH a song in it. It is what the song
+#: chain was decoded from, so it is kept separate: it is not interchangeable
+#: with the others the way the general corpus banks are.
+SONG_BANK = os.path.join(PROJECT, "corpus", "Chronic-Interactive-song.esx")
+
 
 @pytest.fixture(scope="session")
 def qapp():
@@ -57,6 +62,14 @@ def available_corpus() -> tuple[str, ...]:
     if NO_CORPUS:
         return ()
     return tuple(p for p in CORPUS_CANDIDATES if os.path.exists(p))
+
+
+@pytest.fixture(scope="session")
+def song_bank_path() -> str:
+    """The hardware-saved bank containing a song, or skip."""
+    if NO_CORPUS or not os.path.exists(SONG_BANK):
+        pytest.skip("no hardware-saved song bank available (*.esx is gitignored)")
+    return SONG_BANK
 
 
 @pytest.fixture(scope="session")

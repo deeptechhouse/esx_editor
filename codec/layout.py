@@ -40,6 +40,10 @@ ADDR_UNKNOWN_1 = 0x000000E0
 ADDR_PATTERN_DATA = 0x00000200
 ADDR_UNKNOWN_2 = 0x0010BA00
 ADDR_SONG_DATA = 0x00130000
+# The TDD calls this the song-event area. It is NOT: adding a four-position
+# song to a bank changed not one byte here, and it is already non-zero in banks
+# that hold no songs at all (WF17). The name is kept so the constant still
+# matches the TDD; the region is written back verbatim.
 ADDR_SONG_EVENT_DATA = 0x00138400
 ADDR_UNKNOWN_3 = 0x0015F500
 ADDR_NUM_MONO_SAMPLES = 0x001B0020  # 4 bytes
@@ -57,7 +61,7 @@ ADDR_SAMPLE_DATA = 0x00250000  # raw PCM begins here and runs to EOF
 CHUNK_GLOBAL_PARAMETERS = 192
 CHUNK_PATTERN = 4280
 CHUNK_SONG = 528
-CHUNK_SONG_EVENT = 8
+CHUNK_SONG_EVENT = 8  # TDD's figure; no song event has ever been observed
 CHUNK_SAMPLE_HEADER_MONO = 40
 CHUNK_SAMPLE_HEADER_STEREO = 44
 CHUNK_PARAMETERS_FX = 4
@@ -76,7 +80,7 @@ NUM_PARAMETERS_FX = 3
 NUM_PARAMETERS_MOTION = 24  # motion slots per pattern (manual: 24)
 NUM_MOTION_STEPS = 128  # one value per step; max steps = 16 x 8 bars
 NUM_SLICE_DATA = 256
-MAX_SONG_EVENTS = 20000
+MAX_SONG_EVENTS = 20000  # TDD's figure; see ADDR_SONG_EVENT_DATA above
 
 # ---------------------------------------------------------------------------
 # Offsets *within* one 4280-byte pattern chunk

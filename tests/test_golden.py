@@ -169,3 +169,65 @@ def test_validator_findings_are_stable(bank) -> None:
     assert [(f.severity, f.code) for f in a.findings] == [
         (f.severity, f.code) for f in b.findings
     ]
+
+
+# -- the hardware-saved song --------------------------------------------------
+def test_the_hardware_saved_song_decodes_as_documented(song_bank_path) -> None:
+    """The one real song, read back exactly as core/song.py claims it reads.
+
+    This is the evidence the whole song decoder rests on. If it ever stops
+    matching, the decoder is wrong, not the bank.
+    """
+    from codec.reader import BankReader
+
+    bank = BankReader().read_file(song_bank_path)
+    songs = bank.songs()
+
+    first = songs[0]
+    assert first.name == "bib1"
+    assert first.tempo == 120.0
+    assert first.length == 4
+    assert first.chain == (1, 0, 3, 5)
+    assert first.chain_labels() == ("A.02", "A.01", "A.04", "A.06")
+    assert first.is_blank is False
+
+    # Song 1 was named on the machine and otherwise left alone: a named song
+    # with a default chain, which is the case that separates "has a name" from
+    # "has content".
+    assert songs[1].name == "bib2"
+    assert songs[1].chain == (0,)
+    assert songs[1].is_blank is False
+
+    assert all(s.is_blank for s in songs[2:]), "only two songs were touched"
+
+
+def test_the_song_bank_round_trips_byte_identically(song_bank_path) -> None:
+    """Songs are emitted from objects now — the gate has to still hold."""
+    from codec.reader import BankReader
+    from codec.writer import BankWriter
+
+    with open(song_bank_path, "rb") as f:
+        raw = f.read()
+    assert BankWriter().write(BankReader().read_auto(raw)) == raw
+
+
+def test_editing_a_song_touches_only_that_song_block(song_bank_path) -> None:
+    """A song edit must not disturb one byte outside its own 528."""
+    import codec.layout as L
+    from codec.reader import BankReader
+    from codec.writer import BankWriter
+
+    with open(song_bank_path, "rb") as f:
+        raw = f.read()
+    bank = BankReader().read_auto(raw)
+    bank.songs()[0].append_pattern(200)
+    out = BankWriter().write(bank)
+
+    assert len(out) == len(raw)
+    start = L.ADDR_SONG_DATA
+    end = start + L.CHUNK_SONG
+    differing = [i for i in range(len(raw)) if raw[i] != out[i]]
+    assert differing, "the edit did land"
+    assert all(start <= i < end for i in differing), (
+        "an edit to song 1 changed bytes outside its own block"
+    )

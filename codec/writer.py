@@ -48,7 +48,10 @@ class BankWriter:
         out += raw.get("unknown_1")
         for pattern in bank.patterns():
             out += pattern.to_bytes()
-        out += raw.get("mid")
+        out += raw.get("pre_songs")
+        for song in bank.songs():
+            out += song.to_bytes()
+        out += raw.get("post_songs")
         out += raw.get("magic2")
         out += bank.sample_area.to_bytes()
         out += raw.get("hdr_gap")

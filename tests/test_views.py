@@ -16,6 +16,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 import codec.layout as L  # noqa: E402
+import ui.views.song_view as song_view_mod  # noqa: E402
 from audio.passthrough import NullKeyDetector, WavPassthroughConverter  # noqa: E402
 from tests.conftest import make_staging, make_wav  # noqa: E402
 from ui.main_window import TABS, MainWindow  # noqa: E402
@@ -27,7 +28,6 @@ from ui.views import (  # noqa: E402
     StagingView,
 )
 from ui.views.global_view import hex_dump  # noqa: E402
-from ui.views.song_view import MID_START, PREVIEW_BYTES  # noqa: E402
 
 
 # -- package -----------------------------------------------------------------
@@ -233,35 +233,33 @@ def test_pattern_view_unbinds_cleanly(qapp) -> None:
 
 
 # -- song view ---------------------------------------------------------------
-def test_song_view_is_honest_about_undecoded_songs(qapp, bank) -> None:
+def test_song_view_lists_every_song(qapp, bank) -> None:
     v = SongView()
     v.bind_bank(bank)
-    # Songs are parsed for DISPLAY, but the region is still written verbatim
-    # and Song has no setters.
     assert len(bank.songs()) == L.NUM_SONGS == 64
-    assert all(not hasattr(s, "set_name") for s in bank.songs()[:4])
-    assert f"{L.NUM_SONGS} songs" in v._headline.text()
-    assert "verbatim" in v._headline.text()
-    assert v.mid_region_size() == len(bank.raw_regions.get("mid"))
-    assert f"{v.mid_region_size():,} B" in v._detail.text()
+    assert v.list.count() == L.NUM_SONGS
+    assert v.list.item(0).text().startswith("01"), "songs display 1-based"
+    assert "— unnamed —" in v.list.item(0).text()
 
 
-def test_song_view_previews_bytes_at_verified_offsets(qapp, bank) -> None:
+def test_song_view_shows_the_default_chain(qapp, bank) -> None:
+    """Every corpus song is untouched: one position, playing A.01, at 120 BPM."""
     v = SongView()
     v.bind_bank(bank)
-    assert v.table.rowCount() == L.NUM_SONGS
-    mid = bank.raw_regions.get("mid")
-    start = L.ADDR_SONG_DATA - MID_START
-    # The hex preview moved to the last column when name/tempo/state were added.
-    assert v.table.item(0, 4).text() == mid[start : start + PREVIEW_BYTES].hex(" ")
-    assert v.table.item(0, 0).text() == "01", "songs display 1-based, like the machine"
+    assert v.chain.rowCount() == 1
+    assert v.chain.item(0, 0).text() == "1"
+    assert v.chain.item(0, 1).text() == "A.01"
+    assert v._tempo.value() == pytest.approx(120.0, abs=0.01)
+    assert "untouched default" in v._headline.text()
 
 
 def test_song_view_unbinds_cleanly(qapp) -> None:
     v = SongView()
     v.bind_bank(None)
-    assert v.table.rowCount() == 0
+    assert v.chain.rowCount() == 0
+    assert v.list.count() == 0
     assert v._headline.text() == "no bank"
+    assert not v.add_button.isEnabled()
 
 
 # -- global view -------------------------------------------------------------
@@ -320,7 +318,7 @@ def test_main_window_binds_every_view_on_open(qapp, corpus_path) -> None:
     assert win.bank_view.table.rowCount() == len(
         [s for s in bank.samples() if not s.empty]
     )
-    assert win.song_view.mid_region_size() > 0
+    assert win.song_view.list.count() == L.NUM_SONGS
     assert len(win.global_view.block_bytes()) == 192
     win.session._dirty = False
     win.close()
@@ -473,30 +471,55 @@ def test_staging_view_uses_the_selected_tier(qapp, tmp_path) -> None:
 
 
 # -- song / pattern edge cases ------------------------------------------------
-def test_song_view_handles_a_bank_with_no_mid_region(qapp, monkeypatch, bank) -> None:
-    """A PSG save keeps its whole image in one region — say so, do not crash."""
-
-    class _NoMid:
-        def has(self, name):
-            return False
-
-        def get(self, name):
-            raise KeyError(name)
-
+def test_song_view_edits_the_chain_and_reports_it(qapp, bank) -> None:
     v = SongView()
     v.bind_bank(bank)
-    monkeypatch.setattr(type(bank), "raw_regions", property(lambda self: _NoMid()))
-    v.reload()
-    assert v.mid_region_size() == 0
-    assert v.table.rowCount() == 0
-    assert "PSG save" in v._detail.text()
+    edits = []
+    v.songEdited.connect(lambda: edits.append(1))
+
+    v.pattern_picker.setCurrentIndex(65)  # B.02
+    v.add_pattern()
+    assert v.chain.rowCount() == 2
+    assert v.chain.item(1, 1).text() == "B.02"
+    assert bank.songs()[0].chain == (0, 65)
+
+    v.chain.setCurrentCell(1, 0)
+    v.move_position(-1)
+    assert bank.songs()[0].chain == (65, 0)
+    assert v.chain.item(0, 1).text() == "B.02"
+
+    v.chain.setCurrentCell(0, 0)
+    v.remove_position()
+    assert bank.songs()[0].chain == (0,)
+    assert edits, "every chain edit marks the bank modified"
+
+    bank.songs()[0].clear()  # leave the shared fixture as it was found
 
 
-def test_song_view_truncated_region_stops_early(qapp, bank) -> None:
+def test_song_view_refuses_to_empty_a_chain(qapp, bank, monkeypatch) -> None:
+    """A song always plays at least one pattern — warn, do not corrupt."""
+    warned = []
+    monkeypatch.setattr(
+        song_view_mod.QMessageBox, "warning", lambda *a, **k: warned.append(a[2])
+    )
     v = SongView()
     v.bind_bank(bank)
-    v._fill_rows(b"\x00" * 8)  # far shorter than one song block
-    assert v.table.rowCount() == 0
+    v.chain.setCurrentCell(0, 0)
+    v.remove_position()
+    assert warned and "at least one pattern" in warned[0]
+    assert bank.songs()[0].chain == (0,)
+
+
+def test_song_view_renames_and_retempos(qapp, bank) -> None:
+    v = SongView()
+    v.bind_bank(bank)
+    v._name.setText("BIBTEST")
+    v._rename()
+    v._tempo.setValue(140.0)
+    assert bank.songs()[0].name == "BIBTEST"
+    assert bank.songs()[0].tempo == pytest.approx(140.0, abs=0.01)
+    assert "BIBTEST" in v.list.item(0).text()
+    bank.songs()[0].clear()
 
 
 def test_pattern_view_rename_without_a_bank_is_a_no_op(qapp) -> None:
@@ -606,33 +629,24 @@ def test_pattern_view_disables_tempo_with_no_bank(qapp) -> None:
 
 
 # -- songs: two fields decodable, the rest deliberately not -------------------
-def test_song_view_lists_names_and_tempos(qapp, bank) -> None:
-    v = SongView()
-    v.bind_bank(bank)
-    assert v.table.rowCount() == L.NUM_SONGS
-    # Every corpus song is at the machine default: blank name, 120.0 BPM.
-    assert v.table.item(0, 1).text() == "— unnamed —"
-    assert v.table.item(0, 2).text() == "120.0"
-    assert v.table.item(0, 3).text() == "empty"
-
-
-def test_song_view_explains_why_the_rest_is_missing(qapp, bank) -> None:
+def test_song_view_explains_what_is_still_undecoded(qapp, bank) -> None:
     v = SongView()
     v.bind_bank(bank)
     detail = v._detail.text()
-    assert "zero everywhere" in detail
-    assert "not one song event" in detail
+    assert "tempo lock" in detail
+    assert "guessing" in detail
 
 
-def test_songs_decode_only_what_the_corpus_can_support(bank) -> None:
-    """Name and tempo are readable; everything else refuses."""
+def test_songs_decode_only_what_the_evidence_supports(bank) -> None:
+    """Name, tempo and chain are readable; the rest still refuses."""
     song = bank.songs()[0]
     assert song.name == ""
     assert song.tempo == pytest.approx(120.0, abs=0.01)
     assert song.is_blank is True
+    assert song.length == 1 and song.chain == (0,)
     assert len(song.to_bytes()) == L.CHUNK_SONG
-    for field in ("tempo_lock", "length", "mute_hold", "next_song"):
-        with pytest.raises(NotImplementedError, match="ZERO in every"):
+    for field in ("tempo_lock", "mute_hold", "next_song"):
+        with pytest.raises(NotImplementedError, match="not decoded"):
             getattr(song, field)
 
 

@@ -39,6 +39,19 @@ from core.part import (
 )
 
 NAME_LEN = 8
+
+
+def pattern_label(index: int) -> str:
+    """Machine display for a pattern index: A.01 - D.64 (manual p.2914).
+
+    The machine does NOT number patterns 1-256. Anywhere a pattern index is
+    shown to a human it goes through here, so the editor and the device agree.
+    """
+    if not (0 <= index < 256):
+        raise InvariantError(f"pattern index {index} out of range 0..255")
+    return f"{'ABCD'[index // 64]}.{index % 64 + 1:02d}"
+
+
 HEADER_LEN = 16
 
 # (kind, on-disk offset, count, chunk size) for the 16 parts, in file order.
@@ -260,7 +273,7 @@ class Pattern:
         """Replace one motion slot in place (slots are replaced, never appended)."""
         if not (0 <= index < self.NUM_MOTION_SLOTS):
             raise InvariantError(
-                f"motion index {index} out of range 0..{self.NUM_MOTION_SLOTS-1}"
+                f"motion index {index} out of range 0..{self.NUM_MOTION_SLOTS - 1}"
             )
         self._motion[index] = slot
 

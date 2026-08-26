@@ -147,3 +147,67 @@ Running log of user prompts for this chat session.
 > regarding this "A 15 ms one-shot has no key anyway — better to return None than analyse noise." a noise still has a note correct? due to each frequency corresponding to a note frequency? for each sound that does not have a "key" i would like it to show what "note" it corresponds to
 
 **Action taken:** Correct for essentially all real material, so it was built as its own `PitchDetector` port (`audio/pitch.py`, commit `2499b38`). Key and note are now separate claims: a kick reports no key but a real note (A1, E1…), a chord reports both, and only genuinely broadband material reports neither. Two measured corrections were needed — skipping the attack (percussion is pitch-swept, so measuring the whole sound reads a semitone sharp) and combining frames with a median rather than a mean (mean error 32.7 → 2.4 cents). 12/12 correct on sines, kicks, toms and a snare. Surfaced in the Staging tab and wizard screens 5 and 7.
+
+---
+
+## Prompt 14 — 2026-08-23
+
+> is the editor reading for testing (eg for me to make an esx file with it and load it to smartmedia card to try it with the electribe)
+
+**Action taken:** Yes, with the safety story stated plainly. Wrote `HUMAN_TESTING.html` and `deploy/make_hw_test_banks.py` — graduated hardware test banks (t0 byte-identical, then one change at a time) so a machine rejection points at a single field rather than the whole editor.
+
+---
+
+## Prompt 15 — 2026-08-23
+
+> open editor
+
+**Action taken:** Launched the app.
+
+---
+
+## Prompt 16 — 2026-08-23
+
+> yes fix the font warning; notes form opening the app: it should be able to add new pattern and add patterns to songs . there is no place to name the pattern / bank etc
+
+**Action taken:** Three things. Font resolved through `QFontDatabase` instead of assuming. Sample renaming had no UI at all — added, editable in place. "Add new pattern" was reframed rather than built: the machine has a fixed 256, so the real operations are Clear and Copy-to, which is what shipped. "Add patterns to songs" was recorded as blocked on hardware evidence (WF13, checklist item 2b).
+
+---
+
+## Prompt 17 — 2026-08-23
+
+> i closed it
+
+**Action taken:** Confirmed the app exit was deliberate, not a crash.
+
+---
+
+## Prompt 18 — 2026-08-23
+
+> also, the smart media card can hold more data (128 mb)
+
+**Action taken:** Correct, and it exposed a misleading label — the meter was measuring the sampler's 27 MB RAM budget, not the card. Relabelled as RAM and added card-capacity awareness (`workspace/card.py`, WF14): a card holds many banks, one bank cannot exceed 27,590,672 B.
+
+---
+
+## Prompt 19 — 2026-08-23
+
+> this file [sawloop_.rtfd] contains data regarding this esx file [Chronic-Interactive.esx] and the sawloop interface for esx editing and debug/file info that may be useful
+
+**Action taken:** Found a serious bug. SawLoop's Data Length did not match the offset span, which exposed that `commit_sample` was writing **no PCM block header** — raw audio where the machine expects magic. Undetectable downstream: such banks round-trip, validate and re-read fine (WF15).
+
+---
+
+## Prompt 20 — 2026-08-23
+
+> /Users/aaandy/_andy_ai_projects_2026/sawloop_song.rtf
+
+**Action taken:** Independently confirmed the song-events negative result ("There are no song events configured for this file!"). Found that only nine of the 528 bytes in a song block are non-zero; implemented `Song.name` and `Song.tempo` read-only (WF16).
+
+---
+
+## Prompt 21 — 2026-08-26
+
+> /Users/aaandy/Downloads/Chronic-Interactive-3.esx here is an esx file with a song saved (i believe)
+
+**Action taken:** The blocker is gone. Diffing against the untouched original changed twenty bytes in 8.5 MB, all in the song area, giving the chain length and the ordered list of pattern indices. Songs are now decoded *and writable*: the verbatim mid region was split so the writer emits songs from objects, and the Song tab became a real chain editor (add / remove / reorder / rename / retempo). Also established that the region the TDD calls "song events" is not song events — a four-position song changed nothing in it (WF17).

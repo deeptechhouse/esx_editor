@@ -213,9 +213,9 @@ def test_guided_setup_opens_on_the_live_session(win, corpus_path) -> None:
         assert isinstance(wizard, SetupWizard)
         assert len(wizard.pages()) == PAGE_COUNT == 11
         assert wizard.context.session is win.session
-        assert (
-            wizard.staging_bank() is win.staging_view.bank
-        ), "the wizard must render the Staging tab's model, not a second one"
+        assert wizard.staging_bank() is win.staging_view.bank, (
+            "the wizard must render the Staging tab's model, not a second one"
+        )
     finally:
         wizard.close()
 

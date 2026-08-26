@@ -139,7 +139,8 @@ core/          the domain model — pure Python, no I/O, no Qt</code></pre>
   <tr><td>Sample commit</td><td>Complete. Stage, cost, name, and write into a slot; stereo READING verified, writing gated on hardware.</td></tr>
   <tr><td>Pattern tempo, part sample numbers, step triggers</td><td>Decoded and editable — each proven against real bank data, not inferred.</td></tr>
   <tr><td>Audio adapters</td><td>ffmpeg (any format) and librosa (key + dominant note). Both optional; the app degrades and says so.</td></tr>
-  <tr><td>Songs, global fields, pattern length/beat</td><td>Shown as bytes — <em>undeterminable</em> from the corpus, not merely unfinished. See <code>research/CODEC_FINDINGS_LOG.md</code>.</td></tr>
+  <tr><td>Global fields, pattern length/beat</td><td>Shown as bytes — <em>undeterminable</em> from the corpus, not merely unfinished. See <code>research/CODEC_FINDINGS_LOG.md</code>.</td></tr>
+  <tr><td>Songs</td><td>Name, tempo and the ordered pattern chain are decoded and editable, from one bank saved on the hardware with a song in it. Tempo lock, mute hold and next-song are still zero in every bank and raise.</td></tr>
   <tr><td>Approximate FX preview</td><td>Phase 2. Blocked on the FX index-to-name mapping, which the manual does not give.</td></tr>
 </table>
 

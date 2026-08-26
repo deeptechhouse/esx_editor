@@ -36,6 +36,7 @@ from codec.reader import BankReader  # noqa: E402
 from codec.validator import BankValidator  # noqa: E402
 from codec.writer import BankWriter  # noqa: E402
 from core.motion import MotionDomain  # noqa: E402
+from core.pattern import pattern_label  # noqa: E402
 
 #: Values chosen to be unmistakable on the machine's two-line display.
 TEST_TEMPO = 133.0
@@ -43,16 +44,6 @@ TEST_PATTERN = 0
 TEST_PART = 0
 TEST_STEP = 1
 TEST_NAME = "HWTEST"
-
-
-def pattern_label(index: int) -> str:
-    """Machine display for a pattern index: A.01 - D.64 (manual p.2914).
-
-    The machine does NOT number patterns 1-256. Telling someone to "check
-    pattern 1" when the display says A.01 wastes the one session the device is
-    out of its box.
-    """
-    return f"{'ABCD'[index // 64]}.{index % 64 + 1:02d}"
 
 
 def sample_label(index: int, num_mono: int = 256) -> str:
@@ -195,6 +186,37 @@ def t5_motion(bank, report):
     )
 
 
+#: The chain written by t6_song, chosen to be unmistakable on the display:
+#: it starts on the SECOND pattern, goes backwards, then skips.
+SONG_CHAIN = (1, 0, 3, 5)
+SONG_SLOT = 3  # song 04 — leaves the two real songs on the card alone
+
+
+def t6_song(bank, report):
+    """Write a song chain from the editor and see whether the machine plays it.
+
+    This is the other direction of the WF17 decoding: the chain was READ from a
+    bank the machine wrote, and reading it correctly does not prove writing it
+    correctly. Song 04 is used so the songs already on the card are untouched.
+    """
+    song = bank.songs()[SONG_SLOT]
+    song.clear()
+    song.set_name(TEST_NAME[:8])
+    song.set_chain(SONG_CHAIN)
+    report(
+        f"song {SONG_SLOT + 1:02d} -> {TEST_NAME}, chain "
+        + " ".join(pattern_label(i) for i in SONG_CHAIN)
+    )
+    return (
+        f"Song mode -> select song {SONG_SLOT + 1:02d} ({TEST_NAME}) and play it.\n"
+        "       Expect exactly "
+        + " -> ".join(pattern_label(i) for i in SONG_CHAIN)
+        + ", in that order.\n"
+        "       If the machine rejects the bank or plays a different order, the "
+        "chain\n       encoding is wrong - say so, and change nothing else."
+    )
+
+
 TESTS = [
     ("t0_identical", "byte-identical round-trip", t0_identical),
     ("t1_tempo", "one tempo (2-byte field)", t1_tempo),
@@ -202,6 +224,7 @@ TESTS = [
     ("t3_sample", "one part's sample number", t3_sample_number),
     ("t5_motion", "one motion slot", t5_motion),
     ("t4_commit", "a whole new sample", t4_commit),
+    ("t6_song", "a song chain (4 positions)", t6_song),
 ]
 
 

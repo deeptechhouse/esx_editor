@@ -412,8 +412,7 @@ def test_real_pattern_tempos_are_musical(bank) -> None:
         assert MIN_TEMPO <= tempo <= MAX_TEMPO, tempo
     whole = sum(1 for t in tempos if abs(t - round(t)) < 0.001)
     assert whole >= len(tempos) * 0.9, (
-        f"only {whole}/{len(tempos)} tempos are whole BPM; the 1/128 scale "
-        "may be wrong"
+        f"only {whole}/{len(tempos)} tempos are whole BPM; the 1/128 scale may be wrong"
     )
 
 

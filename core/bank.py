@@ -63,8 +63,8 @@ class SampleArea:
 
     WHY THIS IS NOT A RAW REGION
         These twelve bytes at 0x1B0020..0x1B002B are VERIFIED (TDD §2.1), not
-        unknown — but the reader originally swept them into the verbatim "mid"
-        blob along with the songs and the undecoded gaps. That made them
+        unknown — but the reader originally swept them into a verbatim blob
+        along with the songs and the undecoded gaps. That made them
         unwritable, and committing a sample is impossible without updating
         them: the counts say how many slots are occupied and currentOffset says
         where the next sample's PCM goes.
@@ -181,16 +181,18 @@ class Bank:
         return tuple(self._patterns)
 
     def songs(self) -> tuple[Song, ...]:
-        """Immutable view of the 64 songs — READ ONLY.
+        """The 64 songs. The tuple is a view; the Songs in it are live.
 
-        The song area is still replayed verbatim from the "mid" raw region, so
-        these objects are for display and never for writing. Song has no
-        setters, which keeps that structural rather than a convention.
-
-        Only the name and tempo are decodable; everything else about a song
-        lives in bytes that are zero in every corpus bank.
+        The writer emits the song area from these objects, so editing one
+        through its own methods is how a song is changed. Each Song patches
+        only its decoded fields into the block it was read from, so the bytes
+        that are still undecoded survive a round-trip untouched.
         """
         return tuple(self._songs)
+
+    def clear_song(self, index: int) -> None:
+        """Reset one song to the machine's untouched default."""
+        self._songs[index].clear()
 
     def samples(self) -> tuple[SampleSlot, ...]:
         """Immutable view of the 384 sample slots (256 mono + 128 stereo)."""
@@ -310,7 +312,9 @@ class Bank:
         if self._save_type == SAVE_PSG:
             raise InvariantError("a PSG bank has no sample area to commit into")
         if not (0 <= slot_index < L.NUM_SAMPLES):
-            raise InvariantError(f"slot {slot_index} out of range 0..{L.NUM_SAMPLES-1}")
+            raise InvariantError(
+                f"slot {slot_index} out of range 0..{L.NUM_SAMPLES - 1}"
+            )
         slot = self._samples[slot_index]
         if slot.stereo != stereo:
             pool = "stereo" if slot.stereo else "mono"
@@ -383,7 +387,9 @@ class Bank:
         deliberately, as its own explicit step.
         """
         if not (0 <= slot_index < L.NUM_SAMPLES):
-            raise InvariantError(f"slot {slot_index} out of range 0..{L.NUM_SAMPLES-1}")
+            raise InvariantError(
+                f"slot {slot_index} out of range 0..{L.NUM_SAMPLES - 1}"
+            )
         self._samples[slot_index].clear()
         self._sample_area.set_current_offset(self._next_offset())
         self._recount()

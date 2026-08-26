@@ -57,27 +57,27 @@ exists but `commit_sample` refuses stereo until this is done:
 
 ---
 
-## 2b. Save ONE song — BLOCKS a requested feature  **(added 2026-08-23)**
+## 2b. Save ONE song — **CLOSED 2026-08-26**
 
-**Why:** "Add patterns to songs" was asked for and cannot be built. The manual
-confirms the machine does it ("You can edit a song by inserting or deleting
-patterns", p.5904), but **all 64 songs in all four corpus banks are
-byte-identical blanks** — zero bytes vary across 256 song blocks. There is no
-signal to decode from, and inventing a song format would write bytes no machine
-has ever produced into a region the writer currently preserves verbatim.
+**Was:** "Add patterns to songs" was asked for and could not be built, because
+all 64 songs in every corpus bank were byte-identical blanks.
 
-**Do:**
-1. Pick **four** patterns you can identify, far apart and in a memorable order —
-   e.g. `A.01`, `A.20`, `B.03`, `A.51` (indices 0, 19, 66, 50).
-2. Song mode → build a song using exactly those, in that order.
-3. Name it something recognisable, e.g. `SONGTST`.
-4. Save All to card as `song.esx`, and **write down the order you used**.
+**Closed by:** `Chronic-Interactive-3.esx` — the same bank, resaved from the
+machine with two songs in it. The diff against the original is twenty bytes,
+all in the song area. Name, tempo and the **chain of pattern indices** are now
+decoded and editable; see the WF17 entry in `CODEC_FINDINGS_LOG.md`.
 
-**Expect:** those four indices to appear, in order, inside the 528-byte song
-block or the 8-byte event area. Because the indices are already known they can
-be searched for directly — four distinct non-adjacent values in a known order is
-about the strongest signal one save can carry. That should give the event format
-almost immediately.
+**One thing still worth a minute at the device** (does not block anything):
+the chain in song `bib1` decodes as **A.02, A.01, A.04, A.06** (stored `01 00
+03 05`). If that is the order that was actually entered, the decoding is
+confirmed end to end and can be promoted from DOCUMENTED to VERIFIED. If the
+song was three patterns rather than four, the alternative reading applies and
+`core/song.py` needs the one-byte shift it documents.
+
+**Still not located, even with a song saved:** tempo lock, mute hold, next
+song. They are zero *with* a song as well as without, so they need a save with
+those specific settings changed — a one-minute job if they are ever wanted:
+set Tempo Lock on and Next Song to something, save, diff.
 
 ---
 

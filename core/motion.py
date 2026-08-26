@@ -107,7 +107,7 @@ class MotionDomain:
         if self._kind in (self.BOOLEAN, self.ENUM):
             if not (0 <= value < self._option_count):
                 raise InvariantError(
-                    f"option index {value} out of range 0..{self._option_count-1}"
+                    f"option index {value} out of range 0..{self._option_count - 1}"
                 )
             return value * self._step()
         # continuous / bipolar are stored as a raw 0..127 byte
@@ -204,7 +204,7 @@ class MotionSlot:
         Raises InvariantError if step is out of range.
         """
         if not (0 <= step < self.NUM_STEPS):
-            raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS-1}")
+            raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS - 1}")
         self._values[step] = self.DISABLED if value is None else domain.encode(value)
 
     def write_stored(
@@ -220,7 +220,7 @@ class MotionSlot:
         Steps at or beyond `length` are masked and left untouched (TDD §8.2 / §8.5).
         """
         if not (0 <= step < self.NUM_STEPS):
-            raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS-1}")
+            raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS - 1}")
         if step >= length:
             return
         if stored is None:
@@ -239,7 +239,7 @@ class MotionSlot:
     def get_step(self, step: int) -> int:
         """Return the raw stored byte at a step (may be the Disabl sentinel)."""
         if not (0 <= step < self.NUM_STEPS):
-            raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS-1}")
+            raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS - 1}")
         return self._values[step]
 
     def is_disabled(self, step: int) -> bool:

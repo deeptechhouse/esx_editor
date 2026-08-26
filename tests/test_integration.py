@@ -233,7 +233,7 @@ def test_shell_open_to_save_cycle(qapp, synthetic_bank_file, tmp_path, monkeypat
         assert win.open_path(synthetic_bank_file) is True
         assert win.bank_view.table.rowCount() == 3
         assert win.pattern_view.list.count() == L.NUM_PATTERNS
-        assert win.song_view.mid_region_size() > 0
+        assert win.song_view.list.count() == L.NUM_SONGS
         assert len(win.global_view.block_bytes()) == L.CHUNK_GLOBAL_PARAMETERS
 
         win.pattern_view._name.setText("SHELL")

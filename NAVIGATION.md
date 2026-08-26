@@ -71,7 +71,8 @@ composition root (`ui/session.BankSession`) does.
 | Step triggers (drum, stretch/slice) | **Decoded** | Halves identical on 468/468; LSB-first concentrates hits on the beat 1.85× |
 | Motion slots | **Decoded** | Byte-verified in WF5 |
 | Pattern length / beat / last step | Raises | Those header bytes are CONSTANT across all 52 named corpus patterns |
-| Songs | Raises | All 64 songs in all 4 banks are byte-identical blanks |
+| Song name / tempo / pattern chain | Decoded, editable | One bank saved on hardware with a song in it; 20 bytes differ, all in the song area (WF17) |
+| Song tempo lock / mute hold / next song | Raises | Zero both with and without a song |
 | Global fields (MIDI channel) | Raises | Block is effectively constant across the corpus |
 | Keyboard / audio-in / accent step data | Raises | Keyboard bits show no grid concentration; not a trigger bitmap |
 | FX index → effect name | Not mapped | The manual names 16 types but gives no indices, and its two orderings disagree |
@@ -95,6 +96,6 @@ Each "raises" row needs one hardware diff, not more analysis. See `research/HARD
 |---|---|
 | Changing the codec | `research/CODEC_FINDINGS_LOG.md`, then `codec/layout.py` |
 | Changing motion | `research/motion_byte_encodings.md` |
-| Adding a view | `ui/views/song_view.py` (the honest-reporting pattern) |
+| Adding a view | `ui/views/global_view.py` (the honest-reporting pattern) |
 | Wondering why a field raises | `research/HARDWARE_CHECKLIST.md` — it is probably hardware-gated |
 | Testing without a bank | `tests/synthetic.py` |

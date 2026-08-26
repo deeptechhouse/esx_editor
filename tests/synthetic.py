@@ -151,6 +151,16 @@ def build(
     budget = max(pcm_bytes - L.PCM_BLOCK_HEADER_LEN, 8)
     per_audio = max(2, budget // max(num_mono, 1) - 24) & ~1
     per_sample = L.PCM_BLOCK_HEADER_LEN + per_audio
+    # A tiny pcm_bytes with several slots does not fit: each block carries a
+    # 16-byte header of its own, so the floor is per-slot, not per-image. Grow
+    # the image to hold what was asked for rather than writing past the end —
+    # the caller's pcm_bytes is a floor, not a cap.
+    if num_mono:
+        stride = -(-(per_sample + L.PCM_GAP) // L.PCM_ALIGN) * L.PCM_ALIGN
+        span = (num_mono - 1) * stride + per_sample
+        need = L.ADDR_SAMPLE_DATA + span + L.PCM_BLOCK_HEADER_LEN
+        if len(buf) < need:
+            buf.extend(bytes(need - len(buf)))
     for i in range(num_mono):
         off = L.ADDR_SAMPLE_HEADER_MONO + i * L.CHUNK_SAMPLE_HEADER_MONO
         start = cursor

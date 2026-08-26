@@ -85,8 +85,8 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
       <td>The WF5 drawable canvas. Follows the Pattern tab's selection.</td>
       <td>Selecting pattern 5 re-binds this canvas to pattern 5's 24 slots.</td></tr>
   <tr><td><b>Song</b></td>
-      <td>Honest report: the song area is preserved verbatim and not decoded.</td>
-      <td>"64 songs + events preserved verbatim", <code>mid</code> = 673,536 B, 64 rows of raw hex. Every song in every corpus bank is a byte-identical blank, so there is nothing to decode from.</td></tr>
+      <td>Edit the 64 songs: name, tempo, and the ordered chain of patterns each one plays.</td>
+      <td>64 songs in the list; selecting one shows its chain as A.01&ndash;D.64 positions. Add / Remove / &uarr; / &darr; edit the chain; the title bar shows &bull; modified. An untouched song reads "1 position, 120.0 BPM (untouched default)".</td></tr>
   <tr><td><b>Global</b></td>
       <td>The 192-byte global block as an offset/hex/ASCII dump.</td>
       <td>12 dump lines from <code>00000020</code>. No MIDI-channel control — that field is undecoded.</td></tr>
@@ -111,7 +111,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
      <b>undeterminable from the available data</b>, and that was established rather than assumed:</p>
   <ul>
     <li><b>Pattern length / beat / last step:</b> across all 52 named patterns in the corpus, header bytes 2, 4, 5, 6 and 7 are <b>constant</b>. A field that never varies cannot be told apart from any other constant.</li>
-    <li><b>Songs:</b> all 64 songs in all four banks are byte-identical blanks. Zero bytes vary across 256 song blocks.</li>
+    <li><b>Song tempo lock, mute hold, next song:</b> zero in every bank <em>including</em> the one saved with a song in it, so a save did not locate them. The name, tempo and pattern chain <em>are</em> decoded.</li>
     <li><b>MIDI channel:</b> the 192-byte global block is effectively constant across the corpus.</li>
   </ul>
   <p>Each needs one hardware diff: change one setting, Save All, compare. The error messages name the exact
@@ -184,7 +184,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
   <figure><img src="deploy/screens/tab_2_staging.png" alt="Staging tab"><figcaption>Staging — key, note and cost per file</figcaption></figure>
   <figure><img src="deploy/screens/tab_3_pattern.png" alt="Pattern tab"><figcaption>Pattern — tempo, parts, live step grid</figcaption></figure>
   <figure><img src="deploy/screens/tab_4_motion.png" alt="Motion tab"><figcaption>Motion — the drawable canvas</figcaption></figure>
-  <figure><img src="deploy/screens/tab_5_song.png" alt="Song tab"><figcaption>Song — verbatim, honestly reported</figcaption></figure>
+  <figure><img src="deploy/screens/tab_5_song.png" alt="Song tab"><figcaption>Song — chain editor</figcaption></figure>
   <figure><img src="deploy/screens/tab_6_global.png" alt="Global tab"><figcaption>Global — the 192-byte block</figcaption></figure>
   <figure><img src="deploy/screens/wizard_05.png" alt="Wizard 5"><figcaption>Wizard 5 — key and pitch</figcaption></figure>
   <figure><img src="deploy/screens/wizard_07.png" alt="Wizard 7"><figcaption>Wizard 7 — slot assignment and commit</figcaption></figure>
@@ -229,7 +229,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
       but <code>commit_sample</code> refuses stereo until hardware accepts one we wrote.</li>
   <li><b>Compacting a bank that contains stereo samples.</b> Refused loudly: a stereo slot owns two ranges that
       must stay adjacent and equal-length.</li>
-  <li><b>Song editing.</b> Not deferred by choice — undeterminable, see above.</li>
+  <li><b>Song tempo lock / mute hold / next song.</b> Not deferred by choice — still undeterminable, see above. The chain itself is editable.</li>
   <li><b><code>_annotated</code> source copies (CLAUDE.md §15).</b> That rule triggers on a push to <code>main</code>,
       which has not happened. The source already carries heavy "why" commentary; duplicating 35 files now would
       drift immediately. Say the word and they get generated at merge time.</li>
