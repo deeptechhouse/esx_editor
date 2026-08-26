@@ -11,11 +11,13 @@
 cd /Users/aaandy/_andy_ai_projects_2026/esx_editor
 
 ## Generate the graduated test banks
-# Use a COHERENT source. Chronic-Interactive.esx validates clean; e4.esx does
-# not (16 stale headers), so a failure there could not be blamed on the editor.
+# Use a COHERENT source. The Chronic banks validate clean; e4.esx does not
+# (16 stale headers), so a failure there could not be blamed on the editor.
+# Chronic-Interactive-song.esx is preferred: it already contains real songs,
+# so t6_song's write lands next to a song the machine itself wrote.
 SITE=$(~/.venvs/esx/bin/python -c "import site; print(site.getsitepackages()[0])")
 PYTHONPATH="$SITE:$PWD" python3 deploy/make_hw_test_banks.py \
-  --source corpus/Chronic-Interactive.esx --out hw_test
+  --source corpus/Chronic-Interactive-song.esx --out hw_test
 
 # Copy them to the card root, alongside your existing .esx files.
 # Keep the names short: your card already uses e4.esx / e5.esx.
@@ -28,28 +30,38 @@ PYTHONPATH="$SITE:$PWD" python3 deploy/make_hw_test_banks.py \
 #   t3_sample     1 field             -> confirms the sample-number field
 #   t5_motion     one motion slot     -> confirms motion writes
 #   t4_commit     a whole new sample  -> confirms the entire commit path
+#   t6_song       a 4-position song   -> confirms the song chain WRITES correctly
+#   t7_ccprobe    CC 95..127 in rows  -> names the CC-assign rows (see below)
 #
 # The generator prints exactly what to look at for each. Write down what you
 # actually see, especially for anything that differs.
 
-## HIGHEST VALUE: make a SONG. This is the one blocking a requested feature.
+## HIGHEST VALUE: name the MIDI CC assign rows. Blocks a requested feature.
 #
-# "Add patterns to songs" cannot be built because all 64 songs in all four
-# corpus banks are byte-identical blanks - there is nothing to decode from.
-# One saved song fixes that, and a deliberately structured one fixes it fast:
+# The CC table is located (global block +23..+55, 33 rows) and is editable, but
+# WHICH KNOB each row drives is unknown: every bank carries the identical
+# factory table, so the order is not in the data anywhere. Until it is named,
+# remapping a controller means editing rows blind.
 #
-#   1. Pick FOUR patterns you can identify, ideally far apart and in a
-#      memorable order, e.g.  A.01, A.20, B.03, A.51
-#   2. Song mode -> create a song using exactly those, in that order.
-#   3. Give the song a name you will recognise, e.g. SONGTST
-#   4. Save All to card as  song.esx
+#   1. Load t7_ccprobe. It has written CC 95..127 into rows 1..33.
+#   2. Global > SHIFT + step key 15 (MIDIUtil) > dial to CCAsin > key 15.
+#   3. Dial through EVERY knob. Write the knob name against the CC number
+#      shown. Row N carries CC 94+N, so CC 95 = row 1 ... CC 127 = row 33.
+#   4. Load a t0 bank afterwards to put the factory assignments back.
 #
-# Why this shape: the pattern indices are already known (A.01=0, A.20=19,
-# B.03=66, A.51=50), so they can be searched for directly in the 528-byte song
-# block and the 8-byte event area. Four distinct, non-adjacent values in a known
-# order is about the strongest signal a single save can carry.
+# One pass names the whole table, because every row carries a distinct ordered
+# number. A screenshot of SawLoop's MIDI CC page would do the same job without
+# taking the machine out.
+
+## Confirm the song chain, both directions
 #
-# Write down the exact patterns and order you used.
+# READ direction is already settled: Chronic-Interactive-3.esx decoded to
+# bib1 = A.02, A.01, A.04, A.06 (4 positions). If that is what you actually
+# entered, say so and the decoding is confirmed end to end.
+#
+# WRITE direction is what t6_song tests: it builds song 04 named HWTEST with
+# the chain A.02 -> A.01 -> A.04 -> A.06. Play it. Reading a format correctly
+# does not prove writing it correctly, and this is the cheap way to find out.
 
 ## While the device is out, also capture these (research/HARDWARE_CHECKLIST.md)
 # Tag each save's filename with the keyword so the runner routes it:
@@ -57,7 +69,7 @@ PYTHONPATH="$SITE:$PWD" python3 deploy/make_hw_test_banks.py \
 #   stereo   - get one STEREO sample in, Save All
 #   rename   - SHIFT+WRITE/RENAME, dial through EVERY character, note if # exists
 #   psg      - Global > CARD > Save > PSG (not All)
-#   song     - a song built from four known patterns (see above)
+#   ccassign - t7_ccprobe loaded, then the knob->CC list written down
 #   twicea   - Save All, change nothing
 #   twiceb   - Save All again immediately
 #   fxtypes  - set FX1 to each of the 16 effect types in turn, Save All each time

@@ -180,6 +180,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
 <h2>5. Reference screenshots</h2>
 <p class="sub">Rendered offscreen from <code>e4.esx</code> with three staged WAVs. Files live in <code>deploy/wf6_screens/</code>.</p>
 <div class="shots">
+  <p class="muted">These are generated, not hand-captured &mdash; regenerate after any UI change with <code>QT_QPA_PLATFORM=offscreen PYTHONPATH="$PWD" python3 tools/capture_screens.py</code>, so what you see below is what the build actually does.</p>
   <figure><img src="deploy/screens/tab_1_bank.png" alt="Bank tab"><figcaption>Bank — 140 slots, stereo rate, musical tune</figcaption></figure>
   <figure><img src="deploy/screens/tab_2_staging.png" alt="Staging tab"><figcaption>Staging — key, note and cost per file</figcaption></figure>
   <figure><img src="deploy/screens/tab_3_pattern.png" alt="Pattern tab"><figcaption>Pattern — tempo, parts, live step grid</figcaption></figure>

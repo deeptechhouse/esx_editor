@@ -34,9 +34,19 @@ class BudgetMeter(QWidget):
         self._used = 0
         self._capacity = capacity
         self.setMinimumHeight(28)
-        self.setMinimumWidth(180)
+        # Wide enough for the longest label this can paint, measured rather
+        # than guessed: at 180 the status-bar copy was clipped mid-word, which
+        # made the number unreadable exactly when memory was running out.
+        self.setMinimumWidth(self._label_width())
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setToolTip("sample memory used / 25 165 824 B")
+
+    def _label_width(self) -> int:
+        """Pixels needed by the widest label, plus the rounded border."""
+        from PySide6.QtGui import QFontMetrics
+
+        widest = self._format_label(self._capacity, self._capacity)
+        return QFontMetrics(self.font()).horizontalAdvance(widest) + 2 * SPACE.md
 
     def set_used(self, used: int) -> None:
         self._used = max(0, used)
@@ -49,6 +59,17 @@ class BudgetMeter(QWidget):
     @property
     def fraction(self) -> float:
         return 0.0 if self._capacity <= 0 else self._used / self._capacity
+
+    @staticmethod
+    def _format_label(used: int, capacity: int) -> str:
+        """The scoreboard text. Static so its width can be measured before any
+        paint, and so the sizing and the drawing can never disagree."""
+        remain_s = max(0, capacity - used) / (DEFAULT_RATE * 2)
+        return (
+            f"{used / 1_048_576:.1f} / "
+            f"{capacity / 1_048_576:.1f} MB sampler RAM   "
+            f"{remain_s:.0f}s CD left"
+        )
 
     def paintEvent(self, event) -> None:  # noqa: N802
         p = QPainter(self)
@@ -64,12 +85,7 @@ class BudgetMeter(QWidget):
         over = self._used > self._capacity
         p.fillRect(fill, QColor(PALETTE.red if over else PALETTE.amber))
 
-        remain_s = max(0, self._capacity - self._used) / (DEFAULT_RATE * 2)
-        label = (
-            f"{self._used / 1_048_576:.1f} / "
-            f"{self._capacity / 1_048_576:.1f} MB sampler RAM   "
-            f"{remain_s:.0f}s CD left"
-        )
+        label = self._format_label(self._used, self._capacity)
         p.setPen(QColor(PALETTE.txt if not over else PALETTE.red))
         p.setFont(self.font())
         p.drawText(r, Qt.AlignmentFlag.AlignCenter, label)

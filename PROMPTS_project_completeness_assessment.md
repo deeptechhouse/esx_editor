@@ -227,3 +227,11 @@ Running log of user prompts for this chat session.
 > assloop is ok, rather than trigger annotatted, i need to change the rule to annotate as the code is made and revided
 
 **Action taken:** Two decisions closed. (1) The `bass_loop` → `ASS_LOOP` tail-truncation rule stands as TDD §5.3 specifies it — settled, not to be re-raised. (2) Rewrote CLAUDE.md §15: annotation now happens **in the source, as code is written and revised, in the same commit** — no `_annotated` duplicate tree, because a duplicate drifts the moment the original is edited and a stale explanation teaches the wrong thing with full confidence. Added §8 step 3b so stale annotation is caught as a defect during code verification. Existing `_annotated` files across the workspace are treated as frozen historical snapshots. Applied the new rule to this codebase: audited all 59 modules (every one already had a module docstring) and annotated the public methods where a real *why* existed, deliberately leaving Qt overrides like `paintEvent` alone per the rule's own "match the surrounding density" clause.
+
+---
+
+## Prompt 24 — 2026-08-26
+
+> what is left to do before human teting?
+
+**Action taken:** Audited rather than recalled, and closed the four real gaps found. (1) `deploy/hw_test_session.txt` was actively misleading — it still named "make a SONG" as the top blocker, which WF17 solved, and listed neither `t6_song` nor `t7_ccprobe`; rewritten, with naming the CC rows now the highest-value item. (2) Screenshots predated WF13/WF14, so the testing document showed a build that no longer existed; added `tools/capture_screens.py` and regenerated all 17. (3) The status-bar memory meter was clipped mid-word — its minimum width was a guessed 180 px; it now measures the widest label it can paint. (4) Verified the documented launch venv (`~/.venvs/esx`) actually runs the new code, and confirmed the remaining Qt font warning is offscreen-only and never appears in the app.
