@@ -96,6 +96,13 @@ class SampleArea:
         return self._current_offset
 
     def set_counts(self, num_mono: int, num_stereo: int) -> None:
+        """Set how many slots the machine believes are occupied.
+
+        These two numbers are the machine's own index into the sample headers;
+        a count higher than the slots actually filled makes it read a header
+        that was never written. Both are range-checked here because nothing
+        downstream can tell a wrong count from a right one.
+        """
         if num_mono < 0 or num_mono > L.NUM_SAMPLES_MONO:
             raise InvariantError(f"mono count {num_mono} out of range")
         if num_stereo < 0 or num_stereo > L.NUM_SAMPLES_STEREO:

@@ -55,6 +55,11 @@ class BankSession:
         return self._bank
 
     def open_path(self, path: str) -> Bank:
+        """Parse a bank from disk and make it the session's open document.
+
+        Clears the dirty flag: what was just read is by definition unmodified,
+        so an open must not leave the window claiming unsaved changes.
+        """
         self._bank = self._reader.read_file(path)
         self._path = path
         self._dirty = False

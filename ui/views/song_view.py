@@ -276,6 +276,11 @@ class SongView(QWidget):
         return self.chain.currentRow()
 
     def add_pattern(self) -> None:
+        """Append the picker's pattern to the end of the chain.
+
+        A full chain raises rather than silently dropping the pattern, so the
+        warning below is the only way a user learns they hit the ceiling.
+        """
         song = self.song()
         if song is None:
             return
@@ -289,6 +294,11 @@ class SongView(QWidget):
         self.chain.setCurrentCell(song.length - 1, 0)
 
     def remove_position(self) -> None:
+        """Drop the selected position, then keep the selection in range.
+
+        Removing the last remaining position is refused by the model, not here
+        — a song always plays at least one pattern.
+        """
         song = self.song()
         position = self.selected_position()
         if song is None or position < 0:
@@ -302,6 +312,11 @@ class SongView(QWidget):
         self.chain.setCurrentCell(min(position, song.length - 1), 0)
 
     def move_position(self, delta: int) -> None:
+        """Move the selected position by `delta`, following it with the cursor.
+
+        Clamped at both ends by the model, so the selection is recomputed the
+        same way rather than assuming the move landed where it was asked to.
+        """
         song = self.song()
         position = self.selected_position()
         if song is None or position < 0:
@@ -312,6 +327,11 @@ class SongView(QWidget):
         self.chain.setCurrentCell(target, 0)
 
     def clear_song(self) -> None:
+        """Reset the song to the machine's untouched default, after confirming.
+
+        Destructive and not undoable, so it asks first — unlike the chain
+        edits, which are one keystroke to reverse.
+        """
         song = self.song()
         if song is None:
             return

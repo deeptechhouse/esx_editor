@@ -180,6 +180,13 @@ class Song:
         self.set_chain([*self.chain, index])
 
     def remove_position(self, position: int) -> None:
+        """Drop one position from the chain.
+
+        Refuses to remove the last one: the machine has no zero-length song,
+        and storing one would encode as the 1-position default anyway — a
+        silent lie about what the user asked for. clear() is the way to blank
+        a song.
+        """
         chain = list(self.chain)
         if not (0 <= position < len(chain)):
             raise InvariantError(

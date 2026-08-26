@@ -131,6 +131,12 @@ def sample_and_hold(
     length: int = MotionSlot.NUM_STEPS,
     rng: random.Random | None = None,
 ) -> None:
+    """Fill the slot with a new random value every `hold` steps, held between.
+
+    Holds rather than interpolates because the value must land on a legal knob
+    position for the target's domain; a smooth ramp between two legal discrete
+    values would pass through bytes the machine cannot represent.
+    """
     rng = rng or random.Random()
     legal = domain.legal_values()
     hold = max(1, hold)

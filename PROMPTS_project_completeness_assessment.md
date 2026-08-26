@@ -219,3 +219,11 @@ Running log of user prompts for this chat session.
 > the sawloop editor can edit which midi cc messages control which items. this is an important feature, as I would like to use various midi controllers with the electribe that do not necessarily map to the default electribe midi mapping
 
 **Action taken:** Both halves of the MIDI map turned out to be in the 192-byte global block, which had been retained entirely verbatim until now. The **drum note numbers** (+10..+22) are VERIFIED — all thirteen match the manual's printed factory table (p.90) exactly — and are editable with note names shown. The **CC assign table** (+23..+55, 33 rows) is located with certainty but its rows are NOT named: every bank carries the identical factory table, so which knob each row drives cannot be derived from the data. Rows are editable by position and deliberately unlabelled, with a `t7_ccprobe` hardware bank that names the whole table in one pass (WF18).
+
+---
+
+## Prompt 23 — 2026-08-26
+
+> assloop is ok, rather than trigger annotatted, i need to change the rule to annotate as the code is made and revided
+
+**Action taken:** Two decisions closed. (1) The `bass_loop` → `ASS_LOOP` tail-truncation rule stands as TDD §5.3 specifies it — settled, not to be re-raised. (2) Rewrote CLAUDE.md §15: annotation now happens **in the source, as code is written and revised, in the same commit** — no `_annotated` duplicate tree, because a duplicate drifts the moment the original is edited and a stale explanation teaches the wrong thing with full confidence. Added §8 step 3b so stale annotation is caught as a defect during code verification. Existing `_annotated` files across the workspace are treated as frozen historical snapshots. Applied the new rule to this codebase: audited all 59 modules (every one already had a module docstring) and annotated the public methods where a real *why* existed, deliberately leaving Qt overrides like `paintEvent` alone per the rule's own "match the surrounding density" clause.
