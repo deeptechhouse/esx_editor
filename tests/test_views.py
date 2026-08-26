@@ -18,6 +18,7 @@ pytest.importorskip("PySide6")
 import codec.layout as L  # noqa: E402
 import ui.views.song_view as song_view_mod  # noqa: E402
 from audio.passthrough import NullKeyDetector, WavPassthroughConverter  # noqa: E402
+from core.global_params import DRUM_NOTE_PARTS, NUM_CC_ASSIGN  # noqa: E402
 from tests.conftest import make_staging, make_wav  # noqa: E402
 from ui.main_window import TABS, MainWindow  # noqa: E402
 from ui.views import (  # noqa: E402
@@ -276,7 +277,7 @@ def test_global_view_dumps_the_retained_block(qapp, bank) -> None:
     raw = v.block_bytes()
     assert len(raw) == 192 == L.CHUNK_GLOBAL_PARAMETERS
     assert raw == bank.globals.to_bytes()
-    assert "192 B" in v._headline.text() and "unproven" in v._headline.text()
+    assert "192 B" in v._headline.text() and "verbatim" in v._headline.text()
     assert v.dump.toPlainText() == hex_dump(raw, L.ADDR_GLOBAL_PARAMETERS)
 
 
@@ -286,7 +287,7 @@ def test_global_view_does_not_decode_midi_channel(qapp, bank) -> None:
         _ = bank.globals.midi_channel
     v = GlobalView()
     v.bind_bank(bank)  # would raise if the view touched the property
-    assert "NotImplementedError" in v._detail.text()
+    assert "raises" in v._detail.text()
 
 
 def test_global_view_unbinds_cleanly(qapp) -> None:
@@ -294,6 +295,44 @@ def test_global_view_unbinds_cleanly(qapp) -> None:
     v.bind_bank(None)
     assert v.block_bytes() == b""
     assert v.dump.toPlainText() == ""
+    assert v.notes.rowCount() == 0
+    assert v.cc.rowCount() == 0
+
+
+def test_global_view_edits_drum_notes_and_cc_rows(qapp, bank) -> None:
+    v = GlobalView()
+    v.bind_bank(bank)
+    edits = []
+    v.globalsEdited.connect(lambda: edits.append(1))
+    before_notes = bank.globals.drum_notes()
+    before_cc = bank.globals.cc_assignments()
+
+    assert v.notes.rowCount() == len(DRUM_NOTE_PARTS) == 13
+    assert v.cc.rowCount() == NUM_CC_ASSIGN == 33
+    assert v.notes.item(0, 0).text() == "Drum1"
+    assert v.notes.item(0, 2).text() == "C2"
+    # Rows are NUMBERED, never labelled with a knob name we cannot prove.
+    assert v.cc.item(0, 0).text() == "1"
+
+    v.notes.cellWidget(0, 1).setValue(60)
+    assert bank.globals.drum_note(0) == 60
+    assert v.notes.item(0, 2).text() == "C4"
+
+    v.cc.cellWidget(2, 1).setValue(100)
+    assert bank.globals.cc_assignment(2) == 100
+    assert len(edits) == 2, "each field edit marks the bank modified once"
+
+    # leave the shared fixture as it was found
+    bank.globals.set_drum_note(0, before_notes[0])
+    bank.globals.set_cc_assignment(2, before_cc[2])
+
+
+def test_global_view_says_the_cc_rows_are_unnamed(qapp, bank) -> None:
+    v = GlobalView()
+    v.bind_bank(bank)
+    caption = v._cc_caption.text()
+    assert "NOT established" in caption
+    assert "t7_ccprobe" in caption
 
 
 # -- shell wiring ------------------------------------------------------------

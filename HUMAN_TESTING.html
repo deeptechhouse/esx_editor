@@ -88,8 +88,8 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
       <td>Edit the 64 songs: name, tempo, and the ordered chain of patterns each one plays.</td>
       <td>64 songs in the list; selecting one shows its chain as A.01&ndash;D.64 positions. Add / Remove / &uarr; / &darr; edit the chain; the title bar shows &bull; modified. An untouched song reads "1 position, 120.0 BPM (untouched default)".</td></tr>
   <tr><td><b>Global</b></td>
-      <td>The 192-byte global block as an offset/hex/ASCII dump.</td>
-      <td>12 dump lines from <code>00000020</code>. No MIDI-channel control — that field is undecoded.</td></tr>
+      <td>The MIDI mapping: 13 drum note numbers and the 33-row CC assign table, both editable. The rest of the 192-byte block stays an offset/hex/ASCII dump.</td>
+      <td>Drum1 reads note 36 / C2 and Drum6A reads 42 / F#2, matching the manual's factory table. The CC table shows 33 numbered rows &mdash; <b>row numbers, not knob names</b>: which knob each row drives is not established yet. 12 dump lines from <code>00000020</code> below. No MIDI-channel control &mdash; that field is undecoded.</td></tr>
 </table>
 
 <div class="card win">
@@ -185,7 +185,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
   <figure><img src="deploy/screens/tab_3_pattern.png" alt="Pattern tab"><figcaption>Pattern — tempo, parts, live step grid</figcaption></figure>
   <figure><img src="deploy/screens/tab_4_motion.png" alt="Motion tab"><figcaption>Motion — the drawable canvas</figcaption></figure>
   <figure><img src="deploy/screens/tab_5_song.png" alt="Song tab"><figcaption>Song — chain editor</figcaption></figure>
-  <figure><img src="deploy/screens/tab_6_global.png" alt="Global tab"><figcaption>Global — the 192-byte block</figcaption></figure>
+  <figure><img src="deploy/screens/tab_6_global.png" alt="Global tab"><figcaption>Global — MIDI mapping + the undecoded remainder</figcaption></figure>
   <figure><img src="deploy/screens/wizard_05.png" alt="Wizard 5"><figcaption>Wizard 5 — key and pitch</figcaption></figure>
   <figure><img src="deploy/screens/wizard_07.png" alt="Wizard 7"><figcaption>Wizard 7 — slot assignment and commit</figcaption></figure>
   <figure><img src="deploy/screens/wizard_09.png" alt="Wizard 9"><figcaption>Wizard 9 — pattern basics</figcaption></figure>

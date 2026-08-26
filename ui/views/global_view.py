@@ -1,26 +1,45 @@
-"""Global view — the 192-byte global parameter block, shown honestly (TDD §2.1).
+"""Global view — the 192-byte global block: MIDI mapping, plus the rest as hex.
 
-WHY A HEX DUMP AND NOT FIELDS
-    The block round-trips byte-exact, but no individual field offset inside it
-    is proven: `GlobalParameters.midi_channel` still raises NotImplementedError
-    on purpose. Rendering a "MIDI channel: 1" spinbox here would be a guess
-    presented as fact, and the user would have no way to tell. So the view
-    states the size, states that the block is retained verbatim, and dumps the
-    bytes so a hardware diff can identify fields later.
+TWO KINDS OF FIELD, SHOWN DIFFERENTLY
+    The drum note numbers are VERIFIED against the manual's printed factory
+    table, all thirteen of them, so they get a real editor.
+
+    The CC assign table is located with certainty but its ROWS are not named:
+    every corpus bank carries the identical factory table, so which knob each
+    row drives cannot be derived from the data. Rows are shown by position and
+    are editable; none is labelled with a knob name this codebase cannot prove.
+
+    Everything else in the block is undecoded and stays a hex dump. Rendering a
+    "MIDI channel: 1" spinbox would be a guess presented as fact, and the user
+    would have no way to tell.
 """
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPlainTextEdit,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 import codec.layout as L
 from core.bank import Bank
+from core.global_params import (
+    CC_ASSIGN_OFFSET,
+    DRUM_NOTE_OFFSET,
+    DRUM_NOTE_PARTS,
+    MAX_CC,
+    MAX_NOTE,
+    NUM_CC_ASSIGN,
+    note_name,
+)
 from ui.theme import PALETTE, TYPE
 
 #: Bytes per line in the dump.
@@ -39,11 +58,47 @@ def hex_dump(data: bytes, base: int = 0, stride: int = DUMP_STRIDE) -> str:
 
 
 class GlobalView(QWidget):
-    """Read-only report on the bank-wide global parameter block."""
+    """Edit the bank-wide MIDI mapping; report the rest of the block honestly."""
+
+    globalsEdited = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._bank: Bank | None = None
+        self._loading = False
+
+        # Drum note numbers: part name, editable note number, note name.
+        self.notes = QTableWidget(0, 3)
+        self.notes.setHorizontalHeaderLabels(["part", "note no.", "note"])
+        self.notes.verticalHeader().setVisible(False)
+        self.notes.setAlternatingRowColors(True)
+        self.notes.horizontalHeader().setStretchLastSection(True)
+
+        # CC assign: stored row, editable CC number.
+        self.cc = QTableWidget(0, 2)
+        self.cc.setHorizontalHeaderLabels(["row", "CC number"])
+        self.cc.verticalHeader().setVisible(False)
+        self.cc.setAlternatingRowColors(True)
+        self.cc.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+
+        self._notes_caption = QLabel(
+            "Drum note numbers — VERIFIED against the manual's factory table "
+            "(p.90). Parts sharing a note sound together, which is deliberate."
+        )
+        self._notes_caption.setStyleSheet(f"color: {PALETTE.muted};")
+        self._notes_caption.setWordWrap(True)
+        self._cc_caption = QLabel(
+            "CC assign — the table is located, but which knob each row drives "
+            "is NOT established: every bank carries the identical factory "
+            "table, so the order cannot be derived from the data. Rows are "
+            "numbered rather than labelled with a guess. Load the t7_ccprobe "
+            "bank from deploy/make_hw_test_banks.py to read the mapping off "
+            "the machine."
+        )
+        self._cc_caption.setStyleSheet(f"color: {PALETTE.amber};")
+        self._cc_caption.setWordWrap(True)
 
         self._headline = QLabel("")
         self._headline.setStyleSheet(f"color: {PALETTE.lcd};")
@@ -63,11 +118,28 @@ class GlobalView(QWidget):
         head = QHBoxLayout()
         head.addWidget(QLabel("Global parameters"))
         head.addStretch(1)
+
+        left = QVBoxLayout()
+        left.addWidget(QLabel("Drum note numbers"))
+        left.addWidget(self._notes_caption)
+        left.addWidget(self.notes, 1)
+
+        right = QVBoxLayout()
+        right.addWidget(QLabel("MIDI CC assign"))
+        right.addWidget(self._cc_caption)
+        right.addWidget(self.cc, 1)
+
+        tables = QHBoxLayout()
+        tables.addLayout(left, 1)
+        tables.addLayout(right, 1)
+
         layout = QVBoxLayout(self)
         layout.addLayout(head)
         layout.addWidget(self._headline)
         layout.addWidget(self._detail)
-        layout.addWidget(self.dump, 1)
+        layout.addLayout(tables, 3)
+        layout.addWidget(QLabel("Undecoded remainder"))
+        layout.addWidget(self.dump, 2)
         self.reload()
 
     # -- binding ------------------------------------------------------------
@@ -81,21 +153,94 @@ class GlobalView(QWidget):
             return b""
         return self._bank.globals.to_bytes()
 
+    def globals_or_none(self):
+        return None if self._bank is None else self._bank.globals
+
     def reload(self) -> None:
+        self._loading = True
+        try:
+            self._reload()
+        finally:
+            self._loading = False
+
+    def _reload(self) -> None:
         raw = self.block_bytes()
         if not raw:
             self._headline.setText("no bank")
             self._detail.setText("")
             self.dump.setPlainText("")
+            self.notes.setRowCount(0)
+            self.cc.setRowCount(0)
             return
+        self._fill_notes()
+        self._fill_cc()
         self._headline.setText(
-            f"{len(raw)} B global block retained verbatim at "
-            f"0x{L.ADDR_GLOBAL_PARAMETERS:X} — field offsets unproven."
+            f"{len(raw)} B global block at 0x{L.ADDR_GLOBAL_PARAMETERS:X} — "
+            f"drum notes at +{DRUM_NOTE_OFFSET}, CC assign at "
+            f"+{CC_ASSIGN_OFFSET}; the rest is retained verbatim."
         )
         self._detail.setText(
-            "MIDI channel, tempo mode, metronome and the rest are not decoded: "
-            "GlobalParameters.midi_channel raises NotImplementedError rather "
-            "than return a guess. The bytes below are what the machine wrote "
-            "and what the writer replays unchanged."
+            "MIDI channel, tempo mode and metronome are still not decoded: "
+            "GlobalParameters.midi_channel raises rather than return a guess. "
+            "The dump below is the whole block as the machine wrote it — the "
+            "two tables above are windows into it, not a separate copy."
         )
         self.dump.setPlainText(hex_dump(raw, L.ADDR_GLOBAL_PARAMETERS))
+
+    # -- tables --------------------------------------------------------------
+
+    def _fill_notes(self) -> None:
+        params = self.globals_or_none()
+        if params is None:
+            return
+        self.notes.setRowCount(len(DRUM_NOTE_PARTS))
+        for row, part in enumerate(DRUM_NOTE_PARTS):
+            self.notes.setItem(row, 0, _cell(part))
+            spin = QSpinBox()
+            spin.setRange(0, MAX_NOTE)
+            spin.setValue(params.drum_note(row))
+            spin.setKeyboardTracking(False)
+            spin.valueChanged.connect(lambda value, r=row: self._set_note(r, value))
+            self.notes.setCellWidget(row, 1, spin)
+            self.notes.setItem(row, 2, _cell(params.drum_note_name(row)))
+        self.notes.resizeColumnsToContents()
+
+    def _fill_cc(self) -> None:
+        params = self.globals_or_none()
+        if params is None:
+            return
+        self.cc.setRowCount(NUM_CC_ASSIGN)
+        for row in range(NUM_CC_ASSIGN):
+            self.cc.setItem(row, 0, _cell(f"{row + 1}"))
+            spin = QSpinBox()
+            spin.setRange(0, MAX_CC)
+            spin.setValue(params.cc_assignment(row))
+            spin.setKeyboardTracking(False)
+            spin.valueChanged.connect(lambda value, r=row: self._set_cc(r, value))
+            self.cc.setCellWidget(row, 1, spin)
+        self.cc.resizeColumnsToContents()
+
+    # -- edits ---------------------------------------------------------------
+
+    def _set_note(self, part: int, value: int) -> None:
+        params = self.globals_or_none()
+        if params is None or self._loading or params.drum_note(part) == value:
+            return
+        params.set_drum_note(part, value)
+        item = self.notes.item(part, 2)
+        if item is not None:
+            item.setText(note_name(value))
+        self.globalsEdited.emit()
+
+    def _set_cc(self, row: int, value: int) -> None:
+        params = self.globals_or_none()
+        if params is None or self._loading or params.cc_assignment(row) == value:
+            return
+        params.set_cc_assignment(row, value)
+        self.globalsEdited.emit()
+
+
+def _cell(text: str) -> QTableWidgetItem:
+    item = QTableWidgetItem(text)
+    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+    return item

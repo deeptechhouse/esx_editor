@@ -231,3 +231,71 @@ def test_editing_a_song_touches_only_that_song_block(song_bank_path) -> None:
     assert all(start <= i < end for i in differing), (
         "an edit to song 1 changed bytes outside its own block"
     )
+
+
+# -- global block: MIDI mapping ------------------------------------------------
+#: The manual's printed factory drum-note table (p.90, "Assigning the drum note
+#: numbers"), in its own part order. Thirteen independent values: matching all
+#: of them is a proof of the offset, not a fit.
+MANUAL_DRUM_NOTES = (
+    ("Drum1", "C2"),
+    ("Drum2", "D2"),
+    ("Drum3", "E2"),
+    ("Drum4", "F2"),
+    ("Drum5", "G2"),
+    ("Drum6A", "F#2"),
+    ("Drum6B", "A#2"),
+    ("Drum7A", "C#3"),
+    ("Drum7B", "D#3"),
+    ("Stretch1", "A-1"),
+    ("Stretch2", "A#-1"),
+    ("Slice", "B-1"),
+    ("Audio in", "C0"),
+)
+
+
+def test_drum_notes_match_the_manuals_factory_table(corpus_path) -> None:
+    from codec.reader import BankReader
+    from core.global_params import DRUM_NOTE_PARTS
+
+    params = BankReader().read_file(corpus_path).globals
+    assert DRUM_NOTE_PARTS == tuple(p for p, _ in MANUAL_DRUM_NOTES)
+    for part, (name, note) in enumerate(MANUAL_DRUM_NOTES):
+        assert params.drum_note_name(part) == note, f"{name} note number"
+
+
+def test_cc_assign_rows_are_all_legal_cc_numbers(corpus_path) -> None:
+    """The table is located; every entry must at least BE a control change."""
+    from codec.reader import BankReader
+    from core.global_params import MAX_CC, NUM_CC_ASSIGN
+
+    params = BankReader().read_file(corpus_path).globals
+    rows = params.cc_assignments()
+    assert len(rows) == NUM_CC_ASSIGN
+    assert all(0 <= cc <= MAX_CC for cc in rows)
+    # The numbers a synth voice actually uses, which is what makes this the CC
+    # table and not an arbitrary run of small integers.
+    for cc in (74, 71, 5, 7, 10):
+        assert cc in rows, f"CC {cc} missing from the assign table"
+
+
+def test_editing_the_midi_mapping_touches_only_the_global_block(
+    corpus_path,
+) -> None:
+    import codec.layout as L
+    from codec.reader import BankReader
+    from codec.writer import BankWriter
+
+    with open(corpus_path, "rb") as f:
+        raw = f.read()
+    bank = BankReader().read_auto(raw)
+    bank.globals.set_drum_note(0, 60)
+    bank.globals.set_cc_assignment(0, 100)
+    out = BankWriter().write(bank)
+
+    differing = [i for i in range(len(raw)) if raw[i] != out[i]]
+    start = L.ADDR_GLOBAL_PARAMETERS
+    end = start + L.CHUNK_GLOBAL_PARAMETERS
+    assert differing, "the edit did land"
+    assert all(start <= i < end for i in differing)
+    assert len(differing) == 2, "one byte per field, nothing else"

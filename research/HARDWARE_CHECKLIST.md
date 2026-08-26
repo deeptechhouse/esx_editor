@@ -81,6 +81,29 @@ set Tempo Lock on and Next Song to something, save, diff.
 
 ---
 
+## 2c. Name the MIDI CC assign rows — **BLOCKS a requested feature**  **(added 2026-08-26)**
+
+**Why:** "Use controllers that do not follow the ESX-1's default MIDI map" was
+asked for. The CC-assign table is located with certainty (global block +23..+55,
+33 rows) and is editable, but **which knob each row drives is unknown**: every
+corpus bank carries the identical factory table, so the order cannot be derived
+from data. Labelling the rows with guessed knob names would put a wrong mapping
+in front of someone wiring up a controller.
+
+**Do:**
+1. `python3 deploy/make_hw_test_banks.py --source <your bank>` and load
+   **t7_ccprobe** on the machine.
+2. Global > SHIFT + step key 15 (MIDIUtil) > dial to `CCAsin` > key 15.
+3. Dial through **every** knob and write down the knob name against the CC
+   number shown. Row N carries CC 94+N, so CC 95 is row 1 ... CC 127 is row 33.
+4. Load a t0 bank afterwards to restore the factory assignments.
+
+**Expect:** all 33 rows named in a single pass, because each carries a distinct
+ordered number. A SawLoop screenshot of its MIDI CC page would do the same job
+without touching the hardware.
+
+---
+
 ## 3. Displayable character set — affects the slot-naming convention
 
 **Why:** Lowercase round-trips in the file, but those names came from truncated

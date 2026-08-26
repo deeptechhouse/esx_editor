@@ -211,3 +211,11 @@ Running log of user prompts for this chat session.
 > /Users/aaandy/Downloads/Chronic-Interactive-3.esx here is an esx file with a song saved (i believe)
 
 **Action taken:** The blocker is gone. Diffing against the untouched original changed twenty bytes in 8.5 MB, all in the song area, giving the chain length and the ordered list of pattern indices. Songs are now decoded *and writable*: the verbatim mid region was split so the writer emits songs from objects, and the Song tab became a real chain editor (add / remove / reorder / rename / retempo). Also established that the region the TDD calls "song events" is not song events — a four-position song changed nothing in it (WF17).
+
+---
+
+## Prompt 22 — 2026-08-26
+
+> the sawloop editor can edit which midi cc messages control which items. this is an important feature, as I would like to use various midi controllers with the electribe that do not necessarily map to the default electribe midi mapping
+
+**Action taken:** Both halves of the MIDI map turned out to be in the 192-byte global block, which had been retained entirely verbatim until now. The **drum note numbers** (+10..+22) are VERIFIED — all thirteen match the manual's printed factory table (p.90) exactly — and are editable with note names shown. The **CC assign table** (+23..+55, 33 rows) is located with certainty but its rows are NOT named: every bank carries the identical factory table, so which knob each row drives cannot be derived from the data. Rows are editable by position and deliberately unlabelled, with a `t7_ccprobe` hardware bank that names the whole table in one pass (WF18).

@@ -1017,3 +1017,67 @@ venv is indistinguishable from a passing test.
 ### RESULT
 **393 tests** passing, 16 skipped (librosa absent at the time of the run).
 Round-trip byte-identical on every bank available, including the new one.
+
+---
+
+## 2026-08-26 — WF18 (MIDI mapping: drum notes PROVEN, CC table located)
+
+Requested: edit which MIDI CC controls what, so controllers that do not follow
+the ESX-1's default map can be used. Both halves of that map live in the
+192-byte global block at 0x20 — which until now was retained entirely verbatim.
+
+### DRUM NOTE NUMBERS — VERIFIED, 13/13
+
+Bytes **+10..+22**, one MIDI note number per part. The manual (p.90,
+"Assigning the drum note numbers") prints the factory table, and every one of
+the thirteen bytes matches it under Korg naming (C-1 = 0):
+
+```
+  +10 0x24=36 C2    Drum1        +17 0x31=49 C#3   Drum7A
+  +11 0x26=38 D2    Drum2        +18 0x33=51 D#3   Drum7B
+  +12 0x28=40 E2    Drum3        +19 0x09= 9 A-1   Stretch1
+  +13 0x29=41 F2    Drum4        +20 0x0a=10 A#-1  Stretch2
+  +14 0x2b=43 G2    Drum5        +21 0x0b=11 B-1   Slice
+  +15 0x2a=42 F#2   Drum6A       +22 0x0c=12 C0    Audio in
+  +16 0x2e=46 A#2   Drum6B
+```
+
+Thirteen independent values landing in a published order is a proof, not a fit
+— note the deliberately non-monotonic pair (Drum5 G2=43 *above* Drum6A F#2=42),
+which no accidental alignment would reproduce. Editable, with the note NAME
+shown alongside because the machine displays names, not numbers.
+
+### CC ASSIGN TABLE — LOCATED, ROWS NOT YET NAMED
+
+Bytes **+23..+55**, 33 of them, then zeros. That this is the CC-assign table
+(manual p.91) is not in doubt:
+
+* 33 consecutive bytes, every one a legal CC number, bounded by the note table
+  on one side and a run of zeros on the other;
+* it holds precisely the numbers a synth voice uses — 74 (cutoff), 71
+  (resonance), 5 (portamento), 7 (volume), 10 (pan), 91/93 (sends);
+* the manual says the feature covers "the Keyboard part and effects" only,
+  which is the right order of magnitude for 33 knobs.
+
+**Which row drives which knob is NOT established.** All four banks carry the
+identical factory table, so nothing varies and the order cannot be derived from
+the data. Rows are therefore shown and stored BY POSITION and never labelled
+with a knob name this codebase cannot prove — the same rule that kept the song
+chain honest until a hardware save settled it.
+
+`deploy/make_hw_test_banks.py` gains **t7_ccprobe**, which writes CC 95..127
+into rows 1..33. One pass through Global > MIDIUtil > CCAsin on the machine
+names the entire table, because every row carries a distinct, ordered number.
+
+### THE BLOCK IS NO LONGER WHOLLY VERBATIM
+`GlobalParameters` now holds its 192 bytes and patches only the two decoded
+tables into them, so +0..+9 and +56..+191 survive a read/modify/write by
+construction. `midi_channel` still raises. Byte-identity re-verified on every
+bank; an edit to the two tables changes exactly two bytes and nothing else.
+
+### STILL OPEN IN THIS BLOCK
++64..+191 varies between banks and looks structured (an ascending, 0xff-
+terminated list in each), but nothing is claimed about it.
+
+### RESULT
+**418 tests** passing, 1 skipped.

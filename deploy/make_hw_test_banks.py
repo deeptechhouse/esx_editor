@@ -35,6 +35,7 @@ from codec.operation_table import OperationTable  # noqa: E402
 from codec.reader import BankReader  # noqa: E402
 from codec.validator import BankValidator  # noqa: E402
 from codec.writer import BankWriter  # noqa: E402
+from core.global_params import NUM_CC_ASSIGN  # noqa: E402
 from core.motion import MotionDomain  # noqa: E402
 from core.pattern import pattern_label  # noqa: E402
 
@@ -217,6 +218,42 @@ def t6_song(bank, report):
     )
 
 
+#: The probe writes CC (CC_PROBE_BASE + row) into every CC-assign row, so each
+#: row carries a number that is unique and immediately readable on the machine.
+#: 33 rows, and CC numbers stop at 127, so the base must leave room for all of
+#: them: 95..127.
+CC_PROBE_BASE = 95
+
+
+def t7_ccprobe(bank, report):
+    """Name the CC-assign rows by reading them off the machine.
+
+    The table's location is certain; which knob each ROW drives is not, and no
+    bank in the corpus varies, so it cannot be derived from data. This writes a
+    distinct, ordered CC number into every row: dial through Global > MIDIUtil
+    > CCAsin once and every row is named in a single pass.
+    """
+    params = bank.globals
+    rows = NUM_CC_ASSIGN
+    for row in range(rows):
+        params.set_cc_assignment(row, CC_PROBE_BASE + row)
+    report(
+        f"CC assign rows 1-{rows} -> CC "
+        f"{CC_PROBE_BASE}-{CC_PROBE_BASE + rows - 1}, one per row"
+    )
+    return (
+        "Global > SHIFT+key15 (MIDIUtil) > CCAsin.\n"
+        "       Dial through every knob and WRITE DOWN the knob name against "
+        "the CC\n"
+        f"       number it shows. Row N carries CC {CC_PROBE_BASE}+N-1, so "
+        f"CC {CC_PROBE_BASE} is row 1,\n"
+        f"       CC {CC_PROBE_BASE + 1} is row 2, and so on up to CC "
+        f"{CC_PROBE_BASE + rows - 1} for row {rows}.\n"
+        "       That single pass names the whole table. Load a t0 bank "
+        "afterwards to\n       put the factory assignments back."
+    )
+
+
 TESTS = [
     ("t0_identical", "byte-identical round-trip", t0_identical),
     ("t1_tempo", "one tempo (2-byte field)", t1_tempo),
@@ -225,6 +262,7 @@ TESTS = [
     ("t5_motion", "one motion slot", t5_motion),
     ("t4_commit", "a whole new sample", t4_commit),
     ("t6_song", "a song chain (4 positions)", t6_song),
+    ("t7_ccprobe", "name the CC assign rows", t7_ccprobe),
 ]
 
 
