@@ -102,7 +102,7 @@ warn_unused_configs = true
 ignore_missing_imports = true
 # The codec is where a type error costs a corrupted bank; hold it to a higher
 # standard than the UI, where Qt's own stubs are the limiting factor.
-files = ["codec", "core", "workspace", "audio"]
+files = ["codec", "core", "workspace", "audio", "midi"]
 
 # ui/ is deliberately outside `files` above: Qt's stubs, not our code, would be
 # the limiting factor there, and a type error in a widget cannot corrupt a bank.

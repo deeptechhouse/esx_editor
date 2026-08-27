@@ -1134,3 +1134,56 @@ same amount is an offset error, only some wrong is an order error.
 ### RESULT
 **421 tests** passing, 1 skipped. Hardware checklist item 2c closed without
 touching the machine.
+
+---
+
+## 2026-08-27 — WF20 (MIDI Learn; the CC table becomes a form)
+
+Not a codec finding — a usability one, recorded because the cause is worth
+remembering.
+
+### THE TABLE WAS EDITABLE AND NOBODY COULD TELL
+The CC numbers had been editable since WF18: every row carried a live QSpinBox.
+But the pane showed 8 of 33 rows, the steppers were a few pixels wide, and
+nothing signalled that a number could be changed. It read as a readout. "It
+does not seem as though you can add information to it" is the correct reading
+of what was on screen — the widget being technically interactive is not the
+same as the interface offering the action.
+
+Fixes: the tables get five parts of the vertical space and the hex dump one;
+each row now carries a **dropdown of all 128 control changes**, named where the
+MIDI specification names one ("74 — Brightness / Cutoff") and left bare where
+it does not, so a blank name reads as "free to use" rather than as a gap.
+
+### MIDI LEARN
+New `midi/` package, same ports-and-adapters shape as `audio/`: a `MidiInput`
+Protocol, a mido/python-rtmidi adapter, a null implementation, and a cached
+capability probe. Optional extra — without it the Learn buttons disable
+themselves and say why, and nothing else changes.
+
+Two decisions worth keeping:
+
+* **Polled, not callback-driven.** A backend callback arrives on the backend's
+  thread, and touching Qt widgets off the GUI thread is undefined behaviour
+  that surfaces as a crash weeks later. A 30 ms Qt timer keeps everything on
+  one thread, and no one can move a knob fast enough to notice.
+* **Receive only, structurally.** The adapter calls `open_input` and nothing
+  else; there is no code path that can transmit. A MIDI OUT could change a
+  connected instrument's state, which is exactly what this app promises not
+  to do.
+
+One row can be armed at a time (a second would make the next knob move
+ambiguous), the first message wins (a sweep is hundreds of messages about the
+same control), and an armed row disarms itself after 15 s so a forgotten Learn
+cannot capture a stray message an hour later.
+
+### A BUG THE TESTS FOUND
+The disabled Learn button's tooltip called the process-wide `describe_midi()`
+rather than reading the input the view actually holds, so it could explain a
+state the view was not in. A button must explain the object it is wired to or
+the explanation is fiction. Caught by injecting a `NullMidiInput` — which is
+the whole reason the device sits behind a port.
+
+### RESULT
+17 new tests, all against a fake MidiInput: no hardware, no backend, full
+coverage of arm / capture / disarm / timeout / no-device / device-vanishes.

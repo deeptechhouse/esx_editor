@@ -17,12 +17,14 @@ TWO KINDS OF FIELD, SHOWN DIFFERENTLY
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPlainTextEdit,
+    QPushButton,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -42,7 +44,17 @@ from core.global_params import (
     NUM_CC_ASSIGN,
     note_name,
 )
-from ui.theme import PALETTE, TYPE
+from midi.factory import describe as describe_midi
+from midi.factory import midi_input
+from ui.midi_names import CHANNEL_MODE_FIRST, cc_label
+from ui.theme import PALETTE, SPACE, TYPE
+
+#: How often Learn drains the MIDI input, in ms. Fast enough that a knob nudge
+#: registers instantly; slow enough to be free.
+LEARN_POLL_MS = 30
+#: Learn gives up after this long rather than listening forever, so a forgotten
+#: armed row cannot silently capture a stray message an hour later.
+LEARN_TIMEOUT_MS = 15_000
 
 #: Bytes per line in the dump.
 DUMP_STRIDE = 16
@@ -76,13 +88,26 @@ class GlobalView(QWidget):
         self.notes.setAlternatingRowColors(True)
         self.notes.horizontalHeader().setStretchLastSection(True)
 
-        # CC assign: the knob, and the CC number that drives it.
-        self.cc = QTableWidget(0, 3)
-        self.cc.setHorizontalHeaderLabels(["#", "knob", "CC number"])
+        # CC assign: the knob, the CC that drives it, and a per-row Learn.
+        self.midi = midi_input()
+        self._learning_row: int | None = None
+        self._learn_timer = QTimer(self)
+        self._learn_timer.setInterval(LEARN_POLL_MS)
+        self._learn_timer.timeout.connect(self._poll_midi)
+        self._learn_deadline = QTimer(self)
+        self._learn_deadline.setSingleShot(True)
+        self._learn_deadline.setInterval(LEARN_TIMEOUT_MS)
+        self._learn_deadline.timeout.connect(lambda: self.stop_learn(captured=False))
+
+        self.cc = QTableWidget(0, 4)
+        self.cc.setHorizontalHeaderLabels(["#", "knob", "CC number", ""])
         self.cc.verticalHeader().setVisible(False)
         self.cc.setAlternatingRowColors(True)
         self.cc.horizontalHeader().setSectionResizeMode(
             1, QHeaderView.ResizeMode.Stretch
+        )
+        self.cc.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
         )
         self.cc.horizontalHeader().setStretchLastSection(False)
 
@@ -93,9 +118,9 @@ class GlobalView(QWidget):
         self._notes_caption.setStyleSheet(f"color: {PALETTE.muted};")
         self._notes_caption.setWordWrap(True)
         self._cc_caption = QLabel(
-            "CC assign — point any knob at the control-change number your "
-            "controller already sends. Row order confirmed against an "
-            "independent editor, 33 of 33."
+            "Pick a CC from the list, or press Learn and move the control on "
+            "your MIDI device. Row order confirmed against an independent "
+            "editor, 33 of 33."
         )
         self._cc_caption.setStyleSheet(f"color: {PALETTE.muted};")
         self._cc_caption.setWordWrap(True)
@@ -104,6 +129,14 @@ class GlobalView(QWidget):
         self._cc_warning = QLabel("")
         self._cc_warning.setStyleSheet(f"color: {PALETTE.amber};")
         self._cc_warning.setWordWrap(True)
+        self._midi_status = QLabel(describe_midi())
+        self._midi_status.setStyleSheet(f"color: {PALETTE.muted};")
+        self._midi_status.setWordWrap(True)
+        self.rescan_button = QPushButton("Rescan MIDI")
+        self.rescan_button.setToolTip(
+            "Look for MIDI inputs again — use after plugging a device in."
+        )
+        self.rescan_button.clicked.connect(self.rescan_midi)
 
         self._headline = QLabel("")
         self._headline.setStyleSheet(f"color: {PALETTE.lcd};")
@@ -134,6 +167,10 @@ class GlobalView(QWidget):
         right.addWidget(self._cc_caption)
         right.addWidget(self._cc_warning)
         right.addWidget(self.cc, 1)
+        midi_row = QHBoxLayout()
+        midi_row.addWidget(self._midi_status, 1)
+        midi_row.addWidget(self.rescan_button)
+        right.addLayout(midi_row)
 
         tables = QHBoxLayout()
         tables.addLayout(left, 1)
@@ -143,9 +180,9 @@ class GlobalView(QWidget):
         layout.addLayout(head)
         layout.addWidget(self._headline)
         layout.addWidget(self._detail)
-        layout.addLayout(tables, 3)
+        layout.addLayout(tables, 5)
         layout.addWidget(QLabel("Undecoded remainder"))
-        layout.addWidget(self.dump, 2)
+        layout.addWidget(self.dump, 1)
         self.reload()
 
     # -- binding ------------------------------------------------------------
@@ -219,14 +256,148 @@ class GlobalView(QWidget):
         for row in range(NUM_CC_ASSIGN):
             self.cc.setItem(row, 0, _cell(f"{row + 1}"))
             self.cc.setItem(row, 1, _cell(CC_ASSIGN_NAMES[row]))
-            spin = QSpinBox()
-            spin.setRange(0, MAX_CC)
-            spin.setValue(params.cc_assignment(row))
-            spin.setKeyboardTracking(False)
-            spin.valueChanged.connect(lambda value, r=row: self._set_cc(r, value))
-            self.cc.setCellWidget(row, 2, spin)
+
+            picker = QComboBox()
+            # Every legal CC is offered, named where the MIDI spec names one.
+            # The list is the form the user asked for; the numbers are what
+            # actually travel down the cable.
+            for number in range(MAX_CC + 1):
+                picker.addItem(cc_label(number), number)
+            picker.setCurrentIndex(params.cc_assignment(row))
+            picker.currentIndexChanged.connect(
+                lambda index, r=row: self._set_cc(r, index)
+            )
+            self.cc.setCellWidget(row, 2, picker)
+
+            learn = QPushButton("Learn")
+            learn.setCheckable(True)
+            learn.setEnabled(self.midi.available)
+            learn.setToolTip(
+                "Arm this row, then move the control on your MIDI device."
+                if self.midi.available
+                else self._unavailable_reason()
+            )
+            learn.clicked.connect(lambda _=False, r=row: self.toggle_learn(r))
+            self.cc.setCellWidget(row, 3, learn)
+
         self.cc.resizeColumnsToContents()
+        self.cc.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
+        )
+        # resizeColumnsToContents measures ITEMS, not cell widgets, so the
+        # Learn column came out narrower than its own buttons and rendered
+        # them as "ear". Size it from the widget that actually lives there,
+        # and from the wider of its two captions so it does not jump when the
+        # button switches to "Listening…".
+        probe = QPushButton("Listening…")
+        self.cc.setColumnWidth(3, probe.sizeHint().width() + SPACE.md)
+        probe.deleteLater()
         self._refresh_cc_warning()
+
+    # -- MIDI Learn ----------------------------------------------------------
+
+    def _unavailable_reason(self) -> str:
+        """Why Learn is off, according to the input THIS view holds.
+
+        Not describe_midi(): that re-probes the process-wide factory, which can
+        disagree with the injected input — and a button must explain the object
+        it is actually wired to, or the explanation is fiction.
+        """
+        reason = getattr(self.midi, "reason", "")
+        return reason or describe_midi()
+
+    def rescan_midi(self) -> None:
+        """Re-probe the MIDI stack, for a device plugged in after launch."""
+        from midi import factory
+
+        factory._backend_error.cache_clear()
+        self.stop_learn(captured=False)
+        self.midi = factory.midi_input()
+        self._midi_status.setText(describe_midi())
+        self.reload()
+
+    def toggle_learn(self, row: int) -> None:
+        """Arm `row` for the next control change, or disarm it if already armed.
+
+        Only one row can be armed at a time. Arming a second would make the
+        next knob move ambiguous, and silently picking one of them is exactly
+        the kind of guess this project does not make.
+        """
+        if self._learning_row == row:
+            self.stop_learn(captured=False)
+            return
+        self.stop_learn(captured=False)
+        if not self.midi.available:
+            return
+        names = self.midi.ports()
+        if not names:
+            self._midi_status.setText(
+                "No MIDI input connected. Plug a device in and press Rescan MIDI."
+            )
+            self._set_learn_checked(row, False)
+            return
+        try:
+            self.midi.open(names[0])
+        except Exception as exc:  # a device can vanish between listing and open
+            self._midi_status.setText(f"Could not open {names[0]}: {exc}")
+            self._set_learn_checked(row, False)
+            return
+        self._learning_row = row
+        self._set_learn_checked(row, True)
+        self._midi_status.setText(
+            f"Listening on {names[0]} — move the control for {CC_ASSIGN_NAMES[row]}."
+        )
+        self._learn_timer.start()
+        self._learn_deadline.start()
+
+    def stop_learn(self, *, captured: bool) -> None:
+        """Disarm, close the port, and say what happened."""
+        self._learn_timer.stop()
+        self._learn_deadline.stop()
+        row = self._learning_row
+        self._learning_row = None
+        if row is not None:
+            self._set_learn_checked(row, False)
+            if not captured:
+                self._midi_status.setText(describe_midi())
+        self.midi.close()
+
+    def _set_learn_checked(self, row: int, checked: bool) -> None:
+        button = self.cc.cellWidget(row, 3)
+        if button is not None:
+            button.setChecked(checked)
+            button.setText("Listening…" if checked else "Learn")
+
+    def _poll_midi(self) -> None:
+        row = self._learning_row
+        if row is None:
+            return
+        messages = self.midi.poll()
+        if not messages:
+            return
+        # First message wins. A knob sweep sends hundreds; they are all the
+        # same control, and the first one already answered the question.
+        first = messages[0]
+        params = self.globals_or_none()
+        if params is not None:
+            params.set_cc_assignment(row, first.number)
+            picker = self.cc.cellWidget(row, 2)
+            if picker is not None:
+                picker.blockSignals(True)
+                picker.setCurrentIndex(first.number)
+                picker.blockSignals(False)
+            self._refresh_cc_warning()
+            self.globalsEdited.emit()
+        self.stop_learn(captured=True)
+        self._midi_status.setText(
+            f"{CC_ASSIGN_NAMES[row]} → CC {first.number} "
+            f"(channel {first.display_channel}). "
+            + (
+                "Note: that is a reserved channel-mode number."
+                if first.number >= CHANNEL_MODE_FIRST
+                else ""
+            )
+        )
 
     def _refresh_cc_warning(self) -> None:
         params = self.globals_or_none()
@@ -256,6 +427,7 @@ class GlobalView(QWidget):
         self.globalsEdited.emit()
 
     def _set_cc(self, row: int, value: int) -> None:
+        """The picker's index IS the CC number — the list is 0..127 in order."""
         params = self.globals_or_none()
         if params is None or self._loading or params.cc_assignment(row) == value:
             return

@@ -23,6 +23,7 @@ composition root (`ui/session.BankSession`) does.
 | `workspace/` | Application services | `budget` (the verified cost model), `limits` (fit/analyse/warn policy), `naming` (8-byte slot names + Camelot), `staging` (session dir, lockfile, orphan sweep). |
 | `ui/` | Presentation | `session.py` is the composition root. `main_window.py` is the shell. |
 | `ui/views/` | Presentation | One widget per region: bank, staging, pattern, song, global. Each binds via `bind_bank(bank)`. |
+| `midi/` | Integration | MIDI input behind a `MidiInput` Protocol, for MIDI Learn. Optional extra; `NullMidiInput` when absent. RECEIVE ONLY. |
 | `ui/motion/` | Presentation | Drawable motion canvas, pure tools, target picker. |
 | `ui/wizard/` | Presentation | 11 skippable guided-setup pages over a shared `WizardContext`. |
 | `ui/widgets/` | Presentation | Reusable: `BudgetMeter`, `KnobDial`, `StepGrid`, `WaveformView`. |
@@ -74,7 +75,7 @@ composition root (`ui/session.BankSession`) does.
 | Song name / tempo / pattern chain | Decoded, editable | One bank saved on hardware with a song in it; 20 bytes differ, all in the song area (WF17) |
 | Song tempo lock / mute hold / next song | Raises | Zero both with and without a song |
 | Drum note numbers | Decoded, editable | 13/13 match the manual's printed factory table (WF18) |
-| MIDI CC assign table | Decoded, editable by knob name | 33/33 match with an independent editor's knob list, position for position (WF19) |
+| MIDI CC assign table | Decoded, editable by dropdown or MIDI Learn | 33/33 match with an independent editor's knob list, position for position (WF19) |
 | Global MIDI channel / tempo mode | Raises | Identical in every bank |
 | Global fields (MIDI channel) | Raises | Block is effectively constant across the corpus |
 | Keyboard / audio-in / accent step data | Raises | Keyboard bits show no grid concentration; not a trigger bitmap |

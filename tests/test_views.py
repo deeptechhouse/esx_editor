@@ -322,7 +322,7 @@ def test_global_view_edits_drum_notes_and_cc_rows(qapp, bank) -> None:
     assert bank.globals.drum_note(0) == 60
     assert v.notes.item(0, 2).text() == "C4"
 
-    v.cc.cellWidget(2, 2).setValue(100)
+    v.cc.cellWidget(2, 2).setCurrentIndex(100)
     assert bank.globals.cc_assignment(2) == 100
     assert len(edits) == 2, "each field edit marks the bank modified once"
 
@@ -346,7 +346,7 @@ def test_global_view_warns_when_two_knobs_share_a_cc(qapp, bank) -> None:
     before = bank.globals.cc_assignment(1)
     assert v._cc_warning.text() == "", "factory table has no duplicates"
 
-    v.cc.cellWidget(1, 2).setValue(bank.globals.cc_assignment(0))
+    v.cc.cellWidget(1, 2).setCurrentIndex(bank.globals.cc_assignment(0))
     warning = v._cc_warning.text()
     assert "MOD SPEED" in warning and "MOD DEPTH" in warning
 
