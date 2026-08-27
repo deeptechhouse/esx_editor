@@ -267,6 +267,17 @@ def test_song_view_unbinds_cleanly(qapp) -> None:
     assert not v.add_button.isEnabled()
 
 
+def _pick(picker, value: int) -> None:
+    """Choose a value in a LazyChoiceBox the way a user would.
+
+    set_value alone is silent by design (it is how the view syncs a picker to
+    the model); a real choice also notifies. Doing both keeps the widget and
+    the model in step, which is what a click actually produces.
+    """
+    picker.set_value(value)
+    picker.valueChanged.emit(value)
+
+
 # -- global view -------------------------------------------------------------
 def test_hex_dump_formats_offsets_and_ascii() -> None:
     out = hex_dump(b"KORG" + bytes(12), base=0x20)
@@ -314,15 +325,15 @@ def test_global_view_edits_drum_notes_and_cc_rows(qapp, bank) -> None:
     assert v.notes.rowCount() == len(DRUM_NOTE_PARTS) == 13
     assert v.cc.rowCount() == NUM_CC_ASSIGN == 33
     assert v.notes.item(0, 0).text() == "Drum1"
-    assert v.notes.item(0, 2).text() == "C2"
+    assert v.notes.cellWidget(0, 1).currentText() == "C2  (36)"
     assert v.cc.item(0, 0).text() == "1"
     assert v.cc.item(0, 1).text() == "MOD SPEED"
 
-    v.notes.cellWidget(0, 1).setValue(60)
+    _pick(v.notes.cellWidget(0, 1), 60)
     assert bank.globals.drum_note(0) == 60
-    assert v.notes.item(0, 2).text() == "C4"
+    assert v.notes.cellWidget(0, 1).value() == 60
 
-    v.cc.cellWidget(2, 2).setCurrentIndex(100)
+    _pick(v.cc.cellWidget(2, 2), 100)
     assert bank.globals.cc_assignment(2) == 100
     assert len(edits) == 2, "each field edit marks the bank modified once"
 
@@ -346,7 +357,7 @@ def test_global_view_warns_when_two_knobs_share_a_cc(qapp, bank) -> None:
     before = bank.globals.cc_assignment(1)
     assert v._cc_warning.text() == "", "factory table has no duplicates"
 
-    v.cc.cellWidget(1, 2).setCurrentIndex(bank.globals.cc_assignment(0))
+    _pick(v.cc.cellWidget(1, 2), bank.globals.cc_assignment(0))
     warning = v._cc_warning.text()
     assert "MOD SPEED" in warning and "MOD DEPTH" in warning
 

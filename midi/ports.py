@@ -26,6 +26,30 @@ class ControlChange:
         return self.channel + 1
 
 
+@dataclass(frozen=True)
+class NoteOn:
+    """One note-on: which key or pad was struck, on which channel, how hard.
+
+    A note-on with velocity 0 is a note-OFF by MIDI convention and is never
+    turned into one of these — Learn must not capture the release of a pad as
+    though it were the strike.
+    """
+
+    channel: int  # 0-15 as MIDI numbers them; displays are 1-16
+    number: int  # 0-127, the note this app assigns to a drum part
+    velocity: int  # 1-127; zero would mean note-off
+
+    @property
+    def display_channel(self) -> int:
+        return self.channel + 1
+
+
+#: What poll() can return. Kept as a union rather than a common base class:
+#: the two carry different payloads (a value versus a velocity) and callers
+#: always want one kind or the other, never "an event".
+MidiEvent = ControlChange | NoteOn
+
+
 @runtime_checkable
 class MidiInput(Protocol):
     """A source of incoming control-change messages.
@@ -53,8 +77,11 @@ class MidiInput(Protocol):
     @property
     def is_open(self) -> bool: ...
 
-    def poll(self) -> tuple[ControlChange, ...]:
-        """Every control change since the last call, oldest first.
+    def poll(self) -> tuple[MidiEvent, ...]:
+        """Every control change and note-on since the last call, oldest first.
 
         Returns empty when nothing arrived or nothing is open. Never blocks.
+        Callers filter for the kind they are learning — a CC row ignores pads,
+        a drum-note row ignores knobs, so one armed row cannot be triggered by
+        the wrong gesture.
         """

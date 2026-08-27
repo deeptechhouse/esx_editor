@@ -13,7 +13,7 @@ RECEIVE ONLY, STRUCTURALLY
 
 from __future__ import annotations
 
-from midi.ports import ControlChange
+from midi.ports import ControlChange, MidiEvent, NoteOn
 
 #: How many pending messages one poll will drain. A knob sweep can generate
 #: hundreds; Learn only needs to know WHICH control moved, so draining a bounded
@@ -68,17 +68,24 @@ class MidoMidiInput:
     def port_name(self) -> str:
         return self._name
 
-    def poll(self) -> tuple[ControlChange, ...]:
+    def poll(self) -> tuple[MidiEvent, ...]:
         if self._port is None:
             return ()
-        found = []
+        found: list[MidiEvent] = []
         try:
             for message in self._port.iter_pending():
-                if message.type != "control_change":
+                if message.type == "control_change":
+                    found.append(
+                        ControlChange(message.channel, message.control, message.value)
+                    )
+                elif message.type == "note_on" and message.velocity > 0:
+                    # Velocity 0 is a note-off on most controllers; capturing
+                    # it would mean the pad's RELEASE set the mapping.
+                    found.append(
+                        NoteOn(message.channel, message.note, message.velocity)
+                    )
+                else:
                     continue
-                found.append(
-                    ControlChange(message.channel, message.control, message.value)
-                )
                 if len(found) >= MAX_PER_POLL:
                     break
         except Exception:

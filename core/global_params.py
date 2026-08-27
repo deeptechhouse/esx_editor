@@ -66,6 +66,17 @@ DRUM_NOTE_PARTS = (
 )
 NUM_DRUM_NOTES = len(DRUM_NOTE_PARTS)
 
+#: The manual's printed factory table (p.90), in DRUM_NOTE_PARTS order. This is
+#: the same data the decode was VERIFIED against, kept as a constant so "reset
+#: to factory" restores a published table rather than whatever happened to be
+#: in the bank the template came from.
+FACTORY_DRUM_NOTES = (36, 38, 40, 41, 43, 42, 46, 49, 51, 9, 10, 11, 12)
+
+#: The machine's own range for a drum note: C-1 to G9 (manual p.90), which is
+#: the whole MIDI note range. Stated as a constant because "0..127" and
+#: "C-1..G9" are the same thing said to two different audiences.
+MIN_NOTE = 0
+
 #: CC assign table: one control-change number per assignable knob.
 CC_ASSIGN_OFFSET = 23
 
@@ -168,6 +179,24 @@ class GlobalParameters:
 
     def drum_note_name(self, part: int) -> str:
         return note_name(self.drum_note(part))
+
+    def reset_drum_notes(self) -> None:
+        """Restore the manual's printed factory assignments."""
+        for part, number in enumerate(FACTORY_DRUM_NOTES):
+            self.set_drum_note(part, number)
+
+    def duplicate_drum_notes(self) -> dict[int, tuple[int, ...]]:
+        """Note numbers assigned to more than one part -> those parts.
+
+        The manual states parts sharing a note sound together when driven from
+        an external device, so this is a legitimate setup and not an error. It
+        is surfaced for the same reason the CC clash is: it is the likeliest
+        way a mapping session goes quietly wrong.
+        """
+        seen: dict[int, list[int]] = {}
+        for part, number in enumerate(self.drum_notes()):
+            seen.setdefault(number, []).append(part)
+        return {n: tuple(parts) for n, parts in seen.items() if len(parts) > 1}
 
     def _check_part(self, part: int) -> None:
         if not (0 <= part < NUM_DRUM_NOTES):

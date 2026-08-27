@@ -13,6 +13,6 @@ RECEIVE ONLY
     the user did not ask it to. Learn listens; that is all it needs.
 """
 
-from midi.ports import ControlChange, MidiInput
+from midi.ports import ControlChange, MidiEvent, MidiInput, NoteOn
 
-__all__ = ["ControlChange", "MidiInput"]
+__all__ = ["ControlChange", "MidiEvent", "MidiInput", "NoteOn"]

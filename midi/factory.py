@@ -7,6 +7,7 @@ object either way so callers never branch on None.
 
 from __future__ import annotations
 
+import importlib.util
 from functools import lru_cache
 
 from midi.null import NullMidiInput
@@ -15,19 +16,22 @@ from midi.ports import MidiInput
 
 @lru_cache(maxsize=1)
 def _backend_error() -> str:
-    """Empty when a MIDI backend imports and initialises; else why not.
+    """Empty when a MIDI backend is INSTALLED; else why not.
 
-    Cached because probing costs an import and a backend handshake, and the
-    answer cannot change without restarting the app.
+    Deliberately checks for the module without importing it. Importing mido
+    pulls in python-rtmidi, which opens a CoreMIDI client and starts its run
+    loop — and that happens the moment a view is constructed, whether or not
+    anyone ever presses Learn.
+
+    That is not hypothetical: it deadlocked the test suite. Run alone, the
+    librosa key tests take 11 seconds; run after a view had initialised
+    CoreMIDI, one of them hung indefinitely. Two frameworks each starting
+    threads at import time is a bad trade for a feature nobody has asked for
+    yet. So: cheap existence check here, real import deferred to the first
+    call that genuinely needs a device.
     """
-    try:
-        import mido
-    except ImportError:
+    if importlib.util.find_spec("mido") is None:
         return "mido is not installed (pip install -r requirements-midi.txt)"
-    try:
-        mido.get_input_names()
-    except Exception as exc:
-        return f"MIDI backend unavailable: {type(exc).__name__}: {exc}"
     return ""
 
 

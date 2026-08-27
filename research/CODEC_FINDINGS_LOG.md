@@ -1187,3 +1187,104 @@ the whole reason the device sits behind a port.
 ### RESULT
 17 new tests, all against a fake MidiInput: no hardware, no backend, full
 coverage of arm / capture / disarm / timeout / no-device / device-vanishes.
+
+
+---
+
+## 2026-08-27 — WF21 (drum notes get the same treatment: list, learn, restore)
+
+The CC table became a form in WF20; the drum-note table was still a number
+spinner with the name computed beside it. Same complaint applies, so the same
+fix does.
+
+### THE WHOLE RANGE, BY NAME
+Each part now picks from all 128 notes, **C-1 to G9** — which the manual (p.90)
+gives as the machine's range for this field, and which is the entire MIDI note
+range. Labelled `C2  (36)`: name first because that is what the ESX-1's display
+shows, number in brackets because that is what a DAW or a controller's manual
+quotes. Having to convert between the two in your head is the friction the list
+exists to remove.
+
+### LEARN FROM A PAD
+`MidiInput.poll()` now returns note-ons as well as control changes, and every
+drum part has a Learn button. Three details that matter:
+
+* **Velocity 0 is never captured.** Most controllers send note-on with velocity
+  0 as their note-off, so capturing it would mean the pad's RELEASE set the
+  mapping.
+* **Kind is filtered before "first wins."** An armed note row ignores control
+  changes entirely and stays armed; an armed CC row ignores pads. A controller
+  that sends a CC alongside every pad hit would otherwise capture the wrong
+  event.
+* **One row armed across BOTH tables.** Two armed rows would make the next
+  gesture ambiguous.
+
+### FACTORY RESTORE
+`FACTORY_DRUM_NOTES` holds the manual's printed table as a constant, and a
+"Factory notes" button restores it. Worth having as data rather than as "reopen
+the file": it restores a *published* table, not whatever happened to be in the
+bank the template came from. The constant is asserted against the corpus, so it
+cannot drift from the thing it claims to be.
+
+Duplicate notes warn, as duplicate CCs do — the manual says parts sharing a
+note sound together, so it is deliberate, not an error.
+
+### A SELF-INFLICTED BUG WORTH RECORDING
+Restructuring `_fill_notes` by replacing a slice of the file between two method
+names silently deleted `_refresh_cc_warning` and `_set_note`, because both sat
+inside the replaced span. The tests caught it immediately (twelve failures, all
+`AttributeError`). Editing by line-range between anchors is fragile in a way
+editing by exact text is not; the anchors moved when the earlier edits landed.
+
+### RESULT
+**25 MIDI tests**, all against a fake input — no hardware, no backend.
+
+
+---
+
+## 2026-08-27 — WF22 (the pickers had to become lazy)
+
+WF21's dropdowns were correct and unusably expensive. Each Global tab built
+**46 comboboxes of 128 options** — 13 drum notes plus 33 CC rows — eagerly, at
+0.3 s per view construction. The app pays that on every bank open; the test
+suite pays it ninety-odd times, and the full run went from ~2.5 minutes to not
+finishing at all.
+
+### FINDING IT
+Worth recording the sequence, because three of the four hypotheses were wrong:
+
+1. **"Coverage tracing plus numba"** — plausible, wrong. The stall reproduced
+   with coverage off.
+2. **"A librosa/CoreMIDI thread deadlock"** — the verbose log did stop inside a
+   librosa key test, but that file alone runs 50 tests in 11 s. It was a
+   symptom of a slow process, not the cause.
+3. **"The machine is out of memory"** — true at the time (39 MB free), and
+   self-inflicted: several of my own killed-but-lingering pytest runs held
+   ~530 MB each. Cleaning those up freed 866 MB and the stall persisted, which
+   ruled it out.
+4. **The actual cause** — found only by running one file with `-v` and reading
+   which test the log stopped after, then timing view construction directly.
+
+The lesson worth keeping: a nondeterministic "hang" that moves between runs is
+usually one thing that is merely SLOW, plus contention. Measure the suspect
+directly (0.3 s × 90 constructions) rather than reasoning about the symptom.
+
+### THE FIX
+`ui/widgets/lazy_choice.py` — a combo that shows only its current value and
+builds the rest on first popup. What makes a cell read as editable is the arrow
+and the current value, not the 127 options behind it. Construction dropped
+0.30 s → 0.11 s and the suite finishes again.
+
+Callers now work in VALUES rather than row indices (`value()` / `set_value()` /
+`valueChanged`), which is what let the laziness stay hidden: an index is
+meaningless while the list holds one item.
+
+### ALSO FIXED HERE
+`midi.factory` no longer imports mido to decide whether MIDI exists — it uses
+`importlib.util.find_spec`. Importing mido pulls in python-rtmidi, which opens
+a CoreMIDI client and starts its run loop, and that was happening the moment a
+view was constructed whether or not anyone pressed Learn. A view's constructor
+has no business talking to hardware.
+
+### RESULT
+**449 tests**: 448 passed, 1 skipped. Ruff, format and mypy clean.

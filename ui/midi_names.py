@@ -76,6 +76,16 @@ STANDARD_CC_NAMES = {
 CHANNEL_MODE_FIRST = 120
 
 
+def note_choice_label(number: int, name: str) -> str:
+    """ "C2  (36)" — the NAME first, because that is what the ESX-1 displays.
+
+    The number follows in brackets because it is what a DAW or a controller's
+    documentation will quote, and having to convert between the two in your
+    head is exactly the friction this list exists to remove.
+    """
+    return f"{name}  ({number})"
+
+
 def cc_label(number: int) -> str:
     """ "74 — Brightness / Cutoff", or just "53" where the spec says nothing."""
     name = STANDARD_CC_NAMES.get(number, "")

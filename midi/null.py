@@ -8,7 +8,7 @@ instead of a None it must special-case at every call site. It reports
 
 from __future__ import annotations
 
-from midi.ports import ControlChange
+from midi.ports import MidiEvent
 
 
 class NullMidiInput:
@@ -41,5 +41,5 @@ class NullMidiInput:
     def is_open(self) -> bool:
         return False
 
-    def poll(self) -> tuple[ControlChange, ...]:
+    def poll(self) -> tuple[MidiEvent, ...]:
         return ()

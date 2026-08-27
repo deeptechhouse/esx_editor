@@ -19,13 +19,11 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPlainTextEdit,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -39,6 +37,7 @@ from core.global_params import (
     CC_ASSIGN_OFFSET,
     DRUM_NOTE_OFFSET,
     DRUM_NOTE_PARTS,
+    FACTORY_DRUM_NOTES,
     MAX_CC,
     MAX_NOTE,
     NUM_CC_ASSIGN,
@@ -46,8 +45,10 @@ from core.global_params import (
 )
 from midi.factory import describe as describe_midi
 from midi.factory import midi_input
-from ui.midi_names import CHANNEL_MODE_FIRST, cc_label
+from midi.ports import ControlChange, NoteOn
+from ui.midi_names import CHANNEL_MODE_FIRST, cc_label, note_choice_label
 from ui.theme import PALETTE, SPACE, TYPE
+from ui.widgets.lazy_choice import LazyChoiceBox
 
 #: How often Learn drains the MIDI input, in ms. Fast enough that a knob nudge
 #: registers instantly; slow enough to be free.
@@ -81,16 +82,22 @@ class GlobalView(QWidget):
         self._bank: Bank | None = None
         self._loading = False
 
-        # Drum note numbers: part name, editable note number, note name.
+        # Drum note numbers: part, the note it answers to, and a per-row Learn.
         self.notes = QTableWidget(0, 3)
-        self.notes.setHorizontalHeaderLabels(["part", "note no.", "note"])
+        self.notes.setHorizontalHeaderLabels(["part", "note", ""])
         self.notes.verticalHeader().setVisible(False)
         self.notes.setAlternatingRowColors(True)
-        self.notes.horizontalHeader().setStretchLastSection(True)
+        # The last column holds Learn buttons at a fixed width; stretching it
+        # made a 290 px column of small buttons.
+        self.notes.horizontalHeader().setStretchLastSection(False)
 
         # CC assign: the knob, the CC that drives it, and a per-row Learn.
         self.midi = midi_input()
-        self._learning_row: int | None = None
+        # Which single row is armed, as (which table, row index). One at a
+        # time across BOTH tables: two armed rows would make the next gesture
+        # ambiguous, and silently picking one is the kind of guess this project
+        # does not make.
+        self._learning: tuple[str, int] | None = None
         self._learn_timer = QTimer(self)
         self._learn_timer.setInterval(LEARN_POLL_MS)
         self._learn_timer.timeout.connect(self._poll_midi)
@@ -112,11 +119,21 @@ class GlobalView(QWidget):
         self.cc.horizontalHeader().setStretchLastSection(False)
 
         self._notes_caption = QLabel(
-            "Drum note numbers — VERIFIED against the manual's factory table "
-            "(p.90). Parts sharing a note sound together, which is deliberate."
+            "Pick a note from the list (C-1 to G9, the machine's full range), "
+            "or press Learn and hit the pad or key on your MIDI device. "
+            "VERIFIED against the manual's factory table (p.90)."
         )
         self._notes_caption.setStyleSheet(f"color: {PALETTE.muted};")
         self._notes_caption.setWordWrap(True)
+        self._notes_warning = QLabel("")
+        self._notes_warning.setStyleSheet(f"color: {PALETTE.amber};")
+        self._notes_warning.setWordWrap(True)
+        self.factory_notes_button = QPushButton("Factory notes")
+        self.factory_notes_button.setToolTip(
+            "Restore the manual's printed factory assignments:\n"
+            "Drum1 C2, Drum2 D2, Drum3 E2 … Audio in C0."
+        )
+        self.factory_notes_button.clicked.connect(self.reset_drum_notes)
         self._cc_caption = QLabel(
             "Pick a CC from the list, or press Learn and move the control on "
             "your MIDI device. Row order confirmed against an independent "
@@ -129,7 +146,12 @@ class GlobalView(QWidget):
         self._cc_warning = QLabel("")
         self._cc_warning.setStyleSheet(f"color: {PALETTE.amber};")
         self._cc_warning.setWordWrap(True)
-        self._midi_status = QLabel(describe_midi())
+        # Deliberately NOT describe_midi(): that enumerates the MIDI hardware,
+        # and building a tab must never block on a device. CoreMIDI enumeration
+        # hung the test suite from here — a view's constructor has no business
+        # talking to hardware. Devices are listed when the user asks (Rescan)
+        # or when a Learn actually needs one.
+        self._midi_status = QLabel(self._idle_status())
         self._midi_status.setStyleSheet(f"color: {PALETTE.muted};")
         self._midi_status.setWordWrap(True)
         self.rescan_button = QPushButton("Rescan MIDI")
@@ -160,7 +182,12 @@ class GlobalView(QWidget):
         left = QVBoxLayout()
         left.addWidget(QLabel("Drum note numbers"))
         left.addWidget(self._notes_caption)
+        left.addWidget(self._notes_warning)
         left.addWidget(self.notes, 1)
+        notes_tools = QHBoxLayout()
+        notes_tools.addStretch(1)
+        notes_tools.addWidget(self.factory_notes_button)
+        left.addLayout(notes_tools)
 
         right = QVBoxLayout()
         right.addWidget(QLabel("MIDI CC assign"))
@@ -239,14 +266,75 @@ class GlobalView(QWidget):
         self.notes.setRowCount(len(DRUM_NOTE_PARTS))
         for row, part in enumerate(DRUM_NOTE_PARTS):
             self.notes.setItem(row, 0, _cell(part))
-            spin = QSpinBox()
-            spin.setRange(0, MAX_NOTE)
-            spin.setValue(params.drum_note(row))
-            spin.setKeyboardTracking(False)
-            spin.valueChanged.connect(lambda value, r=row: self._set_note(r, value))
-            self.notes.setCellWidget(row, 1, spin)
-            self.notes.setItem(row, 2, _cell(params.drum_note_name(row)))
+
+            # Every note the machine accepts: C-1 to G9 (manual p.90), which
+            # is the whole MIDI range. Listing all of them means never having
+            # to know that C2 is 36. Built on first open — see LazyChoiceBox.
+            picker = LazyChoiceBox(
+                range(MAX_NOTE + 1),
+                lambda n: note_choice_label(n, note_name(n)),
+            )
+            picker.set_value(params.drum_note(row))
+            picker.valueChanged.connect(lambda value, r=row: self._set_note(r, value))
+            self.notes.setCellWidget(row, 1, picker)
+
+            learn = QPushButton("Learn")
+            learn.setCheckable(True)
+            learn.setEnabled(self.midi.available)
+            learn.setToolTip(
+                "Arm this part, then hit the pad or key on your MIDI device."
+                if self.midi.available
+                else self._unavailable_reason()
+            )
+            learn.clicked.connect(lambda _=False, r=row: self.toggle_learn("note", r))
+            self.notes.setCellWidget(row, 2, learn)
+
         self.notes.resizeColumnsToContents()
+        self.notes.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self.notes.setColumnWidth(2, self._learn_column_width())
+        self._refresh_notes_warning()
+
+    def reset_drum_notes(self) -> None:
+        """Restore the manual's factory table and redraw."""
+        params = self.globals_or_none()
+        if params is None or params.drum_notes() == FACTORY_DRUM_NOTES:
+            return
+        params.reset_drum_notes()
+        self.reload()
+        self.globalsEdited.emit()
+
+    def _refresh_notes_warning(self) -> None:
+        params = self.globals_or_none()
+        if params is None:
+            self._notes_warning.setText("")
+            return
+        clashes = params.duplicate_drum_notes()
+        if not clashes:
+            self._notes_warning.setText("")
+            return
+        shared = "; ".join(
+            f"{note_name(number)} triggers "
+            + " + ".join(DRUM_NOTE_PARTS[p] for p in parts)
+            for number, parts in sorted(clashes.items())
+        )
+        self._notes_warning.setText(
+            f"Shared: {shared}. The manual says these sound together — "
+            "deliberate, but check it is meant."
+        )
+
+    def _learn_column_width(self) -> int:
+        """Width for a Learn column, from the button rather than the header.
+
+        resizeColumnsToContents measures ITEMS, not cell widgets, so a column
+        of buttons comes out narrower than the buttons in it. Measured from the
+        wider of the two captions so the column does not jump when a row arms.
+        """
+        probe = QPushButton("Listening…")
+        width = probe.sizeHint().width() + SPACE.md
+        probe.deleteLater()
+        return width
 
     def _fill_cc(self) -> None:
         params = self.globals_or_none()
@@ -257,16 +345,12 @@ class GlobalView(QWidget):
             self.cc.setItem(row, 0, _cell(f"{row + 1}"))
             self.cc.setItem(row, 1, _cell(CC_ASSIGN_NAMES[row]))
 
-            picker = QComboBox()
             # Every legal CC is offered, named where the MIDI spec names one.
             # The list is the form the user asked for; the numbers are what
             # actually travel down the cable.
-            for number in range(MAX_CC + 1):
-                picker.addItem(cc_label(number), number)
-            picker.setCurrentIndex(params.cc_assignment(row))
-            picker.currentIndexChanged.connect(
-                lambda index, r=row: self._set_cc(r, index)
-            )
+            picker = LazyChoiceBox(range(MAX_CC + 1), cc_label)
+            picker.set_value(params.cc_assignment(row))
+            picker.valueChanged.connect(lambda value, r=row: self._set_cc(r, value))
             self.cc.setCellWidget(row, 2, picker)
 
             learn = QPushButton("Learn")
@@ -277,24 +361,38 @@ class GlobalView(QWidget):
                 if self.midi.available
                 else self._unavailable_reason()
             )
-            learn.clicked.connect(lambda _=False, r=row: self.toggle_learn(r))
+            learn.clicked.connect(lambda _=False, r=row: self.toggle_learn("cc", r))
             self.cc.setCellWidget(row, 3, learn)
 
         self.cc.resizeColumnsToContents()
         self.cc.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.ResizeMode.Stretch
         )
-        # resizeColumnsToContents measures ITEMS, not cell widgets, so the
-        # Learn column came out narrower than its own buttons and rendered
-        # them as "ear". Size it from the widget that actually lives there,
-        # and from the wider of its two captions so it does not jump when the
-        # button switches to "Listening…".
-        probe = QPushButton("Listening…")
-        self.cc.setColumnWidth(3, probe.sizeHint().width() + SPACE.md)
-        probe.deleteLater()
+        self.cc.setColumnWidth(3, self._learn_column_width())
         self._refresh_cc_warning()
 
     # -- MIDI Learn ----------------------------------------------------------
+
+    def _refresh_cc_warning(self) -> None:
+        params = self.globals_or_none()
+        if params is None:
+            self._cc_warning.setText("")
+            return
+        clashes = params.duplicate_cc_rows()
+        if not clashes:
+            self._cc_warning.setText("")
+            return
+        shared = "; ".join(
+            f"CC {cc} drives " + " + ".join(CC_ASSIGN_NAMES[r] for r in rows)
+            for cc, rows in sorted(clashes.items())
+        )
+        self._cc_warning.setText(f"Shared: {shared}. Legal, but check it is meant.")
+
+    def _idle_status(self) -> str:
+        """Status line that costs nothing — no device enumeration."""
+        if not self.midi.available:
+            return self._unavailable_reason()
+        return "MIDI Learn ready — press Rescan MIDI to list connected devices."
 
     def _unavailable_reason(self) -> str:
         """Why Learn is off, according to the input THIS view holds.
@@ -313,17 +411,19 @@ class GlobalView(QWidget):
         factory._backend_error.cache_clear()
         self.stop_learn(captured=False)
         self.midi = factory.midi_input()
+        # Rescan is the one place enumeration is expected, because the user
+        # asked for it and is waiting for the answer.
         self._midi_status.setText(describe_midi())
         self.reload()
 
-    def toggle_learn(self, row: int) -> None:
-        """Arm `row` for the next control change, or disarm it if already armed.
+    def toggle_learn(self, kind: str, row: int) -> None:
+        """Arm one row for the next matching gesture, or disarm it.
 
-        Only one row can be armed at a time. Arming a second would make the
-        next knob move ambiguous, and silently picking one of them is exactly
-        the kind of guess this project does not make.
+        `kind` is "cc" (listen for a knob) or "note" (listen for a pad). The
+        armed row ignores the other kind entirely, so nudging a knob cannot
+        set a drum note and hitting a pad cannot set a CC.
         """
-        if self._learning_row == row:
+        if self._learning == (kind, row):
             self.stop_learn(captured=False)
             return
         self.stop_learn(captured=False)
@@ -334,19 +434,19 @@ class GlobalView(QWidget):
             self._midi_status.setText(
                 "No MIDI input connected. Plug a device in and press Rescan MIDI."
             )
-            self._set_learn_checked(row, False)
+            self._set_learn_checked(kind, row, False)
             return
         try:
             self.midi.open(names[0])
         except Exception as exc:  # a device can vanish between listing and open
             self._midi_status.setText(f"Could not open {names[0]}: {exc}")
-            self._set_learn_checked(row, False)
+            self._set_learn_checked(kind, row, False)
             return
-        self._learning_row = row
-        self._set_learn_checked(row, True)
-        self._midi_status.setText(
-            f"Listening on {names[0]} — move the control for {CC_ASSIGN_NAMES[row]}."
-        )
+        self._learning = (kind, row)
+        self._set_learn_checked(kind, row, True)
+        target = CC_ASSIGN_NAMES[row] if kind == "cc" else DRUM_NOTE_PARTS[row]
+        gesture = "move the control" if kind == "cc" else "hit the pad or key"
+        self._midi_status.setText(f"Listening on {names[0]} — {gesture} for {target}.")
         self._learn_timer.start()
         self._learn_deadline.start()
 
@@ -354,80 +454,80 @@ class GlobalView(QWidget):
         """Disarm, close the port, and say what happened."""
         self._learn_timer.stop()
         self._learn_deadline.stop()
-        row = self._learning_row
-        self._learning_row = None
-        if row is not None:
-            self._set_learn_checked(row, False)
+        armed = self._learning
+        self._learning = None
+        if armed is not None:
+            self._set_learn_checked(armed[0], armed[1], False)
             if not captured:
-                self._midi_status.setText(describe_midi())
+                self._midi_status.setText(self._idle_status())
         self.midi.close()
 
-    def _set_learn_checked(self, row: int, checked: bool) -> None:
-        button = self.cc.cellWidget(row, 3)
+    def _learn_button(self, kind: str, row: int):
+        table, column = (self.cc, 3) if kind == "cc" else (self.notes, 2)
+        return table.cellWidget(row, column)
+
+    def _set_learn_checked(self, kind: str, row: int, checked: bool) -> None:
+        button = self._learn_button(kind, row)
         if button is not None:
             button.setChecked(checked)
             button.setText("Listening…" if checked else "Learn")
 
     def _poll_midi(self) -> None:
-        row = self._learning_row
-        if row is None:
+        if self._learning is None:
             return
-        messages = self.midi.poll()
-        if not messages:
+        kind, row = self._learning
+        wanted = ControlChange if kind == "cc" else NoteOn
+        # Filter by kind BEFORE taking the first: a controller that sends a CC
+        # alongside every pad hit would otherwise capture the wrong one.
+        matching = [m for m in self.midi.poll() if isinstance(m, wanted)]
+        if not matching:
             return
-        # First message wins. A knob sweep sends hundreds; they are all the
-        # same control, and the first one already answered the question.
-        first = messages[0]
+        first = matching[0]
         params = self.globals_or_none()
-        if params is not None:
+        if params is None:
+            self.stop_learn(captured=False)
+            return
+        if kind == "cc":
             params.set_cc_assignment(row, first.number)
-            picker = self.cc.cellWidget(row, 2)
-            if picker is not None:
-                picker.blockSignals(True)
-                picker.setCurrentIndex(first.number)
-                picker.blockSignals(False)
+            self._sync_picker(self.cc, row, 2, first.number)
             self._refresh_cc_warning()
-            self.globalsEdited.emit()
-        self.stop_learn(captured=True)
-        self._midi_status.setText(
-            f"{CC_ASSIGN_NAMES[row]} → CC {first.number} "
-            f"(channel {first.display_channel}). "
-            + (
-                "Note: that is a reserved channel-mode number."
+            note = (
+                "  Note: that is a reserved channel-mode number."
                 if first.number >= CHANNEL_MODE_FIRST
                 else ""
             )
-        )
+            summary = (
+                f"{CC_ASSIGN_NAMES[row]} → CC {first.number} "
+                f"(channel {first.display_channel}).{note}"
+            )
+        else:
+            params.set_drum_note(row, first.number)
+            self._sync_picker(self.notes, row, 1, first.number)
+            self._refresh_notes_warning()
+            summary = (
+                f"{DRUM_NOTE_PARTS[row]} → {note_name(first.number)} "
+                f"({first.number}, channel {first.display_channel})."
+            )
+        self.globalsEdited.emit()
+        self.stop_learn(captured=True)
+        self._midi_status.setText(summary)
 
-    def _refresh_cc_warning(self) -> None:
-        params = self.globals_or_none()
-        if params is None:
-            self._cc_warning.setText("")
-            return
-        clashes = params.duplicate_cc_rows()
-        if not clashes:
-            self._cc_warning.setText("")
-            return
-        shared = "; ".join(
-            f"CC {cc} drives " + " + ".join(CC_ASSIGN_NAMES[r] for r in rows)
-            for cc, rows in sorted(clashes.items())
-        )
-        self._cc_warning.setText(f"Shared: {shared}. Legal, but check it is meant.")
-
-    # -- edits ---------------------------------------------------------------
+    @staticmethod
+    def _sync_picker(table, row: int, column: int, value: int) -> None:
+        """Move a picker to match the model without re-entering the edit path."""
+        picker = table.cellWidget(row, column)
+        if picker is not None:
+            picker.set_value(value)
 
     def _set_note(self, part: int, value: int) -> None:
         params = self.globals_or_none()
         if params is None or self._loading or params.drum_note(part) == value:
             return
         params.set_drum_note(part, value)
-        item = self.notes.item(part, 2)
-        if item is not None:
-            item.setText(note_name(value))
+        self._refresh_notes_warning()
         self.globalsEdited.emit()
 
     def _set_cc(self, row: int, value: int) -> None:
-        """The picker's index IS the CC number — the list is 0..127 in order."""
         params = self.globals_or_none()
         if params is None or self._loading or params.cc_assignment(row) == value:
             return
