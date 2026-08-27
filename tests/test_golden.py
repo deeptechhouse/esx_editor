@@ -299,3 +299,68 @@ def test_editing_the_midi_mapping_touches_only_the_global_block(
     assert differing, "the edit did land"
     assert all(start <= i < end for i in differing)
     assert len(differing) == 2, "one byte per field, nothing else"
+
+
+def test_cc_assign_names_match_the_independent_editors_list(corpus_path) -> None:
+    """The evidence the CC row order rests on, kept executable.
+
+    SawLoop lists 33 knob names with their control-change numbers. Every one of
+    those numbers matches the factory bytes at the same position. Thirty-three
+    values in exact sequence is what makes the ORDER proven — so if this ever
+    stops holding, the naming is wrong, not the bank.
+    """
+    from codec.reader import BankReader
+    from core.global_params import CC_ASSIGN_NAMES
+
+    sawloop = (
+        ("MOD SPEED", 89),
+        ("MOD DEPTH", 90),
+        ("MOD TYPE", 87),
+        ("MOD DEST", 88),
+        ("MOD BPMSYNC", 82),
+        ("FILTER CUTOFF", 74),
+        ("FILTER RESONANCE", 71),
+        ("FILTER EGINT", 79),
+        ("FILTER TYPE", 83),
+        ("GLIDE", 5),
+        ("PAN", 10),
+        ("EG TIME", 75),
+        ("LEVEL", 7),
+        ("START POINT", 18),
+        ("AMP EG", 86),
+        ("ROLL", 85),
+        ("REVERSE", 19),
+        ("EFFECT SEND", 91),
+        ("EFFECT SELECT", 81),
+        ("PART MOTION SEQ", 80),
+        ("FX1 TYPE", 12),
+        ("FX1 EDIT1", 92),
+        ("FX1 EDIT2", 93),
+        ("FX1 MOTION SEQ", 20),
+        ("FX2 TYPE", 13),
+        ("FX2 EDIT1", 94),
+        ("FX2 EDIT2", 95),
+        ("FX2 MOTION SEQ", 21),
+        ("FX3 TYPE", 24),
+        ("FX3 EDIT1", 25),
+        ("FX3 EDIT2", 26),
+        ("FX3 MOTION SEQ", 22),
+        ("FX CHAIN", 23),
+    )
+    params = BankReader().read_file(corpus_path).globals
+    assert CC_ASSIGN_NAMES == tuple(name for name, _ in sawloop)
+    assert params.cc_assignments() == tuple(cc for _, cc in sawloop)
+
+
+def test_cc_lookup_by_name_is_forgiving_about_spacing(corpus_path) -> None:
+    from codec.errors import CodecError  # noqa: F401
+    from codec.reader import BankReader
+    from core.errors import InvariantError
+
+    params = BankReader().read_file(corpus_path).globals
+    assert params.cc_for("filter cutoff") == 74
+    assert params.cc_for("FILTER  CUTOFF") == 74
+    params.set_cc_for("Filter Cutoff", 21)
+    assert params.cc_assignment(params.cc_row_for("FILTER CUTOFF")) == 21
+    with pytest.raises(InvariantError, match="no assignable knob"):
+        params.cc_for("WARP DRIVE")

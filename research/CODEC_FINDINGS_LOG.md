@@ -1081,3 +1081,56 @@ terminated list in each), but nothing is claimed about it.
 
 ### RESULT
 **418 tests** passing, 1 skipped.
+
+---
+
+## 2026-08-26 — WF19 (the CC assign rows are named — 33/33)
+
+SawLoop's "Midi CC Assignments" page for the same bank: 33 knob names with
+their control-change numbers. Checked against the stored table, it matches
+**33 out of 33, position for position, in all four banks**:
+
+```
+   1 MOD SPEED        89     12 EG TIME          75     23 FX1 EDIT2       93
+   2 MOD DEPTH        90     13 LEVEL             7     24 FX1 MOTION SEQ  20
+   3 MOD TYPE         87     14 START POINT      18     25 FX2 TYPE        13
+   4 MOD DEST         88     15 AMP EG           86     26 FX2 EDIT1       94
+   5 MOD BPMSYNC      82     16 ROLL             85     27 FX2 EDIT2       95
+   6 FILTER CUTOFF    74     17 REVERSE          19     28 FX2 MOTION SEQ  21
+   7 FILTER RESONANCE 71     18 EFFECT SEND      91     29 FX3 TYPE        24
+   8 FILTER EGINT     79     19 EFFECT SELECT    81     30 FX3 EDIT1       25
+   9 FILTER TYPE      83     20 PART MOTION SEQ  80     31 FX3 EDIT2       26
+  10 GLIDE             5     21 FX1 TYPE         12     32 FX3 MOTION SEQ  22
+  11 PAN              10     22 FX1 EDIT1        92     33 FX CHAIN        23
+```
+
+### WHAT THIS PROVES, AND WHAT IT ONLY DOCUMENTS
+Thirty-three values landing in exact sequence proves the **row order**. It does
+not independently prove the **names** — those are on SawLoop's authority. The
+distinction is kept in the source, because a wrong name here sends someone's
+controller to the wrong parameter.
+
+Two things corroborate the naming anyway. The order is internally coherent:
+modulation block, filter block, per-part controls, then FX1/2/3 each as TYPE /
+EDIT1 / EDIT2 / MOTION SEQ, then FX CHAIN — groups never interleave. And it
+matches the manual's own scope for the feature (p.91): "available only for the
+Keyboard part and effects", which is exactly what these 33 knobs are.
+
+### API SHAPE
+Rows are addressed by INDEX internally — the index is the on-disk identity, a
+name is a label for a position. `cc_for(name)` / `set_cc_for(name, cc)` are the
+by-name front door, forgiving about case and spacing because nobody types
+"FILTER RESONANCE" exactly. `duplicate_cc_rows()` reports numbers driving more
+than one knob: legal, occasionally deliberate, and the likeliest way a
+remapping session goes quietly wrong — so the UI warns rather than refuses.
+
+### t7_ccprobe REPURPOSED
+It was built to *collect* the mapping. That is no longer needed, but the bank
+still earns its place testing the other direction: whether this editor writes
+the table where the machine reads it. Its instructions now name four knobs to
+spot-check, and say what each failure pattern means — all four wrong by the
+same amount is an offset error, only some wrong is an order error.
+
+### RESULT
+**421 tests** passing, 1 skipped. Hardware checklist item 2c closed without
+touching the machine.

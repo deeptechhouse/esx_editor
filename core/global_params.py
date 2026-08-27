@@ -24,18 +24,17 @@ WHAT IS DECODED, AND ON WHAT EVIDENCE
             knob": available for the keyboard parts and the effects; every
             other part is fixed NRPN).
 
-            **LOCATED, NOT YET NAMED.** That this is the CC table is solid: it
-            is 33 consecutive bytes, every one a legal CC number, sitting
-            directly after the note table and directly before a run of zeros,
-            and it holds exactly the numbers a synth voice uses — 74 (cutoff),
-            71 (resonance), 5 (portamento), 7 (volume), 10 (pan), 91/93 (sends).
+            **NAMED.** An independent editor (SawLoop) lists its 33 knob names
+            with their control-change numbers, and that list matches the stored
+            bytes **33 out of 33, position for position, in all four banks**.
+            Thirty-three values in exact sequence is not a coincidence, so the
+            row ORDER is proven even though the knob NAMES are taken on that
+            editor's authority rather than measured here.
 
-            WHICH ROW IS WHICH KNOB is not yet established. Every corpus bank
-            carries the identical factory table, so nothing varies and the
-            order cannot be derived from the data. Rows are therefore numbered,
-            never labelled with a knob name this codebase cannot prove.
-            deploy/make_hw_test_banks.py writes a probe bank that reads the
-            mapping off the machine in one pass. See research/HARDWARE_CHECKLIST.md.
+            The order is internally coherent, which is the cheap sanity check:
+            the modulation block, then the filter block, then the per-part
+            controls, then effects 1-3 each as TYPE / EDIT1 / EDIT2 / MOTION
+            SEQ, then FX CHAIN. Groups do not interleave.
 
 STILL UNDECODED
     +0..+9 and everything from +56 hold MIDI channel, tempo mode, metronome and
@@ -69,11 +68,57 @@ NUM_DRUM_NOTES = len(DRUM_NOTE_PARTS)
 
 #: CC assign table: one control-change number per assignable knob.
 CC_ASSIGN_OFFSET = 23
-NUM_CC_ASSIGN = 33
+
+#: The knob each row drives, in stored order. Names are SawLoop's; the ORDER is
+#: proven by all 33 of its numbers matching the factory bytes position for
+#: position in every bank. Kept as a flat tuple, not a dict, because the row
+#: INDEX is the on-disk identity — a name is a label for a position, never the
+#: key to it.
+CC_ASSIGN_NAMES = (
+    "MOD SPEED",
+    "MOD DEPTH",
+    "MOD TYPE",
+    "MOD DEST",
+    "MOD BPMSYNC",
+    "FILTER CUTOFF",
+    "FILTER RESONANCE",
+    "FILTER EGINT",
+    "FILTER TYPE",
+    "GLIDE",
+    "PAN",
+    "EG TIME",
+    "LEVEL",
+    "START POINT",
+    "AMP EG",
+    "ROLL",
+    "REVERSE",
+    "EFFECT SEND",
+    "EFFECT SELECT",
+    "PART MOTION SEQ",
+    "FX1 TYPE",
+    "FX1 EDIT1",
+    "FX1 EDIT2",
+    "FX1 MOTION SEQ",
+    "FX2 TYPE",
+    "FX2 EDIT1",
+    "FX2 EDIT2",
+    "FX2 MOTION SEQ",
+    "FX3 TYPE",
+    "FX3 EDIT1",
+    "FX3 EDIT2",
+    "FX3 MOTION SEQ",
+    "FX CHAIN",
+)
+NUM_CC_ASSIGN = len(CC_ASSIGN_NAMES)
 MAX_CC = 127
 MAX_NOTE = 127
 
 _NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+
+def _normalise(name: str) -> str:
+    """Fold case and collapse whitespace, so "Filter  Cutoff" finds its row."""
+    return " ".join(name.split()).upper()
 
 
 def note_name(number: int) -> str:
@@ -141,12 +186,52 @@ class GlobalParameters:
         self._check_row(row)
         return self._raw[CC_ASSIGN_OFFSET + row]
 
+    def cc_name(self, row: int) -> str:
+        """The knob this row drives."""
+        self._check_row(row)
+        return CC_ASSIGN_NAMES[row]
+
+    def cc_row_for(self, name: str) -> int:
+        """Row index for a knob name, matched case- and space-insensitively.
+
+        The machine and SawLoop disagree on spacing in places, and nobody types
+        "FILTER RESONANCE" exactly; normalising here keeps that irritation out
+        of every caller.
+        """
+        wanted = _normalise(name)
+        for row, knob in enumerate(CC_ASSIGN_NAMES):
+            if _normalise(knob) == wanted:
+                return row
+        raise InvariantError(
+            f"no assignable knob named {name!r}; "
+            f"the {NUM_CC_ASSIGN} names are {', '.join(CC_ASSIGN_NAMES)}"
+        )
+
+    def cc_for(self, name: str) -> int:
+        """The control-change number currently driving a named knob."""
+        return self.cc_assignment(self.cc_row_for(name))
+
+    def set_cc_for(self, name: str, cc: int) -> None:
+        """Point a named knob at a control-change number."""
+        self.set_cc_assignment(self.cc_row_for(name), cc)
+
+    def duplicate_cc_rows(self) -> dict[int, tuple[int, ...]]:
+        """Control-change numbers driving more than one knob -> those rows.
+
+        Not an error: one controller knob moving two parameters is a legitimate
+        thing to set up on purpose. It is surfaced because it is also the most
+        likely way a remapping session goes quietly wrong.
+        """
+        seen: dict[int, list[int]] = {}
+        for row, cc in enumerate(self.cc_assignments()):
+            seen.setdefault(cc, []).append(row)
+        return {cc: tuple(rows) for cc, rows in seen.items() if len(rows) > 1}
+
     def set_cc_assignment(self, row: int, cc: int) -> None:
         """Set one row's control-change number.
 
-        Rows are positions in the stored table, not knob names: which knob each
-        row drives is not established yet, and labelling them here would be a
-        guess written into a file the machine reads.
+        Addressed by row, because the row index is the on-disk identity; the
+        name is a label for a position. set_cc_for() is the by-name front door.
         """
         self._check_row(row)
         if not (0 <= cc <= MAX_CC):

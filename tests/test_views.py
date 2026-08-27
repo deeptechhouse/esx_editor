@@ -18,7 +18,11 @@ pytest.importorskip("PySide6")
 import codec.layout as L  # noqa: E402
 import ui.views.song_view as song_view_mod  # noqa: E402
 from audio.passthrough import NullKeyDetector, WavPassthroughConverter  # noqa: E402
-from core.global_params import DRUM_NOTE_PARTS, NUM_CC_ASSIGN  # noqa: E402
+from core.global_params import (  # noqa: E402
+    CC_ASSIGN_NAMES,
+    DRUM_NOTE_PARTS,
+    NUM_CC_ASSIGN,
+)
 from tests.conftest import make_staging, make_wav  # noqa: E402
 from ui.main_window import TABS, MainWindow  # noqa: E402
 from ui.views import (  # noqa: E402
@@ -311,14 +315,14 @@ def test_global_view_edits_drum_notes_and_cc_rows(qapp, bank) -> None:
     assert v.cc.rowCount() == NUM_CC_ASSIGN == 33
     assert v.notes.item(0, 0).text() == "Drum1"
     assert v.notes.item(0, 2).text() == "C2"
-    # Rows are NUMBERED, never labelled with a knob name we cannot prove.
     assert v.cc.item(0, 0).text() == "1"
+    assert v.cc.item(0, 1).text() == "MOD SPEED"
 
     v.notes.cellWidget(0, 1).setValue(60)
     assert bank.globals.drum_note(0) == 60
     assert v.notes.item(0, 2).text() == "C4"
 
-    v.cc.cellWidget(2, 1).setValue(100)
+    v.cc.cellWidget(2, 2).setValue(100)
     assert bank.globals.cc_assignment(2) == 100
     assert len(edits) == 2, "each field edit marks the bank modified once"
 
@@ -327,12 +331,28 @@ def test_global_view_edits_drum_notes_and_cc_rows(qapp, bank) -> None:
     bank.globals.set_cc_assignment(2, before_cc[2])
 
 
-def test_global_view_says_the_cc_rows_are_unnamed(qapp, bank) -> None:
+def test_global_view_names_every_cc_row(qapp, bank) -> None:
     v = GlobalView()
     v.bind_bank(bank)
-    caption = v._cc_caption.text()
-    assert "NOT established" in caption
-    assert "t7_ccprobe" in caption
+    names = [v.cc.item(r, 1).text() for r in range(v.cc.rowCount())]
+    assert names == list(CC_ASSIGN_NAMES)
+    assert "33 of 33" in v._cc_caption.text()
+
+
+def test_global_view_warns_when_two_knobs_share_a_cc(qapp, bank) -> None:
+    """Legal, and occasionally wanted — so warn, never refuse."""
+    v = GlobalView()
+    v.bind_bank(bank)
+    before = bank.globals.cc_assignment(1)
+    assert v._cc_warning.text() == "", "factory table has no duplicates"
+
+    v.cc.cellWidget(1, 2).setValue(bank.globals.cc_assignment(0))
+    warning = v._cc_warning.text()
+    assert "MOD SPEED" in warning and "MOD DEPTH" in warning
+
+    bank.globals.set_cc_assignment(1, before)
+    v.reload()
+    assert v._cc_warning.text() == ""
 
 
 # -- shell wiring ------------------------------------------------------------

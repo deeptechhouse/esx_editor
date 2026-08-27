@@ -235,3 +235,11 @@ Running log of user prompts for this chat session.
 > what is left to do before human teting?
 
 **Action taken:** Audited rather than recalled, and closed the four real gaps found. (1) `deploy/hw_test_session.txt` was actively misleading — it still named "make a SONG" as the top blocker, which WF17 solved, and listed neither `t6_song` nor `t7_ccprobe`; rewritten, with naming the CC rows now the highest-value item. (2) Screenshots predated WF13/WF14, so the testing document showed a build that no longer existed; added `tools/capture_screens.py` and regenerated all 17. (3) The status-bar memory meter was clipped mid-word — its minimum width was a guessed 180 px; it now measures the widest label it can paint. (4) Verified the documented launch venv (`~/.venvs/esx`) actually runs the new code, and confirmed the remaining Qt font warning is offscreen-only and never appears in the app.
+
+---
+
+## Prompt 25 — 2026-08-26
+
+> this is the midi cc for the esx file that has been analyzed most recently: [SawLoop "Midi CC Assignments" — 33 knob names with values]
+
+**Action taken:** Verified before implementing: all 33 numbers match the stored table position for position, in all four banks. That sequence match *proves the row order*; the names rest on SawLoop's authority, and the source says so. The Global tab now lists every knob by name with an editable CC number, plus `cc_for()` / `set_cc_for()` by name (forgiving about case and spacing) and a warning when one CC drives two knobs — legal, occasionally deliberate, and the likeliest way a remap goes quietly wrong. Hardware checklist item 2c closed without touching the machine; `t7_ccprobe` repurposed to test the *write* direction instead (WF19).

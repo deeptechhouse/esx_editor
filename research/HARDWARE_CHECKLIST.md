@@ -81,6 +81,23 @@ set Tempo Lock on and Next Song to something, save, diff.
 
 ---
 
+## 2c. Name the MIDI CC assign rows — **CLOSED 2026-08-26**
+
+**Was:** the CC table was located but its rows unnamed, so remapping a
+controller meant editing rows blind.
+
+**Closed by:** SawLoop's MIDI CC Assignments page for the same bank — 33 knob
+names with their numbers, matching the stored bytes **33/33, position for
+position, in all four banks**. No hardware needed after all. The row order is
+proven by that sequence match; the names are on that editor's authority.
+
+**Optional, does not block:** `t7_ccprobe` now checks the *write* direction —
+that this editor puts the table back where the machine reads it. Load it and
+spot-check four knobs; the generator prints which. Reading a table correctly
+does not prove writing it correctly.
+
+---
+
 ## 2c. Name the MIDI CC assign rows — **BLOCKS a requested feature**  **(added 2026-08-26)**
 
 **Why:** "Use controllers that do not follow the ESX-1's default MIDI map" was

@@ -89,7 +89,7 @@ QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
       <td>64 songs in the list; selecting one shows its chain as A.01&ndash;D.64 positions. Add / Remove / &uarr; / &darr; edit the chain; the title bar shows &bull; modified. An untouched song reads "1 position, 120.0 BPM (untouched default)".</td></tr>
   <tr><td><b>Global</b></td>
       <td>The MIDI mapping: 13 drum note numbers and the 33-row CC assign table, both editable. The rest of the 192-byte block stays an offset/hex/ASCII dump.</td>
-      <td>Drum1 reads note 36 / C2 and Drum6A reads 42 / F#2, matching the manual's factory table. The CC table shows 33 numbered rows &mdash; <b>row numbers, not knob names</b>: which knob each row drives is not established yet. 12 dump lines from <code>00000020</code> below. No MIDI-channel control &mdash; that field is undecoded.</td></tr>
+      <td>Drum1 reads note 36 / C2 and Drum6A reads 42 / F#2, matching the manual's factory table. The CC table lists all 33 knobs by name &mdash; MOD SPEED 89, FILTER CUTOFF 74, FX CHAIN 23. Change any number to match your controller; assigning one CC to two knobs warns but is allowed. 12 dump lines from <code>00000020</code> below. No MIDI-channel control &mdash; that field is undecoded.</td></tr>
 </table>
 
 <div class="card win">

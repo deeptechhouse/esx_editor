@@ -74,7 +74,7 @@ composition root (`ui/session.BankSession`) does.
 | Song name / tempo / pattern chain | Decoded, editable | One bank saved on hardware with a song in it; 20 bytes differ, all in the song area (WF17) |
 | Song tempo lock / mute hold / next song | Raises | Zero both with and without a song |
 | Drum note numbers | Decoded, editable | 13/13 match the manual's printed factory table (WF18) |
-| MIDI CC assign table | Located, editable by row | Rows unnamed: every bank has the identical factory table |
+| MIDI CC assign table | Decoded, editable by knob name | 33/33 match with an independent editor's knob list, position for position (WF19) |
 | Global MIDI channel / tempo mode | Raises | Identical in every bank |
 | Global fields (MIDI channel) | Raises | Block is effectively constant across the corpus |
 | Keyboard / audio-in / accent step data | Raises | Keyboard bits show no grid concentration; not a trigger bitmap |

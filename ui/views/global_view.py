@@ -4,10 +4,11 @@ TWO KINDS OF FIELD, SHOWN DIFFERENTLY
     The drum note numbers are VERIFIED against the manual's printed factory
     table, all thirteen of them, so they get a real editor.
 
-    The CC assign table is located with certainty but its ROWS are not named:
-    every corpus bank carries the identical factory table, so which knob each
-    row drives cannot be derived from the data. Rows are shown by position and
-    are editable; none is labelled with a knob name this codebase cannot prove.
+    The CC assign table is named: an independent editor's knob list matches the
+    stored bytes 33/33 position for position, in every bank. Each row shows the
+    knob it drives, and the number is editable — which is the whole point, since
+    the reason to touch this table is to make a controller that does not follow
+    the ESX-1's default map work with it.
 
     Everything else in the block is undecoded and stays a hex dump. Rendering a
     "MIDI channel: 1" spinbox would be a guess presented as fact, and the user
@@ -32,6 +33,7 @@ from PySide6.QtWidgets import (
 import codec.layout as L
 from core.bank import Bank
 from core.global_params import (
+    CC_ASSIGN_NAMES,
     CC_ASSIGN_OFFSET,
     DRUM_NOTE_OFFSET,
     DRUM_NOTE_PARTS,
@@ -74,14 +76,15 @@ class GlobalView(QWidget):
         self.notes.setAlternatingRowColors(True)
         self.notes.horizontalHeader().setStretchLastSection(True)
 
-        # CC assign: stored row, editable CC number.
-        self.cc = QTableWidget(0, 2)
-        self.cc.setHorizontalHeaderLabels(["row", "CC number"])
+        # CC assign: the knob, and the CC number that drives it.
+        self.cc = QTableWidget(0, 3)
+        self.cc.setHorizontalHeaderLabels(["#", "knob", "CC number"])
         self.cc.verticalHeader().setVisible(False)
         self.cc.setAlternatingRowColors(True)
         self.cc.horizontalHeader().setSectionResizeMode(
             1, QHeaderView.ResizeMode.Stretch
         )
+        self.cc.horizontalHeader().setStretchLastSection(False)
 
         self._notes_caption = QLabel(
             "Drum note numbers — VERIFIED against the manual's factory table "
@@ -90,15 +93,17 @@ class GlobalView(QWidget):
         self._notes_caption.setStyleSheet(f"color: {PALETTE.muted};")
         self._notes_caption.setWordWrap(True)
         self._cc_caption = QLabel(
-            "CC assign — the table is located, but which knob each row drives "
-            "is NOT established: every bank carries the identical factory "
-            "table, so the order cannot be derived from the data. Rows are "
-            "numbered rather than labelled with a guess. Load the t7_ccprobe "
-            "bank from deploy/make_hw_test_banks.py to read the mapping off "
-            "the machine."
+            "CC assign — point any knob at the control-change number your "
+            "controller already sends. Row order confirmed against an "
+            "independent editor, 33 of 33."
         )
-        self._cc_caption.setStyleSheet(f"color: {PALETTE.amber};")
+        self._cc_caption.setStyleSheet(f"color: {PALETTE.muted};")
         self._cc_caption.setWordWrap(True)
+        # Two knobs on one CC is legal and occasionally wanted, so this warns
+        # rather than refuses — but it is the likeliest way a remap goes wrong.
+        self._cc_warning = QLabel("")
+        self._cc_warning.setStyleSheet(f"color: {PALETTE.amber};")
+        self._cc_warning.setWordWrap(True)
 
         self._headline = QLabel("")
         self._headline.setStyleSheet(f"color: {PALETTE.lcd};")
@@ -127,6 +132,7 @@ class GlobalView(QWidget):
         right = QVBoxLayout()
         right.addWidget(QLabel("MIDI CC assign"))
         right.addWidget(self._cc_caption)
+        right.addWidget(self._cc_warning)
         right.addWidget(self.cc, 1)
 
         tables = QHBoxLayout()
@@ -212,13 +218,30 @@ class GlobalView(QWidget):
         self.cc.setRowCount(NUM_CC_ASSIGN)
         for row in range(NUM_CC_ASSIGN):
             self.cc.setItem(row, 0, _cell(f"{row + 1}"))
+            self.cc.setItem(row, 1, _cell(CC_ASSIGN_NAMES[row]))
             spin = QSpinBox()
             spin.setRange(0, MAX_CC)
             spin.setValue(params.cc_assignment(row))
             spin.setKeyboardTracking(False)
             spin.valueChanged.connect(lambda value, r=row: self._set_cc(r, value))
-            self.cc.setCellWidget(row, 1, spin)
+            self.cc.setCellWidget(row, 2, spin)
         self.cc.resizeColumnsToContents()
+        self._refresh_cc_warning()
+
+    def _refresh_cc_warning(self) -> None:
+        params = self.globals_or_none()
+        if params is None:
+            self._cc_warning.setText("")
+            return
+        clashes = params.duplicate_cc_rows()
+        if not clashes:
+            self._cc_warning.setText("")
+            return
+        shared = "; ".join(
+            f"CC {cc} drives " + " + ".join(CC_ASSIGN_NAMES[r] for r in rows)
+            for cc, rows in sorted(clashes.items())
+        )
+        self._cc_warning.setText(f"Shared: {shared}. Legal, but check it is meant.")
 
     # -- edits ---------------------------------------------------------------
 
@@ -237,6 +260,7 @@ class GlobalView(QWidget):
         if params is None or self._loading or params.cc_assignment(row) == value:
             return
         params.set_cc_assignment(row, value)
+        self._refresh_cc_warning()
         self.globalsEdited.emit()
 
 

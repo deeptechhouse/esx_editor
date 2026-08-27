@@ -36,22 +36,15 @@ PYTHONPATH="$SITE:$PWD" python3 deploy/make_hw_test_banks.py \
 # The generator prints exactly what to look at for each. Write down what you
 # actually see, especially for anything that differs.
 
-## HIGHEST VALUE: name the MIDI CC assign rows. Blocks a requested feature.
+## The CC assign table is NAMED as of 2026-08-26 - nothing to collect.
 #
-# The CC table is located (global block +23..+55, 33 rows) and is editable, but
-# WHICH KNOB each row drives is unknown: every bank carries the identical
-# factory table, so the order is not in the data anywhere. Until it is named,
-# remapping a controller means editing rows blind.
+# SawLoop's MIDI CC page settled it: 33 knob names whose numbers match the
+# stored bytes 33/33, position for position. The Global tab now lists every
+# knob by name and lets you point it at whatever CC your controller sends.
 #
-#   1. Load t7_ccprobe. It has written CC 95..127 into rows 1..33.
-#   2. Global > SHIFT + step key 15 (MIDIUtil) > dial to CCAsin > key 15.
-#   3. Dial through EVERY knob. Write the knob name against the CC number
-#      shown. Row N carries CC 94+N, so CC 95 = row 1 ... CC 127 = row 33.
-#   4. Load a t0 bank afterwards to put the factory assignments back.
-#
-# One pass names the whole table, because every row carries a distinct ordered
-# number. A screenshot of SawLoop's MIDI CC page would do the same job without
-# taking the machine out.
+# t7_ccprobe remains worth loading, for a different reason: it checks that this
+# editor WRITES the table where the machine reads it. Spot-check the four knobs
+# the generator names. Reading a format right does not prove writing it right.
 
 ## Confirm the song chain, both directions
 #
@@ -69,7 +62,6 @@ PYTHONPATH="$SITE:$PWD" python3 deploy/make_hw_test_banks.py \
 #   stereo   - get one STEREO sample in, Save All
 #   rename   - SHIFT+WRITE/RENAME, dial through EVERY character, note if # exists
 #   psg      - Global > CARD > Save > PSG (not All)
-#   ccassign - t7_ccprobe loaded, then the knob->CC list written down
 #   twicea   - Save All, change nothing
 #   twiceb   - Save All again immediately
 #   fxtypes  - set FX1 to each of the 16 effect types in turn, Save All each time

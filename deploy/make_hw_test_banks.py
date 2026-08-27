@@ -226,12 +226,13 @@ CC_PROBE_BASE = 95
 
 
 def t7_ccprobe(bank, report):
-    """Name the CC-assign rows by reading them off the machine.
+    """Check that the editor WRITES the CC table where the machine reads it.
 
-    The table's location is certain; which knob each ROW drives is not, and no
-    bank in the corpus varies, so it cannot be derived from data. This writes a
-    distinct, ordered CC number into every row: dial through Global > MIDIUtil
-    > CCAsin once and every row is named in a single pass.
+    The row order is settled - an independent editor's 33 knob names match the
+    factory bytes position for position. What that does NOT prove is that this
+    editor writes them back to the right place. Every row gets a distinct,
+    ordered number, so one pass through Global > MIDIUtil > CCAsin shows
+    immediately whether the knobs line up or the table is shifted.
     """
     params = bank.globals
     rows = NUM_CC_ASSIGN
@@ -243,14 +244,15 @@ def t7_ccprobe(bank, report):
     )
     return (
         "Global > SHIFT+key15 (MIDIUtil) > CCAsin.\n"
-        "       Dial through every knob and WRITE DOWN the knob name against "
-        "the CC\n"
-        f"       number it shows. Row N carries CC {CC_PROBE_BASE}+N-1, so "
-        f"CC {CC_PROBE_BASE} is row 1,\n"
-        f"       CC {CC_PROBE_BASE + 1} is row 2, and so on up to CC "
-        f"{CC_PROBE_BASE + rows - 1} for row {rows}.\n"
-        "       That single pass names the whole table. Load a t0 bank "
-        "afterwards to\n       put the factory assignments back."
+        f"       MOD SPEED must read CC {CC_PROBE_BASE}, MOD DEPTH "
+        f"{CC_PROBE_BASE + 1}, FILTER CUTOFF\n"
+        f"       {CC_PROBE_BASE + 5}, and FX CHAIN {CC_PROBE_BASE + rows - 1}. "
+        "Spot-check those four.\n"
+        "       All four right ......... the editor writes the table "
+        "correctly.\n"
+        "       All off by the same N .. the table offset is wrong.\n"
+        "       Only some wrong ....... the row ORDER is wrong.\n"
+        "       Load a t0 bank afterwards to put the factory map back."
     )
 
 
