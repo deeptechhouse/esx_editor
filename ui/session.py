@@ -65,6 +65,18 @@ class BankSession:
         self._dirty = False
         return self._bank
 
+    def validation_report(self):
+        """Coherence report for the open bank, or None when nothing is open.
+
+        Exposed so the shell can tell a user WHAT is incoherent instead of
+        repeating the writer's refusal verbatim.
+        """
+        if self._bank is None:
+            return None
+        from codec.validator import BankValidator
+
+        return BankValidator().validate(self._bank)
+
     def save(self, path: str | None = None, *, allow_invalid: bool = False) -> str:
         """Write the bank. Uses `path` or the current path. Returns the path used."""
         if self._bank is None:

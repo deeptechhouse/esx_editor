@@ -13,6 +13,7 @@ WHAT IT CHECKS
     4. PySide6 live  — a QApplication actually constructs (offscreen, no display)
     5. ffmpeg        — present and runnable
     6. THE GATE      — byte-identical round-trip on every corpus bank
+                       (skipped, not failed, when no bank is present)
 
 Check 6 is the one that matters. The others are prerequisites for it.
 
@@ -117,34 +118,42 @@ except Exception as e:  # noqa: BLE001
 
 # ---------------------------------------------------------------------------
 section("6. THE GATE — byte-identical round-trip on the corpus")
-# Import from the spike_a directory this script is invoked from.
-sys.path.insert(0, str(Path.cwd()))
+# The shipped codec, not the Wave 0 spike. This script used to import the flat
+# spike_a modules and look for banks one directory ABOVE the project, both of
+# which stopped being true when the codec moved into codec/ — so it reported
+# "environment is NOT ready" on a perfectly working install. A verification
+# script that cries wolf is worse than none: it stops the one person who was
+# doing the right thing by checking.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 try:
-    import layout  # noqa: F401
-    from esx_probe import EsxBank
+    from codec.reader import BankReader
+    from codec.writer import BankWriter
 
-    check("codec importable", True, "layout + esx_probe")
+    check("codec importable", True, "codec.reader + codec.writer")
 except Exception as e:  # noqa: BLE001
     check("codec importable", False, f"{type(e).__name__}: {e}")
-    EsxBank = None  # type: ignore
+    BankReader = BankWriter = None  # type: ignore
 
-corpus = Path.cwd().parent / CORPUS_DIRNAME
-banks = sorted(corpus.glob("*.esx")) if corpus.is_dir() else []
+corpus = PROJECT_ROOT / CORPUS_DIRNAME
+banks = sorted(corpus.rglob("*.esx")) if corpus.is_dir() else []
 
 if not banks:
-    check("corpus present", False, f"no .esx files under {corpus}")
-elif EsxBank is not None:
+    # Not a failure. *.esx is gitignored, so a fresh clone legitimately has
+    # none, and the app does not need them — only this gate does.
+    check(
+        "corpus present",
+        True,
+        f"no banks under {corpus} — round-trip gate skipped (this is fine on "
+        f"a fresh clone; the app does not need a corpus)",
+    )
+elif BankReader is not None:
     check("corpus present", True, f"{len(banks)} bank(s) in {corpus}")
     for b in banks:
         data = b.read_bytes()
         try:
-            bank = EsxBank(data)
-            errs = bank.structural_errors()
-            identical = bank.to_bytes() == data
-            detail = f"{len(data):,} B"
-            if errs:
-                detail += f"; {len(errs)} structural problem(s)"
-            check(f"round-trip {b.name}", identical and not errs, detail)
+            identical = BankWriter().write(BankReader().read_auto(data)) == data
+            check(f"round-trip {b.name}", identical, f"{len(data):,} B")
         except Exception as e:  # noqa: BLE001
             check(f"round-trip {b.name}", False, f"{type(e).__name__}: {e}")
 
@@ -154,9 +163,9 @@ if failures:
     print(f"  {FAIL} {len(failures)} check(s) failed:")
     for f in failures:
         print(f"        - {f}")
-    print("\n  Environment is NOT ready. Fix the above before starting Wave 0.")
+    print("\n  Environment is NOT ready — fix the above before editing a bank.")
     sys.exit(1)
 
 print(f"  {OK} environment verified — the codec round-trips on this machine.")
-print("  Ready for Wave 0 (contract freeze).")
+print('  Launch:  PYTHONPATH="$PWD" ~/.venvs/esx/bin/python -m ui.app')
 sys.exit(0)

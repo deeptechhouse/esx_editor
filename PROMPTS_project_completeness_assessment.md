@@ -243,3 +243,11 @@ Running log of user prompts for this chat session.
 > this is the midi cc for the esx file that has been analyzed most recently: [SawLoop "Midi CC Assignments" — 33 knob names with values]
 
 **Action taken:** Verified before implementing: all 33 numbers match the stored table position for position, in all four banks. That sequence match *proves the row order*; the names rest on SawLoop's authority, and the source says so. The Global tab now lists every knob by name with an editable CC number, plus `cc_for()` / `set_cc_for()` by name (forgiving about case and spacing) and a warning when one CC drives two knobs — legal, occasionally deliberate, and the likeliest way a remap goes quietly wrong. Hardware checklist item 2c closed without touching the machine; `t7_ccprobe` repurposed to test the *write* direction instead (WF19).
+
+---
+
+## Prompt 26 — 2026-08-27
+
+> what do i need to do before i can use it?
+
+**Action taken:** Verified the environment instead of describing it, which found two things that would have stopped a real session. (1) `deploy/verify_env.py` reported "environment is NOT ready" on a perfectly working install — it still imported the Wave 0 flat spike modules and looked for banks one directory above the project. A verification script that cries wolf stops the one person doing the right thing by checking; fixed, and a missing corpus is now a skip rather than a failure since `*.esx` is gitignored. (2) Saving `e4.esx` — a real bank off the user's own card, incoherent since before the editor existed — refused with "pass allow_invalid=True", a programmer's instruction shown to someone holding a mouse, with no GUI path to act on it. The writer still refuses by default; the shell now explains what is incoherent, states that the editor did not create it and will preserve rather than repair it, and offers Save anyway. Confirmed end to end: edit → save → `.bak` byte-identical to the original → re-read shows the edit, 14 bytes changed, all inside the two regions touched.

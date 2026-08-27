@@ -333,3 +333,89 @@ def test_a_save_that_would_overflow_the_card_asks_first(
     win._write(str(tmp_path / "nope.esx"))
     assert dialogs.questions == 1
     assert seen == [], "cancelling the prompt must not write"
+
+
+# -- saving a bank that was already incoherent ---------------------------------
+def test_save_of_an_incoherent_bank_asks_before_refusing(qapp, monkeypatch, tmp_path):
+    """e4.esx-shaped banks come off a real card. A dead end is not safety.
+
+    The writer must still refuse by default — but the shell has to turn that
+    refusal into a decision the user can actually make, instead of echoing
+    "pass allow_invalid=True" at someone holding a mouse.
+    """
+    import shutil
+
+    import ui.main_window as mw
+    from codec.reader import BankReader
+    from tests.conftest import available_corpus
+
+    source = next((p for p in available_corpus() if _is_incoherent(p)), None)
+    if source is None:
+        pytest.skip("no incoherent corpus bank available")
+
+    dest = tmp_path / "incoherent.esx"
+    shutil.copy(source, dest)
+
+    asked = []
+    monkeypatch.setattr(
+        mw.QMessageBox,
+        "question",
+        staticmethod(
+            lambda *a, **k: asked.append(a[2]) or mw.QMessageBox.StandardButton.Yes
+        ),
+    )
+    monkeypatch.setattr(mw.QMessageBox, "warning", staticmethod(lambda *a, **k: None))
+
+    win = mw.MainWindow()
+    try:
+        assert win.open_path(str(dest)) is True
+        win.session.bank.songs()[0].set_name("KEEPME")
+        win._on_save()
+        assert asked, "the user was never asked"
+        assert "coherence problem" in asked[-1]
+        assert "does not create them" in asked[-1]
+        # Consenting actually writes, and the edit survives a re-read.
+        assert BankReader().read_file(str(dest)).songs()[0].name == "KEEPME"
+    finally:
+        win.session._dirty = False
+        win.close()
+
+
+def test_declining_the_forced_save_writes_nothing(qapp, monkeypatch, tmp_path):
+    import hashlib
+    import shutil
+
+    import ui.main_window as mw
+    from tests.conftest import available_corpus
+
+    source = next((p for p in available_corpus() if _is_incoherent(p)), None)
+    if source is None:
+        pytest.skip("no incoherent corpus bank available")
+
+    dest = tmp_path / "untouched.esx"
+    shutil.copy(source, dest)
+    before = hashlib.sha256(dest.read_bytes()).hexdigest()
+
+    monkeypatch.setattr(
+        mw.QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: mw.QMessageBox.StandardButton.Cancel),
+    )
+    monkeypatch.setattr(mw.QMessageBox, "warning", staticmethod(lambda *a, **k: None))
+
+    win = mw.MainWindow()
+    try:
+        assert win.open_path(str(dest)) is True
+        win.session.bank.songs()[0].set_name("NOPE")
+        win._on_save()
+        assert hashlib.sha256(dest.read_bytes()).hexdigest() == before
+    finally:
+        win.session._dirty = False
+        win.close()
+
+
+def _is_incoherent(path: str) -> bool:
+    from codec.reader import BankReader
+    from codec.validator import BankValidator
+
+    return not BankValidator().validate(BankReader().read_file(path)).ok

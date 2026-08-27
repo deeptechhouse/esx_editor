@@ -326,9 +326,52 @@ class MainWindow(QMainWindow):
         try:
             self.session.save(path)
         except CodecError as exc:
-            QMessageBox.warning(self, "Save refused", str(exc))
-            return
+            if not self._offer_forced_save(path, exc):
+                return
         self._refresh_chrome()
+
+    def _offer_forced_save(self, path: str, exc: CodecError) -> bool:
+        """Refused for incoherence — explain it and let the user decide.
+
+        The guard itself is right: a bank whose offsets contradict its own
+        headers should not be written by accident. But the refusal used to end
+        at "pass allow_invalid=True", which is an instruction to a programmer
+        shown to someone holding a mouse — and e4.esx, a real bank off the
+        user's own card, trips it. A dead end on a file the machine itself
+        wrote is not safety, it is a wall.
+
+        So: still refuse by default, still require an explicit second act, but
+        make that act possible. Returns True if the write went through.
+        """
+        report = self.session.validation_report()
+        if report is None:
+            QMessageBox.warning(self, "Save refused", str(exc))
+            return False
+
+        codes = sorted({f.code for f in report.errors()})
+        detail = (
+            f"This bank has {len(report.errors())} coherence problem(s): "
+            f"{', '.join(codes)}.\n\n"
+            "They were almost certainly already there when the bank was "
+            "opened — the editor does not create them. Saving preserves them "
+            "rather than repairing them, because a repair would be a guess "
+            "about what the machine meant.\n\n"
+            "Save anyway, keeping the problems as they are?"
+        )
+        reply = QMessageBox.question(
+            self,
+            "Bank has existing problems",
+            detail,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return False
+        try:
+            self.session.save(path, allow_invalid=True)
+        except CodecError as second:
+            QMessageBox.warning(self, "Save failed", str(second))
+            return False
+        return True
 
     def _on_about(self) -> None:
         QMessageBox.about(
