@@ -57,7 +57,7 @@ repos:
 
       - id: pytest-fast
         name: run the test suite (offscreen Qt)
-        entry: bash -c 'QT_QPA_PLATFORM=offscreen python -m pytest tests/ -q -x'
+        entry: bash -c 'QT_QPA_PLATFORM=offscreen python3 -m pytest tests/ -q -x'
         language: system
         pass_filenames: false
         stages: [pre-commit]

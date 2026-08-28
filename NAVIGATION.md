@@ -26,7 +26,7 @@ composition root (`ui/session.BankSession`) does.
 | `midi/` | Integration | MIDI input behind a `MidiInput` Protocol, for MIDI Learn. Optional extra; `NullMidiInput` when absent. RECEIVE ONLY. |
 | `ui/motion/` | Presentation | Drawable motion canvas, pure tools, target picker. |
 | `ui/wizard/` | Presentation | 11 skippable guided-setup pages over a shared `WizardContext`. |
-| `ui/widgets/` | Presentation | Reusable: `BudgetMeter`, `KnobDial`, `StepGrid`, `WaveformView`. |
+| `ui/widgets/` | Presentation | Reusable: `BudgetMeter`, `KnobDial`, `StepGrid`, `WaveformView`, `LazyChoice` (a combo that builds its 128 options on first open — 46 eager ones cost 0.3 s per Global tab). |
 | `tests/` | Testing | Unit, property (hypothesis), golden (pinned hashes), integration, UI (offscreen Qt). |
 | `research/` | Reference | Verified byte encodings, the 313-target table, the findings log, the hardware checklist. **Read `CODEC_FINDINGS_LOG.md` before touching the codec.** |
 | `spike_a/` | Research tooling | The original format spike: probe, fixture generator, hardware session runner. Not part of the app. |

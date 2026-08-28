@@ -117,6 +117,26 @@ except Exception as e:  # noqa: BLE001
     check("ffmpeg runnable", False, f"{type(e).__name__}: {e}")
 
 # ---------------------------------------------------------------------------
+section("5b. pre-commit hooks are installed")
+# NOT fatal: the app runs fine without them. It is here because the failure is
+# silent and was real — .pre-commit-config.yaml existed from the start but
+# `pre-commit install` had never been run, so lint, secret detection and the
+# CHANGELOG regeneration never fired on a single commit. The changelog was
+# three waves out of date and nothing said so. A config file is not a hook.
+_hook = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    ".git",
+    "hooks",
+    "pre-commit",
+)
+check(
+    "pre-commit installed",
+    os.path.exists(_hook),
+    _hook if os.path.exists(_hook) else "run: pre-commit install",
+    fatal=False,
+)
+
+# ---------------------------------------------------------------------------
 section("6. THE GATE — byte-identical round-trip on the corpus")
 # The shipped codec, not the Wave 0 spike. This script used to import the flat
 # spike_a modules and look for banks one directory ABOVE the project, both of
