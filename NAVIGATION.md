@@ -30,7 +30,7 @@ composition root (`ui/session.BankSession`) does.
 | `tests/` | Testing | Unit, property (hypothesis), golden (pinned hashes), integration, UI (offscreen Qt). |
 | `research/` | Reference | Verified byte encodings, the 313-target table, the findings log, the hardware checklist. **Read `CODEC_FINDINGS_LOG.md` before touching the codec.** |
 | `spike_a/` | Research tooling | The original format spike: probe, fixture generator, hardware session runner. Not part of the app. |
-| `deploy/` | Ops | Environment verification, run commands, local requirements. |
+| `deploy/` | Ops | Environment verification, run commands, local requirements, and the hardware round trip: `make_hw_test_banks.py` writes eight one-change banks plus a manifest of what each must still show, `hw_readback.py` checks the saves coming back. |
 
 ## Key Entry Points
 

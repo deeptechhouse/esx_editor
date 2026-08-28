@@ -72,7 +72,28 @@ PYTHONPATH="$SITE:$PWD" python3 deploy/make_hw_test_banks.py \
 # Whether the machine loads, refuses, or plays silence decides whether the
 # editor should repair such banks or refuse them.
 
+## SAVE EACH t-BANK BACK — the half the eyeball test cannot reach
+#
+# After you have loaded a t-bank and looked at it, Save All back to the card
+# before moving to the next one. Any filename: routing is by the tN token, so
+# the machine's own T3.ESX is fine.
+#
+# This answers a different question from the display. The display says whether
+# the machine UNDERSTOOD what we wrote; the return trip says whether it
+# PRESERVED it. A machine that silently normalises or repairs a field looks
+# perfect on screen and only gives itself away in the bytes coming back.
+#
+# Copy the returned files into hw_test/readback/ and:
+python3 deploy/hw_readback.py
+#
+# It reports, per test, whether each written value survived - and lists any
+# file it could not route rather than ignoring it.
+
 ## After the session
 PYTHONPATH="$SITE:$PWD" python3 spike_a/esx_probe.py verify   corpus/*.esx
 PYTHONPATH="$SITE:$PWD" python3 spike_a/esx_probe.py validate corpus/*.esx
 cd spike_a && python3 hw_session.py     # evaluates the whole batch at once
+#
+# hw_session.py reads the CHECKLIST saves (pitch/stereo/rename/psg/twice*).
+# hw_readback.py reads the t-BANK saves. Two runners because they answer two
+# different questions; both want their files tagged in the filename.

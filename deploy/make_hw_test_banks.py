@@ -21,11 +21,19 @@ USAGE
 
 Every bank is written through the normal safety path (temp -> re-read verify ->
 atomic replace) and re-validated afterwards. Nothing is written to the source.
+
+AFTER THE SESSION
+    Each test also records what a bank coming BACK off the machine must show,
+    into manifest.json beside the banks. Save each loaded bank back to the card,
+    then:  python3 deploy/hw_readback.py hw_test RETURNED_DIR
+    That answers the question the eyeball test cannot: did the machine PRESERVE
+    what this editor wrote, or quietly rewrite it?
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -65,7 +73,7 @@ def _first_named_pattern(bank) -> int:
     return 0
 
 
-def t0_identical(bank, _report):
+def t0_identical(bank, _report, _expect):
     """No change at all."""
     return (
         "Load it and compare with the original by ear and by eye. A "
@@ -74,11 +82,12 @@ def t0_identical(bank, _report):
     )
 
 
-def t1_tempo(bank, report):
+def t1_tempo(bank, report, expect):
     index = _first_named_pattern(bank)
     before = bank.patterns()[index].header.tempo
     bank.patterns()[index].header.set_tempo(TEST_TEMPO)
     report(f"pattern {pattern_label(index)} tempo {before:.1f} -> {TEST_TEMPO:.1f} BPM")
+    expect("pattern_tempo", pattern=index, value=TEST_TEMPO)
     return (
         f"Select pattern {pattern_label(index)} and read its TEMPO.\n"
         f"       Expect exactly {TEST_TEMPO:.1f}. A different number means the "
@@ -87,7 +96,7 @@ def t1_tempo(bank, report):
     )
 
 
-def t2_step(bank, report):
+def t2_step(bank, report, expect):
     index = _first_named_pattern(bank)
     pattern = bank.patterns()[index]
     part = next(p for p in pattern.parts() if p.has_sequence())
@@ -99,6 +108,7 @@ def t2_step(bank, report):
         f"pattern {pattern_label(index)} part 1 ({part.kind}) step "
         f"{TEST_STEP} {'on->off' if was else 'off->on'}"
     )
+    expect("step_active", pattern=index, part=TEST_PART, step=TEST_STEP, value=not was)
     return (
         f"Select pattern {pattern_label(index)}, part 1 ({part.kind}), and "
         f"look at step key {TEST_STEP + 1} of 16.\n"
@@ -108,7 +118,7 @@ def t2_step(bank, report):
     )
 
 
-def t3_sample_number(bank, report):
+def t3_sample_number(bank, report, expect):
     index = _first_named_pattern(bank)
     part = bank.patterns()[index].parts()[TEST_PART]
     occupied = [i for i, s in enumerate(bank.samples()[:256]) if not s.empty]
@@ -122,6 +132,7 @@ def t3_sample_number(bank, report):
         f"pattern {pattern_label(index)} part 1 sample "
         f"{sample_label(before)} -> {sample_label(target)} ({name!r})"
     )
+    expect("part_sample_number", pattern=index, part=TEST_PART, value=target)
     return (
         f"Select pattern {pattern_label(index)}, part 1, and read its SAMPLE.\n"
         f"       Expect {sample_label(target)} ({name!r}), and it should SOUND "
@@ -131,7 +142,7 @@ def t3_sample_number(bank, report):
     )
 
 
-def t4_commit(bank, report):
+def t4_commit(bank, report, expect):
     free = next(i for i, s in enumerate(bank.samples()[:256]) if s.empty)
     rate = 44100
     # One second of a 220 Hz square-ish tone: audible, obviously synthetic, and
@@ -151,6 +162,9 @@ def t4_commit(bank, report):
         f"committed {len(pcm):,} B into free mono slot {sample_label(free)} "
         f"as {TEST_NAME!r}"
     )
+    expect("sample_name", slot=free, value=TEST_NAME)
+    expect("sample_rate", slot=free, value=rate)
+    expect("sample_bytes", slot=free, value=len(pcm))
     return (
         f"Find sample {sample_label(free)} in Sample mode.\n"
         f"       Expect the name {TEST_NAME!r} and a steady one-second buzz at "
@@ -163,7 +177,7 @@ def t4_commit(bank, report):
     )
 
 
-def t5_motion(bank, report):
+def t5_motion(bank, report, expect):
     index = _first_named_pattern(bank)
     pattern = bank.patterns()[index]
     slots = pattern.motion_slots()
@@ -180,6 +194,12 @@ def t5_motion(bank, report):
         f"pattern {pattern_label(index)} motion slot {target} -> "
         "alternating 127/0 over 16 steps"
     )
+    expect(
+        "motion_stored",
+        pattern=index,
+        slot=target,
+        value=[127 if step % 2 == 0 else 0 for step in range(16)],
+    )
     return (
         f"Play pattern {pattern_label(index)} and listen to motion slot "
         f"{target}.\n"
@@ -193,7 +213,7 @@ SONG_CHAIN = (1, 0, 3, 5)
 SONG_SLOT = 3  # song 04 — leaves the two real songs on the card alone
 
 
-def t6_song(bank, report):
+def t6_song(bank, report, expect):
     """Write a song chain from the editor and see whether the machine plays it.
 
     This is the other direction of the WF17 decoding: the chain was READ from a
@@ -208,6 +228,8 @@ def t6_song(bank, report):
         f"song {SONG_SLOT + 1:02d} -> {TEST_NAME}, chain "
         + " ".join(pattern_label(i) for i in SONG_CHAIN)
     )
+    expect("song_name", slot=SONG_SLOT, value=TEST_NAME[:8])
+    expect("song_chain", slot=SONG_SLOT, value=list(SONG_CHAIN))
     return (
         f"Song mode -> select song {SONG_SLOT + 1:02d} ({TEST_NAME}) and play it.\n"
         "       Expect exactly "
@@ -225,7 +247,7 @@ def t6_song(bank, report):
 CC_PROBE_BASE = 95
 
 
-def t7_ccprobe(bank, report):
+def t7_ccprobe(bank, report, expect):
     """Check that the editor WRITES the CC table where the machine reads it.
 
     The row order is settled - an independent editor's 33 knob names match the
@@ -241,6 +263,10 @@ def t7_ccprobe(bank, report):
     report(
         f"CC assign rows 1-{rows} -> CC "
         f"{CC_PROBE_BASE}-{CC_PROBE_BASE + rows - 1}, one per row"
+    )
+    expect(
+        "cc_assignments",
+        value=[CC_PROBE_BASE + row for row in range(rows)],
     )
     return (
         "Global > SHIFT+key15 (MIDIUtil) > CCAsin.\n"
@@ -299,10 +325,27 @@ def main(argv=None) -> int:
         return 1
     print()
 
+    manifest: dict = {
+        "source": os.path.abspath(args.source),
+        "source_bytes": len(original),
+        "tests": {},
+    }
+
     for name, summary, mutate in TESTS:
         bank = reader.read_auto(original)
         notes: list[str] = []
-        instruction = mutate(bank, notes.append)
+        probes: list[dict] = []
+
+        def expect(kind: str, _probes=probes, **params) -> None:
+            """Record one fact a bank coming BACK off the machine must show.
+
+            Written here, next to the edit, so the two cannot drift apart.
+            deploy/hw_readback.py knows HOW to read each kind; this file is the
+            only place that says WHAT to look for.
+            """
+            _probes.append({"kind": kind, **params})
+
+        instruction = mutate(bank, notes.append, expect)
         if instruction is None:
             print(f"{name:12s} {summary:34s} SKIPPED")
             continue
@@ -323,7 +366,22 @@ def main(argv=None) -> int:
             print(f"       change: {note}")
         print(f"       ON THE MACHINE: {instruction}")
         print()
+        manifest["tests"][name] = {
+            "summary": summary,
+            "file": os.path.basename(dest),
+            "bytes_changed": delta,
+            "changes": list(notes),
+            "expect": probes,
+        }
 
+    # The manifest is what makes the return trip checkable. Without it,
+    # deploy/hw_readback.py would need its own copy of every expected value —
+    # and a second copy of a fact is a second chance to be wrong about it.
+    manifest_path = os.path.join(args.out, "manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2, sort_keys=True)
+    print(f"wrote {manifest_path}")
+    print()
     print("Load them in this order. Stop at the first one that misbehaves and")
     print("note exactly how - that identifies the wrong decision by itself.")
     print()
