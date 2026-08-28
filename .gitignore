@@ -35,3 +35,7 @@ Thumbs.db
 
 # --- Local deploy artifacts ---
 deploy/requirements-mini.txt
+
+# --- WF6 reference screenshots (rendered from a private corpus bank) ---
+deploy/wf6_screens/
+hw_test/

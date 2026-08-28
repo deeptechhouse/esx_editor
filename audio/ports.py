@@ -43,6 +43,69 @@ class KeyResult:
         return self._confidence
 
 
+class NoteResult:
+    """The dominant pitch of a sound, whether or not it has a musical key.
+
+    WHY THIS IS SEPARATE FROM KeyResult
+        A key is a claim about harmony — which seven notes a piece of music is
+        built from. Most one-shots have no key: a kick drum is not "in A minor".
+        But nearly every real sound has a dominant PITCH, and for a sampler that
+        is often the more useful number: it tells you what a kick, tom or snare
+        body will clash with, and how far to tune it.
+
+        The two are independent. Tonal material has both. A drum hit usually has
+        only a note. True broadband noise has neither, and says so.
+
+    `cents` is the deviation from the exact equal-tempered note, -50..+50, so a
+    sound 30 cents sharp of A is reported as A with cents=+30 rather than
+    silently rounded.
+    """
+
+    __slots__ = ("_name", "_octave", "_frequency", "_cents", "_confidence")
+
+    def __init__(
+        self, name: str, octave: int, frequency: float, cents: float, confidence: float
+    ):
+        self._name = name
+        self._octave = octave
+        self._frequency = frequency
+        self._cents = cents
+        self._confidence = confidence
+
+    @property
+    def name(self) -> str:
+        """Pitch class, sharp spelling: 'C', 'F#', 'A'."""
+        return self._name
+
+    @property
+    def octave(self) -> int:
+        """Scientific pitch notation octave — middle C is C4."""
+        return self._octave
+
+    @property
+    def label(self) -> str:
+        """The note as a musician would write it: 'A1', 'F#3'."""
+        return f"{self._name}{self._octave}"
+
+    @property
+    def frequency(self) -> float:
+        """The measured dominant frequency in Hz."""
+        return self._frequency
+
+    @property
+    def cents(self) -> float:
+        """Deviation from equal temperament, -50..+50."""
+        return self._cents
+
+    @property
+    def confidence(self) -> float:
+        """0..1, from how far the spectral peak stands above the noise floor."""
+        return self._confidence
+
+    def __repr__(self) -> str:
+        return f"<NoteResult {self.label} {self._cents:+.0f}c {self._frequency:.1f}Hz>"
+
+
 class ConversionSpec:
     """The target format for a conversion (TDD §5.2).
 
@@ -104,6 +167,22 @@ class KeyDetector(Protocol):
 
 
 @runtime_checkable
+class PitchDetector(Protocol):
+    """Estimate the dominant pitch of a sound, tonal or percussive."""
+
+    def detect_note(
+        self, path: str, max_seconds: float | None = None
+    ) -> NoteResult | None:
+        """Return the dominant note, or None when there is no spectral peak.
+
+        Returning None is reserved for material with genuinely flat spectral
+        content — broadband noise. Ordinary percussion has a clear fundamental
+        and must report it.
+        """
+        ...
+
+
+@runtime_checkable
 class FxRenderer(Protocol):
     """Approximate offline render of the ESX-1 effects (phase 2 only, TDD §8.6).
 
@@ -112,6 +191,6 @@ class FxRenderer(Protocol):
     'approximate' in the UI.
     """
 
-    def render(self, pcm: bytes, sample_rate: int, fx_type: int,
-               edit1: int, edit2: int) -> bytes:
-        ...
+    def render(
+        self, pcm: bytes, sample_rate: int, fx_type: int, edit1: int, edit2: int
+    ) -> bytes: ...

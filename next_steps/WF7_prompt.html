@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ESX Bank Studio — WF7 agent prompt</title>
+<style>
+  :root{--bg:#12100d;--panel:#1b1814;--panel2:#231f19;--line:#3a332a;--amber:#ff9d2e;
+    --amber-dim:#c9761b;--lcd:#ffb454;--green:#7fd68a;--red:#ff6b5e;--blue:#6fb6ff;
+    --txt:#e8e0d4;--muted:#9d9384;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:0 0 80px}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px}
+  header{border-bottom:2px solid var(--amber);background:linear-gradient(180deg,#1f1a13,#12100d);padding:36px 0 24px}
+  h1{margin:0 0 8px;font-size:26px} h1 span{color:var(--amber)}
+  .sub{color:var(--muted);max-width:800px}
+  .meta{margin-top:12px;font-family:var(--mono);font-size:12px;color:var(--amber-dim);line-height:1.8}
+  h2{margin:36px 0 8px;font-size:19px;color:var(--lcd);border-left:3px solid var(--amber);padding-left:12px}
+  code{font-family:var(--mono);font-size:.88em;background:var(--panel2);padding:1px 6px;border-radius:3px;color:var(--lcd)}
+  pre{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber-dim);
+    padding:14px 16px;border-radius:5px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.55}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--lcd)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:16px 18px;margin:14px 0}
+  .flag{border-left:4px solid var(--red);background:#241715}
+  .win{border-left:4px solid var(--green);background:#15201a}
+  .card h3{margin-top:0}
+  ul{padding-left:22px} li{margin:5px 0}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>ESX Bank Studio — <span>WF7 prompt</span></h1>
+  <p class="sub">WF6 is complete and green. This is the brief for WF7: tests, CI, docs, and annotated companions.
+     Do not start it without the user's go-ahead.</p>
+  <p class="meta">
+    WRITTEN 2026-08-23 · PROJECT <code>/Users/aaandy/_andy_ai_projects_2026/esx_editor</code><br>
+    BRANCH <code>feat/wf6-views-wizard</code> — WF6 is UNCOMMITTED working-tree state<br>
+    SUITE <code>203 passed</code> · <code>codec/</code> 100% · every WF6 module 100%
+  </p>
+</div></header>
+
+<div class="wrap">
+
+<div class="card flag">
+  <h3>Before anything else</h3>
+  <ul>
+    <li>Read <code>research/CODEC_FINDINGS_LOG.md</code> (WF6 section) and <code>WF6_HUMAN_TESTING.html</code>.</li>
+    <li>Ask whether to <b>commit WF6 first</b>. It is currently uncommitted on <code>feat/wf6-views-wizard</code>.</li>
+    <li>Do not push. Do not force-push. Do not commit <code>*.esx</code> or secrets.</li>
+    <li>PySide6 is pinned to <b>6.9.3</b> in <code>~/.venvs/esx</code> (macOS 12). Do not upgrade.</li>
+    <li>Never regress the round-trip gate: <code>BankWriter().write(BankReader().read_auto(b)) == b</code>.</li>
+    <li>Do not invent field offsets. Undecoded regions stay as bytes (see the WF6 honesty rules).</li>
+  </ul>
+</div>
+
+<h2>WF7 scope</h2>
+<table>
+  <tr><th>Item</th><th>What to build</th></tr>
+  <tr><td><b>Property tests</b></td>
+      <td>Hypothesis over the motion encodings (<code>encode/decode/snap_stored</code> round-trip for every domain),
+          the budget cost model (<code>align_up</code> invariants), and <code>pack_slot_name</code> (always exactly 8 chars, never raises on valid input).</td></tr>
+  <tr><td><b>Golden tests</b></td>
+      <td>Checksum fixtures for each corpus bank so a codec regression fails loudly, not subtly.
+          <code>*.esx</code> is gitignored — store hashes and sizes, not banks.</td></tr>
+  <tr><td><b>Integration tests</b></td>
+      <td>Full open → edit → validate → write → re-read cycle through <code>BankSession</code>, plus a wizard walk that
+          ends in a real write to a tmp path.</td></tr>
+  <tr><td><b>CI</b></td>
+      <td><code>.github/workflows/ci.yml</code>: lint (ruff), type-check (mypy), test + coverage, security audit (<code>pip3 audit</code>), build.
+          Offscreen Qt (<code>QT_QPA_PLATFORM=offscreen</code>). Merge to <code>main</code> blocked on failure.</td></tr>
+  <tr><td><b>Pre-commit</b></td>
+      <td><code>pre-commit</code> framework: black + ruff, <code>detect-secrets</code> or <code>gitleaks</code>, and a hook that
+          refuses to stage a <code>.esx</code>.</td></tr>
+  <tr><td><b>Docs</b></td>
+      <td><code>README.html</code> (description, badges, setup, architecture, license) and <code>NAVIGATION.md</code>
+          (directory map, entry points, module relationships, external dependencies).</td></tr>
+  <tr><td><b>Annotated copies</b></td>
+      <td><code>_annotated</code> companions for the whole codebase — detailed teaching comments, no functional changes,
+          must still run. Deferred from WF4/WF5/WF6 to here by prior agreement.</td></tr>
+</table>
+
+<h2>Coverage still below the 90% target</h2>
+<p>Every WF6 module is at 100%. These WF4/WF5 files are the remaining gap and are the natural first target:</p>
+<pre>ui/motion/canvas.py    62%   mouse paths, three-state draw, length mask
+ui/motion/editor.py    67%   target change, tool dispatch, overwrite guard
+ui/widgets/step_grid.py 65%  toggle/paint paths
+ui/widgets/knob_dial.py 80%  wheel / drag
+ui/widgets/placeholder.py 27% now DEAD CODE — decide: delete or keep
+core/song.py           65%   all NotImplementedError stubs</pre>
+
+<h2>Open decisions carried forward</h2>
+<ul>
+  <li><code>pack_slot_name("bass_loop")</code> → <code>ASS_LOOP</code>. Keep the tail rule, truncate from the front, or add a guard?</li>
+  <li>Delete <code>ui/widgets/placeholder.py</code> now that no view uses it?</li>
+  <li>Hardware checklist (<code>research/HARDWARE_CHECKLIST.md</code>) is still open — no app-written file has been loaded by a real ESX-1 yet. That closes the tempo/length/last-step, sample-number, MIDI-channel and Pitch unknowns.</li>
+</ul>
+
+<div class="card win">
+  <h3>Standing rules that apply</h3>
+  <ul>
+    <li>Log every user prompt in <code>PROMPTS_project_completeness_assessment.md</code>.</li>
+    <li>Keep <code>research/CODEC_FINDINGS_LOG.md</code> updated with errors, decisions, reasoning.</li>
+    <li>Short progress checkpoints in chat as you go.</li>
+    <li>OOP / SOLID. No business logic in widgets. Ports for audio. Widgets never import <code>codec/</code>.</li>
+    <li>End the result with a short "how standing rules were applied" blurb.</li>
+  </ul>
+</div>
+
+</div>
+</body>
+</html>

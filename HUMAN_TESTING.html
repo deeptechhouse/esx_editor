@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ESX Bank Studio — human testing script</title>
+<style>
+  :root{
+    --bg:#12100d; --panel:#1b1814; --panel2:#231f19; --line:#3a332a;
+    --amber:#ff9d2e; --amber-dim:#c9761b; --lcd:#ffb454; --green:#7fd68a;
+    --red:#ff6b5e; --blue:#6fb6ff; --txt:#e8e0d4; --muted:#9d9384;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;padding:0 0 80px}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+  header{border-bottom:2px solid var(--amber);background:linear-gradient(180deg,#1f1a13,#12100d);padding:40px 0 26px}
+  h1{margin:0 0 8px;font-size:28px} h1 span{color:var(--amber)}
+  .sub{color:var(--muted);max-width:820px}
+  .meta{margin-top:14px;font-family:var(--mono);font-size:12px;color:var(--amber-dim);line-height:1.8}
+  h2{margin:40px 0 8px;font-size:20px;color:var(--lcd);border-left:3px solid var(--amber);padding-left:12px}
+  h3{margin:22px 0 6px;font-size:15.5px;border-bottom:1px solid var(--line);padding-bottom:4px}
+  code{font-family:var(--mono);font-size:.88em;background:var(--panel2);padding:1px 6px;border-radius:3px;color:var(--lcd)}
+  pre{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber-dim);
+    padding:14px 16px;border-radius:5px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.55}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--lcd)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:16px 18px;margin:14px 0}
+  .flag{border-left:4px solid var(--red);background:#241715}
+  .win{border-left:4px solid var(--green);background:#15201a}
+  .warn{border-left:4px solid var(--amber);background:#241d13}
+  .note{border-left:4px solid var(--blue);background:#141b24}
+  .card h3{margin-top:0;border:0}
+  .yes{color:var(--green);font-weight:600}.no{color:var(--red);font-weight:600}
+  ul{padding-left:22px} li{margin:5px 0}
+  ol.checks{padding-left:22px} ol.checks li{margin:10px 0}
+  .exp{color:var(--muted);display:block;font-size:13.5px}
+  img{max-width:100%;border:1px solid var(--line);border-radius:5px;margin:8px 0}
+  .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+  .shots figure{margin:0} .shots figcaption{color:var(--muted);font-size:12.5px;font-family:var(--mono)}
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>ESX Bank Studio — <span>human testing</span></h1>
+  <p class="sub">The editor is feature-complete against the TDD apart from what genuinely needs the hardware.
+     This is the manual script: how to launch it, what to click, and what "correct" looks like on each screen.</p>
+  <p class="meta">
+    UPDATED 2026-08-23 · BRANCH <code>feat/wf12-final-integration</code> · WF6-WF12 COMMITTED<br>
+    SUITE <code>375 passed</code> (96 at WF5) · <code>codec/</code> 100% · project 91%<br>
+    ENV macOS 12.7.6 · Python 3.13.12 · PySide6 6.9.3 (<code>~/.venvs/esx</code>, pinned) · ffmpeg 8.1.1 · librosa 1.0.0
+  </p>
+</div></header>
+
+<div class="wrap">
+
+<h2>1. Launch it</h2>
+<pre>cd /Users/aaandy/_andy_ai_projects_2026/esx_editor
+PYTHONPATH="$PWD" ~/.venvs/esx/bin/python -m ui.app</pre>
+<p>A 1100×720 window opens with six tabs and an empty status bar reading <code>no bank</code>.
+   Then <b>File → Open…</b> and pick <code>corpus/card_backup_2026-08-22/e4.esx</code>.</p>
+
+<div class="card note">
+  <h3>Re-run the automated suite first if you want</h3>
+<pre>SITE=$(~/.venvs/esx/bin/python -c "import site; print(site.getsitepackages()[0])")
+QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
+# expect: 375 passed, 1 skipped</pre>
+</div>
+
+<h2>2. What each tab should show</h2>
+<table>
+  <tr><th>Tab</th><th>What it does</th><th>Correct on <code>Chronic-Interactive.esx</code></th></tr>
+  <tr><td><b>Bank</b></td>
+      <td>Every occupied slot of the 384, with rate, musical tune, PCM range, the usage meter and pool counts.</td>
+      <td>140 rows, <code>mono 100/256   stereo 40/128</code>, meter ≈ 5.8 / 24.0 MB. Stereo rows show a real rate (32000) — that offset was settled from this bank's 40 stereo slots. Tune reads <code>+0.00</code>: imported material carries pure rate compensation.</td></tr>
+  <tr><td><b>Staging</b></td>
+      <td>Drop audio; tier selector; live scoreboard. Each line shows the packed 8-char name, the key, the dominant note and the byte cost.</td>
+      <td>The header line names which backends are live. With ffmpeg present you can drop mp3/flac/aiff/m4a/ogg, not just WAV.</td></tr>
+  <tr><td><b>Pattern</b></td>
+      <td>256 patterns, name, <b>editable tempo</b>, parts with their sample number and name, a live <b>128-step grid</b>, FX units, motion budget, header hex.</td>
+      <td>Pattern 000 <code>ES1_A.01</code> at <b>95.0 BPM</b>; part 0 plays sample 24 (named "24") on 64 steps. Click a part row to load its steps; click a step to toggle it.</td></tr>
+  <tr><td><b>Motion</b></td>
+      <td>The WF5 drawable canvas. Follows the Pattern tab's selection.</td>
+      <td>Selecting pattern 5 re-binds this canvas to pattern 5's 24 slots.</td></tr>
+  <tr><td><b>Song</b></td>
+      <td>Edit the 64 songs: name, tempo, and the ordered chain of patterns each one plays.</td>
+      <td>64 songs in the list; selecting one shows its chain as A.01&ndash;D.64 positions. Add / Remove / &uarr; / &darr; edit the chain; the title bar shows &bull; modified. An untouched song reads "1 position, 120.0 BPM (untouched default)".</td></tr>
+  <tr><td><b>Global</b></td>
+      <td>The MIDI mapping: 13 drum note numbers and the 33-row CC assign table, both editable. The rest of the 192-byte block stays an offset/hex/ASCII dump.</td>
+      <td>Drum1 reads <code>C2 (36)</code> and Drum6A <code>F#2 (42)</code>, matching the manual's factory table. Each part picks from all 128 notes (C-1 to G9) or captures one via <b>Learn</b> from a pad; <b>Factory notes</b> restores the manual's table. The CC table lists all 33 knobs by name &mdash; MOD SPEED 89, FILTER CUTOFF 74, FX CHAIN 23. Change any number from the dropdown, or press <b>Learn</b> and move a control on a connected MIDI device to capture it. Assigning one CC to two knobs warns but is allowed. Learn is disabled with an explanation if <code>mido</code>/<code>python-rtmidi</code> are not installed. 12 dump lines from <code>00000020</code> below. No MIDI-channel control &mdash; that field is undecoded.</td></tr>
+</table>
+
+<div class="card win">
+  <h3>What got decoded, and how it was proven</h3>
+  <table>
+    <tr><th>Field</th><th>Evidence</th></tr>
+    <tr><td>Stereo sample header</td><td>40 populated stereo slots. 40/40 on every predicted property; 0/40 for the layout the TDD had inferred from blank slots. <b>Corrects TDD §2.3.</b></td></tr>
+    <tr><td>Pattern tempo</td><td>1,024 headers: 19 of 20 distinct values are exact integer BPMs, and the default is exactly 120.0.</td></tr>
+    <tr><td>Part sample number</td><td>728/728 point at an occupied slot; and in a bank that names samples after their own index, 672/672 match exactly.</td></tr>
+    <tr><td>Step triggers</td><td>Halves byte-identical on 468/468 parts; LSB-first puts 1.85× the uniform share of hits on the quarter-note grid, MSB-first inverts it.</td></tr>
+    <tr><td>PCM endianness</td><td>Big-endian wins 20/20 on lag-1 autocorrelation (+0.98 vs +0.19). A wrong byte order still round-trips — it just plays static.</td></tr>
+    <tr><td>Sample tune</td><td>134 of 140 occupied slots decode to a musical tune of exactly 0.00, i.e. pure rate compensation.</td></tr>
+  </table>
+</div>
+
+<div class="card warn">
+  <h3>Why three regions still show hex</h3>
+  <p>Pattern length/beat/last-step, the songs, and the MIDI channel are <b>not</b> unfinished — they are
+     <b>undeterminable from the available data</b>, and that was established rather than assumed:</p>
+  <ul>
+    <li><b>Pattern length / beat / last step:</b> across all 52 named patterns in the corpus, header bytes 2, 4, 5, 6 and 7 are <b>constant</b>. A field that never varies cannot be told apart from any other constant.</li>
+    <li><b>Song tempo lock, mute hold, next song:</b> zero in every bank <em>including</em> the one saved with a song in it, so a save did not locate them. The name, tempo and pattern chain <em>are</em> decoded.</li>
+    <li><b>MIDI channel:</b> the 192-byte global block is effectively constant across the corpus.</li>
+  </ul>
+  <p>Each needs one hardware diff: change one setting, Save All, compare. The error messages name the exact
+     bytes to watch.</p>
+</div>
+
+<h2>3. Manual test script</h2>
+<ol class="checks">
+  <li><b>Open a bank.</b> File → Open… → <code>corpus/Chronic-Interactive.esx</code>.
+      <span class="exp">Expect: title bar shows the name, all six tabs populate, meter ≈ 5.8 / 24.0 MB.</span></li>
+  <li><b>Bank tab — stereo.</b> Scroll to a row whose pool is <code>stereo</code>.
+      <span class="exp">Expect: a real rate (32000), not "—". Tune <code>+0.00</code>. This is the layout that corrects the TDD.</span></li>
+  <li><b>Pattern tab — tempo.</b> Select pattern 000, read the tempo box; change it to 128.0.
+      <span class="exp">Expect: 95.0 BPM initially; after the edit the title bar gains a <code>•</code> and the status bar says <code>modified</code>.</span></li>
+  <li><b>Pattern tab — parts.</b> Look at the parts table.
+      <span class="exp">Expect: part 0 → sample 24, name "24", 64 steps. The sample number and its name agree because this bank names samples after their slot index.</span></li>
+  <li><b>Pattern tab — the step grid.</b> Click part row 0, then click any lit step.
+      <span class="exp">Expect: the grid loads 128 steps, the clicked step toggles, the "N triggering" count changes, and the bank is marked modified. Click part row 14 (audio-in) — the grid disables and says the step data is not decoded for that kind.</span></li>
+  <li><b>Motion tab.</b> Select pattern 5 on the Pattern tab, switch to Motion.
+      <span class="exp">Expect: the canvas is bound to pattern 5's slots, not pattern 0's.</span></li>
+  <li><b>Staging — a non-WAV file.</b> Drag an <code>.mp3</code> or <code>.flac</code> onto the Staging tab.
+      <span class="exp">Expect: it is accepted and converted (this needs ffmpeg; the header line tells you whether it is present). The ORIGINAL file must be untouched — check its modification time.</span></li>
+  <li><b>Staging — key vs note.</b> Drop a kick drum sample and a chord/pad sample.
+      <span class="exp">Expect: the kick shows <code>no key</code> but a real note like <code>A1 +0c</code>. The pad shows both. A noise-burst hi-hat shows neither — that is correct, not a failure.</span></li>
+  <li><b>Drop a bad file.</b> Rename a text file to <code>fake.wav</code> and drop it.
+      <span class="exp">Expect: a "Could not add" warning — not a crash. Try a half-written <code>.wav</code> too; both were real bugs.</span></li>
+  <li><b>Drop something no backend reads.</b> Drop a <code>.txt</code>.
+      <span class="exp">Expect: a dialog listing what this machine <em>can</em> read.</span></li>
+  <li><b>Open the wizard.</b> File → Guided setup….
+      <span class="exp">Expect: 11 pages, <b>Next never greyed out</b>. Walk 1 → 11 without entering anything.</span></li>
+  <li><b>Wizard screen 5 — key and pitch.</b>
+      <span class="exp">Expect: a table with camelot, classical, note and Hz. Percussive rows show a note but no key.</span></li>
+  <li><b>Wizard screen 7 — commit.</b> Press <b>Commit staged samples to the bank</b>.
+      <span class="exp">Expect: "Committed N sample(s) into slot(s) …" and the Bank tab now lists them. This is the step that was impossible before — the app can finally put a sample into a bank.</span></li>
+  <li><b>Wizard screen 11 — validate.</b> Press <b>Validate</b>.
+      <span class="exp">Expect: 0 findings on Chronic-Interactive. On <code>e4.esx</code> expect <b>17 errors</b>, all <code>offset_past_eof</code> — that bank has stale headers and is a deliberate fixture.</span></li>
+  <li><b>Wizard screen 11 — refuse, then override.</b> On <code>e4.esx</code>, write with the override unchecked, then checked.
+      <span class="exp">Expect: refusal with no file created, then a successful write with a <code>.bak</code> on the second write.</span></li>
+  <li><b>Round-trip proof.</b> Open a bank, save it somewhere scratch <em>without editing</em>, and compare.
+      <span class="exp">Expect: byte-identical.</span>
+      <pre>cmp /path/to/saved.esx corpus/Chronic-Interactive.esx &amp;&amp; echo IDENTICAL</pre></li>
+  <li><b>Edits survive a write.</b> Change a tempo, toggle a step, commit a sample, save, reopen.
+      <span class="exp">Expect: all three changes are there, and the file still round-trips.</span></li>
+  <li><b>Unsaved-changes guard.</b> Edit, then close and press Cancel.
+      <span class="exp">Expect: the window stays open. Discard closes it.</span></li>
+  <li><b>Keyboard only.</b> Tab through a view; <code>Ctrl+1</code>…<code>Ctrl+6</code> switch tabs; Space toggles a focused step.
+      <span class="exp">Expect: visible amber focus rings, every control reachable (WCAG 2.1 AA target).</span></li>
+</ol>
+
+<h2>4. The eleven wizard screens</h2>
+<table>
+  <tr><th>#</th><th>Screen</th><th>What it decides</th><th>Honesty note</th></tr>
+  <tr><td>1</td><td>Start</td><td>New from the blank template, or open an <code>.esx</code></td><td>"New" loads a bank a real ESX-1 wrote — never synthesised from zeros.</td></tr>
+  <tr><td>2</td><td>Card check</td><td>Back up the card before anything is written</td><td>Names the exact <code>.bak</code> path the write will produce.</td></tr>
+  <tr><td>3</td><td>Add samples</td><td>Drop files; scoreboard fills</td><td>Renders the Staging tab's own model.</td></tr>
+  <tr><td>4</td><td>Quality budget</td><td>Staged cost vs 25,165,824 B</td><td>Proposes trim → fold → rate drop, in that order. Applies nothing.</td></tr>
+  <tr><td>5</td><td>Key and pitch</td><td>Confirm keys; see the dominant note</td><td>Key and note are separate claims. Percussion gets a note but no key; broadband noise gets neither.</td></tr>
+  <tr><td>6</td><td>Naming</td><td>Slot-name policy, live 8-char preview</td><td>Always exactly 8 characters; the Camelot prefix costs 3 of them.</td></tr>
+  <tr><td>7</td><td>Slot assignment</td><td>Mono vs stereo pools; <b>commits</b></td><td>Writes the audio into the bank all-or-nothing. Nothing already in the bank moves, so no existing offset is invalidated.</td></tr>
+  <tr><td>8</td><td>Part setup</td><td>Pattern 000's 16 parts</td><td>Each part's sample number, that sample's name, and its trigger count. Audio-in and accent show "—": they reference no sample.</td></tr>
+  <tr><td>9</td><td>Pattern basics</td><td>Pattern name and tempo</td><td>Tempo is decoded and editable. Length/beat/last-step are not, and the header hex is shown instead.</td></tr>
+  <tr><td>10</td><td>Motion</td><td>Slot budget</td><td>Points at the Motion tab; does not duplicate the canvas.</td></tr>
+  <tr><td>11</td><td>Validate &amp; write</td><td>Findings, then a verified write</td><td>Findings are reported, never auto-repaired. Incoherent = refused unless overridden.</td></tr>
+</table>
+
+<h2>5. Reference screenshots</h2>
+<p class="sub">Rendered offscreen from <code>e4.esx</code> with three staged WAVs. Files live in <code>deploy/wf6_screens/</code>.</p>
+<div class="shots">
+  <p class="muted">These are generated, not hand-captured &mdash; regenerate after any UI change with <code>QT_QPA_PLATFORM=offscreen PYTHONPATH="$PWD" python3 tools/capture_screens.py</code>, so what you see below is what the build actually does.</p>
+  <figure><img src="deploy/screens/tab_1_bank.png" alt="Bank tab"><figcaption>Bank — 140 slots, stereo rate, musical tune</figcaption></figure>
+  <figure><img src="deploy/screens/tab_2_staging.png" alt="Staging tab"><figcaption>Staging — key, note and cost per file</figcaption></figure>
+  <figure><img src="deploy/screens/tab_3_pattern.png" alt="Pattern tab"><figcaption>Pattern — tempo, parts, live step grid</figcaption></figure>
+  <figure><img src="deploy/screens/tab_4_motion.png" alt="Motion tab"><figcaption>Motion — the drawable canvas</figcaption></figure>
+  <figure><img src="deploy/screens/tab_5_song.png" alt="Song tab"><figcaption>Song — chain editor</figcaption></figure>
+  <figure><img src="deploy/screens/tab_6_global.png" alt="Global tab"><figcaption>Global — MIDI mapping + the undecoded remainder</figcaption></figure>
+  <figure><img src="deploy/screens/wizard_05.png" alt="Wizard 5"><figcaption>Wizard 5 — key and pitch</figcaption></figure>
+  <figure><img src="deploy/screens/wizard_07.png" alt="Wizard 7"><figcaption>Wizard 7 — slot assignment and commit</figcaption></figure>
+  <figure><img src="deploy/screens/wizard_09.png" alt="Wizard 9"><figcaption>Wizard 9 — pattern basics</figcaption></figure>
+  <figure><img src="deploy/screens/wizard_11.png" alt="Wizard 11"><figcaption>Wizard 11 — validate and write</figcaption></figure>
+</div>
+
+<h2>6. Still open — and why</h2>
+<div class="card flag">
+  <h3>Six hardware items. Nothing here can be closed from a computer.</h3>
+  <p><b>No file this app has written has been loaded by a real ESX-1 yet.</b> The round-trip gate is green on four
+     real banks and writes are defensive, but until <code>research/HARDWARE_CHECKLIST.md</code> is worked through,
+     <b>keep a card backup</b>. One sitting closes most of it:</p>
+  <ol>
+    <li><b>Pitch motion mapping</b> — record a PITCH knob sweep. Gates exposing Pitch as a drawable motion target.</li>
+    <li><b>Writing a stereo sample</b> — reading the layout is closed; having the machine accept one we <em>wrote</em> is not.</li>
+    <li><b>Character set</b> — whether the dial can enter <code>#</code>, which the naming convention assumes.</li>
+    <li><b>PSG save variant</b> — never obtained; that code path is untested against a real file.</li>
+    <li><b>Two identical saves</b> — are the "unknown" regions state or scratch?</li>
+    <li><b>Stale headers</b> — does the machine tolerate <code>e4.esx</code>'s 16 bad headers, so should we repair or refuse?</li>
+  </ol>
+  <p>A seventh, cheap one is worth adding: <b>set FX1 to each of the 16 effect types in turn and save</b>. The manual
+     names the 16 types but gives no index mapping, and its two orderings disagree — so the FX table shows
+     "type 10 of 16" rather than a name. One pass settles it.</p>
+</div>
+
+<div class="card warn">
+  <h3>Your call: <code>bass_loop</code> packs as <code>ASS_LOOP</code></h3>
+  <p><code>pack_slot_name</code> takes the <b>last</b> 8 characters. TDD §5.3 says that is deliberate —
+     "trailing characters distinguish numbered variants (kick01 / kick02)" — so it was not changed. But
+     <code>snare_hat</code> becomes <code>NARE_HAT</code> in real use. Keep the tail rule, truncate from the front,
+     or add a guard?</p>
+</div>
+
+<h2>7. Deliberately not built</h2>
+<ul>
+  <li><b>Approximate FX preview (TDD phase 8).</b> The TDD itself calls this "phase 2" and lists bit-exact
+      emulation and a real-time engine as v1 non-goals. It also cannot be done honestly yet: the index→effect
+      mapping is unproven, so a preview would apply the wrong effect. The <code>FxRenderer</code> port is frozen
+      and waiting.</li>
+  <li><b>Writing stereo samples.</b> The layout is verified for reading and <code>set_stereo_ranges</code> exists,
+      but <code>commit_sample</code> refuses stereo until hardware accepts one we wrote.</li>
+  <li><b>Compacting a bank that contains stereo samples.</b> Refused loudly: a stereo slot owns two ranges that
+      must stay adjacent and equal-length.</li>
+  <li><b>Song tempo lock / mute hold / next song.</b> Not deferred by choice — still undeterminable, see above. The chain itself is editable.</li>
+  <li><b><code>_annotated</code> source copies (CLAUDE.md §15).</b> That rule triggers on a push to <code>main</code>,
+      which has not happened. The source already carries heavy "why" commentary; duplicating 35 files now would
+      drift immediately. Say the word and they get generated at merge time.</li>
+</ul>
+
+<footer>
+  Companion files: <code>research/CODEC_FINDINGS_LOG.md</code> (WF6 section — bugs, decisions, reasoning) ·
+  <code>next_steps/</code> (WF7 prompt + command) · <code>HANDOFF_claude_wf6.html</code> (the brief this work was done against).
+</footer>
+</div>
+</body>
+</html>

@@ -30,18 +30,77 @@ and whether the two bands are a signed encoding or simply unused values.
 
 ---
 
-## 2. Stereo sample header — GATES stereo import
+## 2. Stereo sample header — ~~GATES stereo import~~ **CLOSED 2026-08-23 (reading)**
 
-**Why:** All three corpus banks are mono-only, so the 44-byte stereo header's
-second channel-offset pair is completely untested. The layout is inferred from
-blank slots only. **Do not ship stereo import until a stereo bank round-trips.**
+**Closed without hardware.** The premise was wrong: `corpus/Chronic-Interactive.esx`
+contains **40 populated stereo slots**. It was added to the corpus after this
+checklist was written and item 2 was never re-evaluated against it.
 
-**Do:**
-1. Get at least one **stereo** sample into the machine — either sample in stereo
-   from the audio input, or load a stereo WAV from card.
-2. Save All to card.
-3. Verify: `python3 spike_a/esx_probe.py inspect BANK.esx` should report a
-   non-zero stereo count, then `verify` must still round-trip byte-identically.
+The layout is now VERIFIED from those slots, and it **corrects TDD §2.3** — there
+is no `loopStart` in the stereo header; the rate is at 32 and the tune at 36:
+
+```
+ 0..7  name                16..19 offsetChannel2Start   28..31 end
+ 8..11 offsetChannel1Start  20..23 offsetChannel2End     32..35 sampleRate
+12..15 offsetChannel1End    24..27 start                 36..37 sampleTune
+```
+
+40/40 on every predicted property; 0/40 for the TDD's claimed rate position.
+See `research/CODEC_FINDINGS_LOG.md` (WF8) and `codec/layout.py`.
+
+**Still open — WRITING a stereo sample.** Reading a layout is weaker evidence
+than writing one and having the machine accept it. `SampleSlot.set_stereo_ranges`
+exists but `commit_sample` refuses stereo until this is done:
+
+1. Commit a stereo sample with the app, Save All, load it on the ESX-1.
+2. Confirm it plays in stereo and the machine does not reject the bank.
+
+---
+
+## 2b. Save ONE song — **CLOSED 2026-08-26**
+
+**Was:** "Add patterns to songs" was asked for and could not be built, because
+all 64 songs in every corpus bank were byte-identical blanks.
+
+**Closed by:** `Chronic-Interactive-3.esx` — the same bank, resaved from the
+machine with two songs in it. The diff against the original is twenty bytes,
+all in the song area. Name, tempo and the **chain of pattern indices** are now
+decoded and editable; see the WF17 entry in `CODEC_FINDINGS_LOG.md`.
+
+**One thing still worth a minute at the device** (does not block anything):
+the chain in song `bib1` decodes as **A.02, A.01, A.04, A.06** (stored `01 00
+03 05`). If that is the order that was actually entered, the decoding is
+confirmed end to end and can be promoted from DOCUMENTED to VERIFIED. If the
+song was three patterns rather than four, the alternative reading applies and
+`core/song.py` needs the one-byte shift it documents.
+
+**Still not located, even with a song saved:** tempo lock, mute hold, next
+song. They are zero *with* a song as well as without, so they need a save with
+those specific settings changed — a one-minute job if they are ever wanted:
+set Tempo Lock on and Next Song to something, save, diff.
+
+---
+
+## 2c. Name the MIDI CC assign rows — **CLOSED 2026-08-26**
+
+**Was:** the CC table was located but its rows unnamed, so remapping a
+controller meant editing rows blind.
+
+**Closed by:** SawLoop's MIDI CC Assignments page for the same bank — 33 knob
+names with their numbers, matching the stored bytes **33/33, position for
+position, in all four banks**. No hardware needed after all. The row order is
+proven by that sequence match; the names are on that editor's authority.
+
+**Optional, does not block:** `t7_ccprobe` now checks the *write* direction —
+that this editor puts the table back where the machine reads it. Reading a table
+correctly does not prove writing it correctly.
+
+1. `python3 deploy/make_hw_test_banks.py --source <your bank>` and load
+   **t7_ccprobe** on the machine.
+2. Global > SHIFT + step key 15 (MIDIUtil) > dial to `CCAsin` > key 15.
+3. Dial to the four knobs the generator names and read back the CC number.
+   The probe writes CC 94+N into row N, so row 1 reads 95 ... row 33 reads 127.
+4. Load a t0 bank afterwards to restore the factory assignments.
 
 ---
 

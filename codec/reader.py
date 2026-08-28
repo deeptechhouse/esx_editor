@@ -10,8 +10,16 @@ CONTRACT
 DECOMPOSITION (guarantees byte-identity with codec.writer)
     pre    = [0x0 .. ADDR_PATTERN_DATA)   magic + globals + unknown_1
     patterns x256
-    mid    = [pat_end .. ADDR_SAMPLE_HEADER_MONO)   unknown_2 + songs +
-             song_events + unknown_3 + magic_2 + counts  (verbatim)
+    pre_songs  = [pat_end .. ADDR_SONG_DATA)   unknown_2 (verbatim)
+    post_songs = [song_end .. ADDR_MAGIC_2)    the area the TDD called song
+             events, plus unknown_3 (verbatim). The 64 song blocks between
+             them are parsed into Song objects and re-emitted from those,
+             so a song can be edited without disturbing either neighbour.
+    magic2 = [ADDR_MAGIC_2 .. ADDR_NUM_MONO_SAMPLES)   (verbatim)
+    counts = [ADDR_NUM_MONO_SAMPLES .. +12)   DECODED into Bank.sample_area:
+             num_mono, num_stereo, currentOffset. Decoded rather than kept
+             verbatim because committing a sample must update them.
+    hdr_gap= [counts_end .. ADDR_SAMPLE_HEADER_MONO)   (verbatim)
     mono   sample headers x256
     stereo sample headers x128
     tail   = [stereo_end .. ADDR_SAMPLE_DATA)   unknown_4 + slices + unknown_5
@@ -27,10 +35,11 @@ from __future__ import annotations
 
 import codec.layout as L
 from codec.errors import FormatError
-from core.bank import Bank, RawRegions, SAVE_ALL, SAVE_PSG
+from core.bank import SAVE_ALL, SAVE_PSG, Bank, RawRegions, SampleArea
 from core.global_params import GlobalParameters
 from core.pattern import Pattern
 from core.sample import SampleSlot
+from core.song import Song
 
 
 class BankReader:
@@ -47,47 +56,79 @@ class BankReader:
         if len(data) < L.SIZE_FILE_MIN:
             raise FormatError(
                 f"file is 0x{len(data):X} bytes, below All-save minimum "
-                f"0x{L.SIZE_FILE_MIN:X} (a PSG save? use read_auto)")
+                f"0x{L.SIZE_FILE_MIN:X} (a PSG save? use read_auto)"
+            )
         if not data.startswith(L.MAGIC_HEAD):
             raise FormatError(f"missing KORG magic at 0x0 (found {data[:4]!r})")
         if L.MAGIC_1_TAIL not in data[:0x20]:
             raise FormatError("missing 'ESX' tag in first 32 bytes")
-        m2 = data[L.ADDR_MAGIC_2:L.ADDR_MAGIC_2 + 16]
+        m2 = data[L.ADDR_MAGIC_2 : L.ADDR_MAGIC_2 + 16]
         if not m2.startswith(L.MAGIC_HEAD) or L.MAGIC_2_TAIL not in m2:
             raise FormatError("missing KORG..BPS sample-area header at 0x1B0000")
 
         pat_end = L.ADDR_PATTERN_DATA + L.NUM_PATTERNS * L.CHUNK_PATTERN
-        mono_end = L.ADDR_SAMPLE_HEADER_MONO + L.NUM_SAMPLES_MONO * L.CHUNK_SAMPLE_HEADER_MONO
-        stereo_end = L.ADDR_SAMPLE_HEADER_STEREO + L.NUM_SAMPLES_STEREO * L.CHUNK_SAMPLE_HEADER_STEREO
+        mono_end = (
+            L.ADDR_SAMPLE_HEADER_MONO + L.NUM_SAMPLES_MONO * L.CHUNK_SAMPLE_HEADER_MONO
+        )
+        stereo_end = (
+            L.ADDR_SAMPLE_HEADER_STEREO
+            + L.NUM_SAMPLES_STEREO * L.CHUNK_SAMPLE_HEADER_STEREO
+        )
 
-        globals_ = GlobalParameters(
-            data[L.ADDR_GLOBAL_PARAMETERS:L.ADDR_UNKNOWN_1])
+        globals_ = GlobalParameters(data[L.ADDR_GLOBAL_PARAMETERS : L.ADDR_UNKNOWN_1])
 
         patterns = []
         for i in range(L.NUM_PATTERNS):
             off = L.ADDR_PATTERN_DATA + i * L.CHUNK_PATTERN
-            patterns.append(Pattern.from_bytes(data[off:off + L.CHUNK_PATTERN]))
+            patterns.append(Pattern.from_bytes(data[off : off + L.CHUNK_PATTERN]))
 
         samples = []
         for i in range(L.NUM_SAMPLES_MONO):
             off = L.ADDR_SAMPLE_HEADER_MONO + i * L.CHUNK_SAMPLE_HEADER_MONO
-            samples.append(SampleSlot(
-                data[off:off + L.CHUNK_SAMPLE_HEADER_MONO], False, i))
+            samples.append(
+                SampleSlot(data[off : off + L.CHUNK_SAMPLE_HEADER_MONO], False, i)
+            )
         for i in range(L.NUM_SAMPLES_STEREO):
             off = L.ADDR_SAMPLE_HEADER_STEREO + i * L.CHUNK_SAMPLE_HEADER_STEREO
-            samples.append(SampleSlot(
-                data[off:off + L.CHUNK_SAMPLE_HEADER_STEREO], True,
-                L.NUM_SAMPLES_MONO + i))
+            samples.append(
+                SampleSlot(
+                    data[off : off + L.CHUNK_SAMPLE_HEADER_STEREO],
+                    True,
+                    L.NUM_SAMPLES_MONO + i,
+                )
+            )
 
-        raw = RawRegions({
-            "magic": data[L.ADDR_MAGIC_1:L.ADDR_GLOBAL_PARAMETERS],
-            "unknown_1": data[L.ADDR_UNKNOWN_1:L.ADDR_PATTERN_DATA],
-            "mid": data[pat_end:L.ADDR_SAMPLE_HEADER_MONO],
-            "gap_hdr": data[mono_end:L.ADDR_SAMPLE_HEADER_STEREO],
-            "tail": data[stereo_end:L.ADDR_SAMPLE_DATA],
-        })
-        pcm = data[L.ADDR_SAMPLE_DATA:]
-        return Bank(globals_, patterns, [], samples, pcm, raw, SAVE_ALL)
+        counts_at = L.ADDR_NUM_MONO_SAMPLES
+        counts_end = counts_at + 12
+        song_end = L.ADDR_SONG_DATA + L.NUM_SONGS * L.CHUNK_SONG
+        raw = RawRegions(
+            {
+                "magic": data[L.ADDR_MAGIC_1 : L.ADDR_GLOBAL_PARAMETERS],
+                "unknown_1": data[L.ADDR_UNKNOWN_1 : L.ADDR_PATTERN_DATA],
+                "pre_songs": data[pat_end : L.ADDR_SONG_DATA],
+                "post_songs": data[song_end : L.ADDR_MAGIC_2],
+                "magic2": data[L.ADDR_MAGIC_2 : counts_at],
+                "hdr_gap": data[counts_end : L.ADDR_SAMPLE_HEADER_MONO],
+                "gap_hdr": data[mono_end : L.ADDR_SAMPLE_HEADER_STEREO],
+                "tail": data[stereo_end : L.ADDR_SAMPLE_DATA],
+            }
+        )
+        sample_area = SampleArea.from_bytes(data[counts_at:counts_end])
+        # The writer emits the song area from these objects, so the split of
+        # the old verbatim "mid" region into pre_songs / songs / post_songs is
+        # what keeps the round-trip gate byte-identical: a Song patches only
+        # decoded fields into the block it was read from.
+        songs = [
+            Song.from_bytes(
+                data[
+                    L.ADDR_SONG_DATA + i * L.CHUNK_SONG : L.ADDR_SONG_DATA
+                    + (i + 1) * L.CHUNK_SONG
+                ]
+            )
+            for i in range(L.NUM_SONGS)
+        ]
+        pcm = data[L.ADDR_SAMPLE_DATA :]
+        return Bank(globals_, patterns, songs, samples, pcm, raw, SAVE_ALL, sample_area)
 
     def read_psg(self, data: bytes) -> Bank:
         """Parse a Save-PSG image (no sample area) into a Bank.
@@ -98,9 +139,11 @@ class BankReader:
         if not data.startswith(L.MAGIC_HEAD):
             raise FormatError(f"missing KORG magic at 0x0 (found {data[:4]!r})")
         raw = RawRegions({"psg_image": data})
-        globals_ = GlobalParameters(
-            data[L.ADDR_GLOBAL_PARAMETERS:L.ADDR_UNKNOWN_1]) \
-            if len(data) >= L.ADDR_UNKNOWN_1 else GlobalParameters(b"\x00" * 192)
+        globals_ = (
+            GlobalParameters(data[L.ADDR_GLOBAL_PARAMETERS : L.ADDR_UNKNOWN_1])
+            if len(data) >= L.ADDR_UNKNOWN_1
+            else GlobalParameters(b"\x00" * 192)
+        )
         return Bank(globals_, [], [], [], b"", raw, SAVE_PSG)
 
     def read_auto(self, data: bytes) -> Bank:

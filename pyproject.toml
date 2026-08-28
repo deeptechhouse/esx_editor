@@ -1,0 +1,129 @@
+# ESX Bank Studio — project metadata, tool config, and the version pins that
+# make a build reproducible.
+#
+# WHY THE PINS ARE EXACT
+#   PySide6 is pinned to 6.9.3 because 6.10+ ships macosx_13_0 wheels only and
+#   cannot install on macOS 12, which is the development machine. The Qt APIs
+#   this project uses (widgets, QPainter, QGraphicsView, file dialogs) are
+#   stable across 6.9 -> 6.11, so code written against 6.9 runs unchanged on
+#   newer machines — but CI pins the same version so drift is caught at the
+#   commit, not at the machine boundary.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "esx-bank-studio"
+version = "0.7.0"
+description = "Offline editor for Korg Electribe SX (.esx) banks"
+readme = "README.html"
+requires-python = "==3.13.*"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "deeptechhouse" }]
+keywords = ["korg", "electribe", "esx", "sampler", "audio"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Editors",
+]
+
+# The codec and core domain model are stdlib-only, on purpose: the parts that
+# can destroy a bank have no third-party surface at all.
+dependencies = [
+    "PySide6==6.9.3",
+]
+
+[project.optional-dependencies]
+# Audio adapters, all OPTIONAL. ffmpeg is an external binary, not a Python
+# package, so the converter has no entry here — it shells out, and the app
+# degrades to WAV-only when it is absent.
+#
+# These pins are the versions that actually install on the development machine
+# (macOS 12, Intel, CPython 3.13). librosa 0.11 does NOT: it pins an older
+# numba whose llvmlite has no cp313 x86_64 wheel, so pip tries to build it from
+# source and needs an LLVM toolchain. librosa 1.0 resolves to numba 0.62 /
+# llvmlite 0.45, which ship wheels. Install with --only-binary=:all: to keep it
+# that way.
+audio = [
+    "librosa==1.0.0",
+    "soundfile==0.14.0",
+    "numpy==2.3.5",
+]
+dev = [
+    "pytest==8.4.2",
+    "pytest-cov==7.1.0",
+    "hypothesis==6.165.10",
+    "ruff==0.16.2",
+    "black==26.5.1",
+    "mypy==1.18.2",
+    "pre-commit==4.3.0",
+]
+
+[project.scripts]
+esx-bank-studio = "ui.app:main"
+
+[project.urls]
+Repository = "https://github.com/deeptechhouse/esx_editor"
+
+[tool.setuptools]
+packages = ["audio", "codec", "core", "ui", "ui.motion", "ui.views", "ui.widgets", "ui.wizard", "workspace"]
+
+# -- lint / format ------------------------------------------------------------
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+extend-exclude = ["spike_a", "spike_midi", "research/naming.py"]
+
+[tool.ruff.lint]
+# F/E/W: real errors. I: import order. B: bugbear. UP: modern syntax.
+select = ["F", "E", "W", "I", "B", "UP"]
+ignore = [
+    "E501",    # line length is enforced by black, not twice
+    "B008",    # Qt constructors in defaults are idiomatic here
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Qt requires QApplication before any widget import, so test modules set the
+# platform and import after module level. That is E402 by design.
+"tests/*" = ["E402"]
+"ui/*" = ["E402"]
+
+[tool.black]
+line-length = 88
+target-version = ["py313"]
+extend-exclude = "spike_a|spike_midi"
+
+[tool.mypy]
+python_version = "3.13"
+warn_unused_configs = true
+ignore_missing_imports = true
+# The codec is where a type error costs a corrupted bank; hold it to a higher
+# standard than the UI, where Qt's own stubs are the limiting factor.
+files = ["codec", "core", "workspace", "audio", "midi"]
+
+# ui/ is deliberately outside `files` above: Qt's stubs, not our code, would be
+# the limiting factor there, and a type error in a widget cannot corrupt a bank.
+
+# -- tests --------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "corpus: needs a real .esx bank (gitignored); skipped on a fresh clone",
+    "slow: property tests with large example counts",
+]
+filterwarnings = ["error::DeprecationWarning:codec.*"]
+
+[tool.coverage.run]
+branch = false
+omit = ["*/__pycache__/*", "tests/*", "spike_a/*", "spike_midi/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

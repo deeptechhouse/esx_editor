@@ -20,9 +20,9 @@ CLASS MAP (TDD §3.1)
     Bank
      ├── GlobalParameters
      ├── Pattern x256  (PatternHeader, Part x16, FxUnit x3, MotionSlot x24)
-     ├── Song x64      (SongEvent x n)
+     ├── Song x64      (name, tempo, an ordered chain of pattern indices)
      ├── SampleSlot x384  (256 mono + 128 stereo)
-     └── RawRegions    (the five unknown regions + anything undecoded)
+     └── RawRegions    (the unknown regions + anything undecoded)
 """
 
 from .errors import InvariantError

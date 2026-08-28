@@ -1,0 +1,5 @@
+cd /Users/aaandy/_andy_ai_projects_2026/esx_editor
+git checkout feat/wf6-views-wizard
+SITE=$(~/.venvs/esx/bin/python -c "import site; print(site.getsitepackages()[0])")
+QT_QPA_PLATFORM=offscreen PYTHONPATH="$SITE:$PWD" python3 -m pytest tests/ -q
+# Then finish WF6 per HANDOFF_claude_wf6.html — do not restart WF1-WF5.

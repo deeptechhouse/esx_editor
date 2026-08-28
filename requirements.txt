@@ -1,0 +1,3 @@
+# Runtime pins. See pyproject.toml for the rationale (PySide6 6.9.3 is the
+# last version installable on macOS 12).
+PySide6==6.9.3

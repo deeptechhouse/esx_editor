@@ -1,0 +1,8 @@
+# Optional MIDI input, for MIDI Learn in the Global tab.
+# Everything else works without these; the Learn button disables itself and
+# says why. RECEIVE ONLY - nothing in this app transmits MIDI.
+#
+# python-rtmidi has no wheel for every platform and may build from source,
+# which needs a C++ toolchain (Xcode CLT on macOS).
+mido==1.3.3
+python-rtmidi==1.5.8

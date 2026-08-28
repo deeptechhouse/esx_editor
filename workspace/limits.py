@@ -13,15 +13,20 @@ Ported in contract form from spike_a/limits.py.
 
 from __future__ import annotations
 
-from typing import Sequence
+import os
+from collections.abc import Sequence
+
+import codec.layout as L
+from workspace.budget import TIERS, BudgetCalculator
 
 
 class Severity:
     """Finding severities."""
+
     OK = "ok"
-    NOTICE = "notice"      # informational, no dialog
-    WARN = "warn"          # dismissible, supports "ignore for all"
-    BLOCK = "block"        # cannot proceed -- physically will not fit
+    NOTICE = "notice"  # informational, no dialog
+    WARN = "warn"  # dismissible, supports "ignore for all"
+    BLOCK = "block"  # cannot proceed -- physically will not fit
 
 
 # Warning codes that all mean "this sample is big" -> one mute action (TDD §6.4).
@@ -33,8 +38,7 @@ class Finding:
 
     __slots__ = ("_level", "_code", "_message", "_dismissible")
 
-    def __init__(self, level: str, code: str, message: str,
-                 dismissible: bool = True):
+    def __init__(self, level: str, code: str, message: str, dismissible: bool = True):
         self._level = level
         self._code = code
         self._message = message
@@ -74,14 +78,14 @@ class WarningPolicy:
         self._muted: set[str] = set()
 
     def mute(self, code: str) -> None:
-        raise NotImplementedError
+        self._muted.add(code)
 
     def mute_size_warnings(self) -> None:
         """One click: stop warning about large samples entirely."""
-        raise NotImplementedError
+        self._muted.update(SIZE_WARNING_CODES)
 
     def unmute(self, code: str) -> None:
-        raise NotImplementedError
+        self._muted.discard(code)
 
     @property
     def muted(self) -> tuple[str, ...]:
@@ -89,17 +93,58 @@ class WarningPolicy:
 
     def visible(self, findings: Sequence[Finding]) -> tuple[Finding, ...]:
         """Findings that survive the mute set (BLOCK always survives)."""
-        raise NotImplementedError
+        return tuple(
+            f
+            for f in findings
+            if f.level != Severity.OK and not (f.dismissible and f.code in self._muted)
+        )
 
 
 class SampleLimitPolicy:
     """Evaluates a candidate sample against the fit/analysis/warn rules."""
 
-    __slots__ = ()
+    __slots__ = (
+        "_analysis_max_s",
+        "_warn_bank_frac",
+        "_max_single_frac",
+        "_warn_source_bytes",
+        "_partial_analysis_s",
+        "_capacity",
+        "_calc",
+    )
 
-    def check_sample(self, path: str, duration_s: float, channels: int,
-                     target_rate: int, used_bytes: int = 0
-                     ) -> tuple[tuple[Finding, ...], bool]:
+    # Defaults match spike_a/limits.py CONFIG (TDD §6.4 / §6.5).
+    ANALYSIS_MAX_SECONDS = 30.0
+    WARN_BANK_FRACTION = 0.10
+    MAX_SINGLE_SAMPLE_FRACTION = 0.80
+    WARN_SOURCE_BYTES = 20 * 1024 * 1024
+    PARTIAL_ANALYSIS_SECONDS = 30.0
+
+    def __init__(
+        self,
+        analysis_max_seconds: float = ANALYSIS_MAX_SECONDS,
+        warn_bank_fraction: float = WARN_BANK_FRACTION,
+        max_single_fraction: float = MAX_SINGLE_SAMPLE_FRACTION,
+        warn_source_bytes: int = WARN_SOURCE_BYTES,
+        partial_analysis_seconds: float = PARTIAL_ANALYSIS_SECONDS,
+        capacity: int | None = None,
+    ):
+        self._analysis_max_s = analysis_max_seconds
+        self._warn_bank_frac = warn_bank_fraction
+        self._max_single_frac = max_single_fraction
+        self._warn_source_bytes = warn_source_bytes
+        self._partial_analysis_s = partial_analysis_seconds
+        self._capacity = L.MAX_SAMPLE_BYTES if capacity is None else capacity
+        self._calc = BudgetCalculator()
+
+    def check_sample(
+        self,
+        path: str,
+        duration_s: float,
+        channels: int,
+        target_rate: int,
+        used_bytes: int = 0,
+    ) -> tuple[tuple[Finding, ...], bool]:
         """Return (findings, analyse_ok).
 
         `used_bytes` is how much of the bank is already spoken for, so the fit
@@ -107,4 +152,89 @@ class SampleLimitPolicy:
         the analysis length limit (TDD §6.5). BLOCK messages name the concrete
         fixes that would work (fold to mono, drop a tier, trim) per TDD §6.4.
         """
-        raise NotImplementedError
+        findings: list[Finding] = []
+        cost = self._calc.cost_bytes(duration_s, target_rate, channels)
+        free = self._capacity - used_bytes
+        single_cap = int(self._capacity * self._max_single_frac)
+
+        if cost > single_cap:
+            frames = int(round(duration_s * target_rate))
+            fixes: list[str] = []
+            if channels > 1 and (frames * 2) <= single_cap:
+                fixes.append("fold to mono")
+            for label, rate in TIERS[1:]:
+                if int(round(duration_s * rate)) * 2 <= single_cap:
+                    fixes.append(f"drop to {label} ({rate} Hz) mono")
+                    break
+            fixes.append(f"trim to {single_cap / (44100 * 2):.0f}s at CD mono")
+            findings.append(
+                Finding(
+                    Severity.BLOCK,
+                    "exceeds_single_cap",
+                    f"{duration_s:.1f}s at {target_rate} Hz needs {cost:,} B. One sample "
+                    f"may use at most {self._max_single_frac:.0%} of sample memory "
+                    f"({single_cap:,} B), leaving {1 - self._max_single_frac:.0%} free. "
+                    f"Options: " + "; ".join(fixes) + ".",
+                    dismissible=False,
+                )
+            )
+        elif cost > self._capacity * self._warn_bank_frac and cost > single_cap * 0.5:
+            steps = duration_s / 128.0
+            findings.append(
+                Finding(
+                    Severity.WARN,
+                    "dominant_sample",
+                    f"uses {cost:,} B — {100 * cost / self._capacity:.0f}% of the bank, "
+                    f"leaving {self._capacity - cost:,} B "
+                    f"({(self._capacity - cost) / (44100 * 2):.0f}s at CD mono) for "
+                    f"everything else. Motion-sequencing Start Point across its 128 "
+                    f"positions moves ~{steps:.2f}s per step.",
+                )
+            )
+        elif cost > free:
+            findings.append(
+                Finding(
+                    Severity.BLOCK,
+                    "exceeds_free",
+                    f"needs {cost:,} B but only {free:,} B remain in this bank.",
+                    dismissible=False,
+                )
+            )
+        elif cost > self._capacity * self._warn_bank_frac:
+            findings.append(
+                Finding(
+                    Severity.WARN,
+                    "large_sample",
+                    f"uses {cost:,} B — {100 * cost / self._capacity:.0f}% of the whole bank.",
+                )
+            )
+
+        try:
+            src = os.path.getsize(path)
+            if src > self._warn_source_bytes:
+                findings.append(
+                    Finding(
+                        Severity.WARN,
+                        "large_source",
+                        f"source file is {src / 1048576:.1f} MB.",
+                    )
+                )
+        except OSError:
+            pass
+
+        analyse_ok = duration_s <= self._analysis_max_s
+        if not analyse_ok:
+            findings.append(
+                Finding(
+                    Severity.NOTICE,
+                    "analysis_skipped",
+                    f"{duration_s:.1f}s exceeds the {self._analysis_max_s:.0f}s analysis "
+                    f"limit — key detection skipped, no key appended. A single key for a "
+                    f"recording this long would not be meaningful. You can analyse the "
+                    f"first {self._partial_analysis_s:.0f}s explicitly if you want one.",
+                )
+            )
+
+        if not findings:
+            findings.append(Finding(Severity.OK, "ok", "fine"))
+        return tuple(findings), analyse_ok

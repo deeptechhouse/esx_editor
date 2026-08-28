@@ -23,8 +23,8 @@ import os
 import tempfile
 
 import codec.layout as L
-from codec.errors import RoundTripError, CodecError
-from core.bank import Bank, SAVE_PSG
+from codec.errors import CodecError, RoundTripError
+from core.bank import SAVE_PSG, Bank
 
 
 class BankWriter:
@@ -48,22 +48,33 @@ class BankWriter:
         out += raw.get("unknown_1")
         for pattern in bank.patterns():
             out += pattern.to_bytes()
-        out += raw.get("mid")
+        out += raw.get("pre_songs")
+        for song in bank.songs():
+            out += song.to_bytes()
+        out += raw.get("post_songs")
+        out += raw.get("magic2")
+        out += bank.sample_area.to_bytes()
+        out += raw.get("hdr_gap")
 
         samples = bank.samples()
-        for slot in samples[:L.NUM_SAMPLES_MONO]:
+        for slot in samples[: L.NUM_SAMPLES_MONO]:
             out += slot.to_bytes()
         if raw.has("gap_hdr"):
             out += raw.get("gap_hdr")
-        for slot in samples[L.NUM_SAMPLES_MONO:]:
+        for slot in samples[L.NUM_SAMPLES_MONO :]:
             out += slot.to_bytes()
         out += raw.get("tail")
         out += bank.pcm
         return bytes(out)
 
-    def write_file(self, bank: Bank, path: str,
-                   *, keep_backup: bool = True,
-                   allow_invalid: bool = False) -> None:
+    def write_file(
+        self,
+        bank: Bank,
+        path: str,
+        *,
+        keep_backup: bool = True,
+        allow_invalid: bool = False,
+    ) -> None:
         """Write a Bank to `path` using the mandatory safety protocol.
 
         Refuses to write a bank that fails coherence validation unless
@@ -78,30 +89,37 @@ class BankWriter:
         #    not, so the default guard is meaningful on its own.)
         if not allow_invalid:
             from codec.validator import BankValidator
+
             report = BankValidator().validate(bank)
             if not report.ok:
                 codes = ", ".join(sorted({f.code for f in report.errors()}))
                 raise CodecError(
                     f"refusing to write an incoherent bank "
                     f"({len(report.errors())} error(s): {codes}); "
-                    f"pass allow_invalid=True to override")
+                    f"pass allow_invalid=True to override"
+                )
 
         data = self.write(bank)
 
         # 1. serialize to a temp file in the SAME directory (atomic-replace-safe)
         dest_dir = os.path.dirname(os.path.abspath(path))
-        fd, tmp = tempfile.mkstemp(suffix=".esx.tmp", dir=dest_dir)
+        fd, tmp_created = tempfile.mkstemp(suffix=".esx.tmp", dir=dest_dir)
+        # `tmp` is cleared once the file has been moved into place, so the
+        # finally-block knows there is nothing left to clean up.
+        tmp: str | None = tmp_created
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(data)
 
             # 2. verify by re-reading the temp file
             from codec.reader import BankReader
-            reread = BankReader().read_auto(_read_bytes(tmp))
+
+            reread = BankReader().read_auto(_read_bytes(tmp_created))
             if self.write(reread) != data:
                 raise RoundTripError(
                     "re-read of the written file did not reproduce the intended "
-                    "bytes; aborting before touching the existing file")
+                    "bytes; aborting before touching the existing file"
+                )
 
             # 4. keep a backup of the previous version
             if keep_backup and os.path.exists(path):
@@ -109,7 +127,7 @@ class BankWriter:
                 _replace(path, bak)
 
             # 3. atomic replace
-            _replace(tmp, path)
+            _replace(tmp_created, path)
             tmp = None
         finally:
             if tmp is not None and os.path.exists(tmp):
@@ -124,5 +142,5 @@ def _read_bytes(path: str) -> bytes:
 def _replace(src: str, dst: str) -> None:
     try:
         os.replace(src, dst)
-    except OSError as exc:                                # pragma: no cover
+    except OSError as exc:  # pragma: no cover
         raise CodecError(f"atomic replace failed: {exc}") from exc

@@ -13,8 +13,9 @@ Ported in contract form from spike_a/budget.py; bodies land in a later workflow.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Callable, Sequence
 
+import codec.layout as L
 
 # The quality ladder offered in the UI (label, rate). TDD §6.3.
 TIERS: tuple[tuple[str, int], ...] = (
@@ -25,6 +26,7 @@ TIERS: tuple[tuple[str, int], ...] = (
     ("Telephone", 11025),
 )
 DEFAULT_RATE = 44100
+CAPACITY = L.MAX_SAMPLE_BYTES  # 25,165,824 bytes
 
 
 class BudgetItem:
@@ -32,8 +34,7 @@ class BudgetItem:
 
     __slots__ = ("_name", "_duration_s", "_source_rate", "_channels")
 
-    def __init__(self, name: str, duration_s: float,
-                 source_rate: int, channels: int):
+    def __init__(self, name: str, duration_s: float, source_rate: int, channels: int):
         self._name = name
         self._duration_s = duration_s
         self._source_rate = source_rate
@@ -59,17 +60,48 @@ class BudgetCalculator:
 
     @staticmethod
     def align_up(n: int, boundary: int) -> int:
-        raise NotImplementedError
+        if boundary <= 0:
+            raise ValueError(f"alignment boundary must be > 0, got {boundary}")
+        return ((n + boundary - 1) // boundary) * boundary
 
     def cost_bytes(self, duration_s: float, rate: int, channels: int = 1) -> int:
-        """Exact bytes a sample occupies at a rate: align_up(frames*2*ch + 2, 4)."""
-        raise NotImplementedError
+        """Exact bytes a sample consumes, block header included.
 
-    def total_cost(self, items: Sequence[BudgetItem],
-                   rate_for=None) -> int:
+            align_up(16 + frames*2*channels + 2, 4)
+
+        The 16 is the PCM block header every sample carries (see
+        codec.layout). It was missing until 2026-08-23, which under-counted
+        every sample by 16 bytes — small per sample, but 384 of them is 6 KB of
+        phantom free space, and the scoreboard's whole job is to be exact.
+
+        Verified against real allocation: sample 0 of Chronic-Interactive.esx is
+        8,488 frames and the next sample starts at 16,996 — which is
+        align_up(16 + 16,976 + 2, 4).
+        """
+        if duration_s < 0 or rate <= 0 or channels < 1:
+            raise ValueError(
+                f"invalid cost inputs: duration={duration_s} rate={rate} ch={channels}"
+            )
+        frames = int(round(duration_s * rate))
+        raw = frames * 2 * channels
+        return self.align_up(L.PCM_BLOCK_HEADER_LEN + raw + 2, 4)
+
+    def total_cost(
+        self, items: Sequence[BudgetItem], rate_for: Callable[[str], int] | None = None
+    ) -> int:
         """Sum the cost of every item; rate_for(name)->rate overrides the default."""
-        raise NotImplementedError
+        lookup = rate_for or (lambda _name: DEFAULT_RATE)
+        return sum(
+            self.cost_bytes(item.duration_s, lookup(item.name), item.channels)
+            for item in items
+        )
 
     def seconds_available(self, rate: int, channels: int = 1) -> float:
         """Seconds of audio that fit in an empty bank at this rate."""
-        raise NotImplementedError
+        if rate <= 0 or channels < 1:
+            raise ValueError(f"invalid rate/channels: {rate}/{channels}")
+        return CAPACITY / (rate * 2 * channels)
+
+    def remaining_bytes(self, used: int) -> int:
+        """Bytes still free given a currently-used total (may be negative)."""
+        return CAPACITY - used

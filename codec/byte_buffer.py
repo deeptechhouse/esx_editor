@@ -47,18 +47,16 @@ class ByteReader:
     def read(self, n: int) -> bytes:
         """Read `n` raw bytes and advance the cursor."""
         if n < 0 or self._pos + n > len(self._data):
-            raise ValueError(
-                f"read {n} at {self._pos} exceeds size {len(self._data)}")
-        out = self._data[self._pos:self._pos + n]
+            raise ValueError(f"read {n} at {self._pos} exceeds size {len(self._data)}")
+        out = self._data[self._pos : self._pos + n]
         self._pos += n
         return out
 
     def read_at(self, pos: int, n: int) -> bytes:
         """Read `n` bytes at an absolute offset WITHOUT moving the cursor."""
         if pos < 0 or n < 0 or pos + n > len(self._data):
-            raise ValueError(
-                f"read_at {n} at {pos} exceeds size {len(self._data)}")
-        return self._data[pos:pos + n]
+            raise ValueError(f"read_at {n} at {pos} exceeds size {len(self._data)}")
+        return self._data[pos : pos + n]
 
     def read_u8(self) -> int:
         return self.read(1)[0]
