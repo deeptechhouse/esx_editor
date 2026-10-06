@@ -46,6 +46,7 @@ class MotionDomain:
     BOOLEAN = "boolean"
     ENUM = "enum"
 
+    # O(1) time, O(1) space
     def __init__(self, kind: str, option_count: int, forced_trig: bool):
         self._kind = kind
         self._option_count = option_count
@@ -53,6 +54,7 @@ class MotionDomain:
         if kind in (self.BOOLEAN, self.ENUM):
             self._reject_inexpressible_option_count()
 
+    # O(1) time, O(1) space
     def _reject_inexpressible_option_count(self) -> None:
         """Refuse an option count the VERIFIED rule cannot express.
 
@@ -83,19 +85,23 @@ class MotionDomain:
             )
 
     @property
+    # O(1) time, O(1) space
     def kind(self) -> str:
         return self._kind
 
     @property
+    # O(1) time, O(1) space
     def forced_trig(self) -> bool:
         return self._forced_trig
 
+    # O(1) time, O(1) space
     def _step(self) -> int:
         """Byte spacing per option for a discrete kind: ceil(128 / N)."""
         if self._option_count < 1:
             raise InvariantError("discrete domain needs option_count >= 1")
         return -(-128 // self._option_count)
 
+    # O(1) time, O(1) space
     def encode(self, value: int) -> int:
         """Musical/option value -> stored byte (0-127).
 
@@ -115,19 +121,23 @@ class MotionDomain:
             raise InvariantError(f"continuous value {value} out of range 0..127")
         return value
 
+    # O(1) time, O(1) space
     def decode(self, stored: int) -> int:
         """Stored byte -> musical/option value (inverse of encode)."""
         if self._kind in (self.BOOLEAN, self.ENUM):
             return stored // self._step()
         return stored
 
+    # O(N) time, O(N) space — N = stored values in the domain (the option count, at most 128 because __init__ rejects anything larger, or 128 for continuous)
     def legal_values(self) -> tuple[int, ...]:
         """The stored bytes this domain permits (for snapping/UI)."""
         if self._kind in (self.BOOLEAN, self.ENUM):
             step = self._step()
+            # O(N) time, O(N) space — N = option count (at most 128, enforced in __init__)
             return tuple(i * step for i in range(self._option_count))
         return tuple(range(128))
 
+    # O(N) time, O(N) space — N = stored values in the domain (the option count, at most 128 because __init__ rejects anything larger, or 128 for continuous) (builds legal_values, then a min over it)
     def snap_stored(self, raw: int) -> int:
         """Clamp a raw 0–127 to a legal stored byte for this domain.
 
@@ -141,14 +151,17 @@ class MotionDomain:
         legal = self.legal_values()
         return min(legal, key=lambda v: abs(v - raw))
 
+    # O(1) time, O(1) space
     def is_discrete(self) -> bool:
         return self._kind in (self.BOOLEAN, self.ENUM)
 
     @classmethod
+    # O(1) time, O(1) space
     def continuous(cls, forced_trig: bool = False) -> MotionDomain:
         return cls(cls.CONTINUOUS, 0, forced_trig)
 
     @classmethod
+    # O(1) time, O(1) space
     def discrete(cls, option_count: int, forced_trig: bool = True) -> MotionDomain:
         return cls(cls.ENUM, option_count, forced_trig)
 
@@ -168,6 +181,7 @@ class MotionSlot:
     NUM_STEPS = 128
     CHUNK_SIZE = 130  # 2-byte target + 128 values
 
+    # O(T) time, O(T) space — T = 128 steps (copied into a bytearray)
     def __init__(self, target: int, values: bytes):
         if len(values) != self.NUM_STEPS:
             raise InvariantError(
@@ -179,23 +193,28 @@ class MotionSlot:
         self._values = bytearray(values)
 
     @property
+    # O(1) time, O(1) space
     def target(self) -> int:
         return self._target
 
     @property
+    # O(T) time, O(T) space — T = 128 steps (defensive copy)
     def values(self) -> bytes:
         """Defensive copy -- callers cannot mutate internal state."""
         return bytes(self._values)
 
     @property
+    # O(1) time, O(1) space
     def in_use(self) -> bool:
         return self._target != self.EMPTY_TARGET
 
+    # O(1) time, O(1) space
     def set_target(self, target: int) -> None:
         if not (0 <= target <= 0xFFFF):
             raise InvariantError(f"motion target {target} out of uint16 range")
         self._target = target
 
+    # O(1) time, O(1) space
     def set_step(self, step: int, value: int | None, domain: MotionDomain) -> None:
         """Set one step. `value=None` means Disabl.
 
@@ -207,6 +226,7 @@ class MotionSlot:
             raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS - 1}")
         self._values[step] = self.DISABLED if value is None else domain.encode(value)
 
+    # O(N) time, O(N) space — N = stored values in the domain (the option count, at most 128 because __init__ rejects anything larger, or 128 for continuous) (via snap_stored)
     def write_stored(
         self,
         step: int,
@@ -233,28 +253,34 @@ class MotionSlot:
             self.set_step(step, snapped, domain)
 
     @classmethod
+    # O(T) time, O(T) space — T = 128 steps
     def empty(cls) -> MotionSlot:
         return cls(cls.EMPTY_TARGET, bytes([cls.DISABLED] * cls.NUM_STEPS))
 
+    # O(1) time, O(1) space
     def get_step(self, step: int) -> int:
         """Return the raw stored byte at a step (may be the Disabl sentinel)."""
         if not (0 <= step < self.NUM_STEPS):
             raise InvariantError(f"step {step} out of range 0..{self.NUM_STEPS - 1}")
         return self._values[step]
 
+    # O(1) time, O(1) space
     def is_disabled(self, step: int) -> bool:
         return self.get_step(step) == self.DISABLED
 
+    # O(T) time, O(T) space — T = 128 steps
     def clear(self) -> None:
         """Mark the slot unused and fill every step with Disabl."""
         self._target = self.EMPTY_TARGET
         self._values = bytearray([self.DISABLED] * self.NUM_STEPS)
 
+    # O(T) time, O(T) space — T = 128 steps
     def to_bytes(self) -> bytes:
         """Serialize to the 130-byte on-disk form (uint16 target + 128 values)."""
         return struct.pack(">H", self._target) + bytes(self._values)
 
     @classmethod
+    # O(T) time, O(T) space — T = 128 steps
     def from_bytes(cls, raw: bytes) -> MotionSlot:
         """Parse the 130-byte on-disk form."""
         if len(raw) != cls.CHUNK_SIZE:

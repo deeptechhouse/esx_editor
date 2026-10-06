@@ -34,6 +34,7 @@ class SampleSlot:
 
     __slots__ = ("_raw", "_stereo", "_index")
 
+    # O(1) time, O(1) space
     def __init__(self, raw: bytes, stereo: bool, index: int):
         expected = STEREO_SIZE if stereo else MONO_SIZE
         if len(raw) != expected:
@@ -46,26 +47,32 @@ class SampleSlot:
         self._index = index
 
     @property
+    # O(1) time, O(1) space
     def index(self) -> int:
         return self._index
 
     @property
+    # O(1) time, O(1) space
     def stereo(self) -> bool:
         return self._stereo
 
     @property
+    # O(1) time, O(1) space
     def empty(self) -> bool:
         """True if the slot's channel-1 offset holds the empty sentinel."""
         return struct.unpack_from(">I", self._raw, 8)[0] == EMPTY_OFFSET
 
     @property
+    # O(1) time, O(1) space
     def name_bytes(self) -> bytes:
         return bytes(self._raw[:NAME_LEN])
 
     @property
+    # O(1) time, O(1) space
     def name(self) -> str:
         return self.name_bytes.decode("ascii", "replace").rstrip("\x00 ")
 
+    # O(v) time, O(v) space — v = characters in the supplied name (encoded before truncation)
     def set_name(self, value: str) -> None:
         """Set the slot name; pads/truncates to exactly 8 bytes (invariant)."""
         raw = value.encode("ascii", "replace")[:NAME_LEN].ljust(NAME_LEN, b" ")
@@ -74,14 +81,17 @@ class SampleSlot:
         self._raw[:NAME_LEN] = raw
 
     @property
+    # O(1) time, O(1) space
     def offset_start(self) -> int:
         """Start byte offset of channel 1 PCM, relative to ADDR_SAMPLE_DATA."""
         return struct.unpack_from(">I", self._raw, 8)[0]
 
     @property
+    # O(1) time, O(1) space
     def offset_end(self) -> int:
         return struct.unpack_from(">I", self._raw, 12)[0]
 
+    # O(1) time, O(1) space
     def set_range(self, start: int, end: int) -> None:
         """Set the PCM byte range this slot points at.
 
@@ -107,6 +117,7 @@ class SampleSlot:
         struct.pack_into(">I", self._raw, L.MONO_OFF_END, end)
         struct.pack_into(">I", self._raw, L.MONO_OFF_LOOP_START, start)
 
+    # O(k) time, O(1) space — k = 2 channel ranges
     def set_stereo_ranges(
         self, ch1: tuple[int, int], ch2: tuple[int, int], *, frames: int
     ) -> None:
@@ -117,6 +128,7 @@ class SampleSlot:
         """
         if not self._stereo:
             raise InvariantError("set_stereo_ranges() is for stereo slots only")
+        # O(k) time, O(1) space — k = 2 channel ranges
         for start, end in (ch1, ch2):
             if start < 0 or end < start:
                 raise InvariantError(f"invalid PCM range {start}..{end}")
@@ -134,6 +146,7 @@ class SampleSlot:
         struct.pack_into(">I", self._raw, L.STEREO_OFF_START, 0)
         struct.pack_into(">I", self._raw, L.STEREO_OFF_END, frames)
 
+    # O(1) time, O(1) space
     def set_sample_rate(self, rate: int) -> None:
         """Set the ORIGINAL sample rate (mono header, offset 28)."""
         if not (L.MIN_IMPORT_RATE_HZ <= rate <= L.MAX_IMPORT_RATE_HZ):
@@ -142,6 +155,7 @@ class SampleSlot:
             )
         struct.pack_into(">I", self._raw, self._rate_offset, rate)
 
+    # O(1) time, O(1) space
     def clear(self) -> None:
         """Restore the empty-slot form: the machine's own sentinel, name blanked."""
         self._raw[:NAME_LEN] = b" " * NAME_LEN
@@ -151,14 +165,17 @@ class SampleSlot:
         struct.pack_into(">I", self._raw, 20, EMPTY_OFFSET)
 
     @property
+    # O(1) time, O(1) space
     def _rate_offset(self) -> int:
         return L.STEREO_OFF_SAMPLE_RATE if self._stereo else L.MONO_OFF_SAMPLE_RATE
 
     @property
+    # O(1) time, O(1) space
     def _tune_offset(self) -> int:
         return L.STEREO_OFF_SAMPLE_TUNE if self._stereo else L.MONO_OFF_SAMPLE_TUNE
 
     @property
+    # O(1) time, O(1) space
     def sample_rate(self) -> int:
         """The sample's ORIGINAL rate, before any conversion.
 
@@ -169,6 +186,7 @@ class SampleSlot:
         return struct.unpack_from(">I", self._raw, self._rate_offset)[0]
 
     @property
+    # O(1) time, O(1) space
     def audio_range(self) -> tuple[int, int]:
         """(start, end) of the AUDIO, skipping the 16-byte block header.
 
@@ -179,16 +197,19 @@ class SampleSlot:
         return (self.offset_start + L.PCM_BLOCK_HEADER_LEN, self.offset_end)
 
     @property
+    # O(1) time, O(1) space
     def audio_bytes(self) -> int:
         """Length of the audio alone."""
         return max(0, self.offset_end - self.offset_start - L.PCM_BLOCK_HEADER_LEN)
 
     @property
+    # O(1) time, O(1) space
     def frames(self) -> int:
         """Number of 16-bit frames in this slot's audio."""
         return self.audio_bytes // 2
 
     @property
+    # O(1) time, O(1) space
     def channel2_range(self) -> tuple[int, int] | None:
         """(start, end) of the second channel's PCM, or None for a mono slot."""
         if not self._stereo:
@@ -199,6 +220,7 @@ class SampleSlot:
         )
 
     @property
+    # O(1) time, O(1) space
     def stored_tune(self) -> float:
         """Sample Tune in semitones, as stored (TDD 2.3, VERIFIED packing).
 
@@ -217,6 +239,7 @@ class SampleSlot:
         magnitude = semitones + hundredths / 100.0
         return -magnitude if packed & L.TUNE_SIGN_BIT else magnitude
 
+    # O(1) time, O(1) space
     def rate_compensation(self) -> float:
         """The tune the machine owes purely to the sample's rate.
 
@@ -229,6 +252,7 @@ class SampleSlot:
             raise InvariantError(f"slot {self._index} has a non-positive rate {rate}")
         return 12.0 * math.log2(rate / L.SAMPLE_RATE_HZ)
 
+    # O(1) time, O(1) space
     def musical_tune(self) -> float:
         """Transposition with rate compensation removed.
 
@@ -238,6 +262,7 @@ class SampleSlot:
         """
         return self.stored_tune - self.rate_compensation()
 
+    # O(1) time, O(1) space
     def set_musical_tune(self, semitones: float) -> None:
         """Set the musical transposition, re-adding the rate compensation."""
         total = semitones + self.rate_compensation()
@@ -257,9 +282,11 @@ class SampleSlot:
             packed |= L.TUNE_SIGN_BIT
         struct.pack_into(">H", self._raw, self._tune_offset, packed)
 
+    # O(1) time, O(1) space
     def to_bytes(self) -> bytes:
         return bytes(self._raw)
 
     @classmethod
+    # O(1) time, O(1) space
     def from_bytes(cls, raw: bytes, stereo: bool, index: int) -> SampleSlot:
         return cls(raw, stereo, index)

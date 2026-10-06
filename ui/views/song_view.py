@@ -42,6 +42,7 @@ class SongView(QWidget):
 
     songEdited = Signal()
 
+    # O(N) time, O(N) space — N = 256 pattern slots offered by the picker
     def __init__(self, parent=None):
         super().__init__(parent)
         self._bank: Bank | None = None
@@ -137,11 +138,13 @@ class SongView(QWidget):
 
     # -- binding ------------------------------------------------------------
 
+    # O(P + G·g + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); g = 528 bytes per song block; C = positions in the selected song's chain (at most 256)
     def bind_bank(self, bank: Bank | None) -> None:
         self._bank = bank
         self._index = 0
         self.reload()
 
+    # O(G) time, O(G) space — G = songs (tuple copy, 64)
     def song(self):
         """The selected Song, or None when no bank is loaded."""
         if self._bank is None:
@@ -151,6 +154,7 @@ class SongView(QWidget):
             return None
         return songs[self._index]
 
+    # O(P + G·g + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); g = 528 bytes per song block; C = positions in the selected song's chain (at most 256)
     def reload(self) -> None:
         self._loading = True
         try:
@@ -162,10 +166,12 @@ class SongView(QWidget):
 
     # -- internals ----------------------------------------------------------
 
+    # O(N) time, O(N) space — N = 256 pattern slots offered by the picker
     def _fill_picker(self, patterns) -> None:
         """Offer patterns as the machine names them, with their own 8-char name."""
         current = self.pattern_picker.currentData()
         self.pattern_picker.clear()
+        # O(N) time, O(N) space — N = 256 pattern slots offered by the picker
         for i in range(L.NUM_PATTERNS):
             name = patterns[i].name if i < len(patterns) else ""
             label = f"{pattern_label(i)}  {name}" if name else pattern_label(i)
@@ -173,12 +179,14 @@ class SongView(QWidget):
         if current is not None:
             self.pattern_picker.setCurrentIndex(int(current))
 
+    # O(G·g) time, O(G) space — G = songs (64); g = 528 bytes per song block (is_blank compare)
     def _fill_list(self) -> None:
         row = self.list.currentRow()
         self.list.clear()
         if self._bank is None:
             self._headline.setText("no bank")
             return
+        # O(G·g) time, O(G) space — G = songs (64); g = 528 bytes per song block (is_blank compare)
         for i, song in enumerate(self._bank.songs()):
             label = song.name or "— unnamed —"
             mark = "" if song.is_blank else f"  ({song.length})"
@@ -186,8 +194,10 @@ class SongView(QWidget):
         if self.list.count():
             self.list.setCurrentRow(max(0, min(row, self.list.count() - 1)))
 
+    # O(P + G + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); C = positions in the selected song's chain (at most 256)
     def _fill_detail(self) -> None:
         song = self.song()
+        # O(w) time, O(1) space — w = 8 widgets toggled
         for w in (
             self._name,
             self._tempo,
@@ -211,8 +221,10 @@ class SongView(QWidget):
         labels = song.chain_labels()
         patterns = self._bank.patterns() if self._bank is not None else ()
         self.chain.setRowCount(len(labels))
+        # O(C·k) time, O(C·k) space — C = positions in the song's chain (at most 256); k = 3 table columns
         for row, (index, label) in enumerate(zip(chain, labels, strict=True)):
             name = patterns[index].name if index < len(patterns) else ""
+            # O(k) time, O(k) space — k = 3 table columns
             for col, text in enumerate((f"{row + 1}", label, name)):
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(
@@ -236,6 +248,7 @@ class SongView(QWidget):
 
     # -- edits --------------------------------------------------------------
 
+    # O(P + G + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); C = positions in the selected song's chain (at most 256)
     def _on_row(self, row: int) -> None:
         if row < 0:
             return
@@ -243,6 +256,7 @@ class SongView(QWidget):
         if not self._loading:
             self._fill_detail()
 
+    # O(P + G·g + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); g = 528 bytes per song block; C = positions in the selected song's chain (at most 256)
     def _edited(self) -> None:
         # Refilling the list and the fields writes to widgets that have signals
         # on them; the guard stops a redraw from looking like a second edit.
@@ -254,6 +268,7 @@ class SongView(QWidget):
             self._loading = False
         self.songEdited.emit()
 
+    # O(P + G·g + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); g = 528 bytes per song block; C = positions in the selected song's chain (at most 256)
     def _rename(self) -> None:
         song = self.song()
         if song is None or self._loading:
@@ -263,6 +278,7 @@ class SongView(QWidget):
         song.set_name(self._name.text())
         self._edited()
 
+    # O(P + G·g + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); g = 528 bytes per song block; C = positions in the selected song's chain (at most 256)
     def _retempo(self, value: float) -> None:
         song = self.song()
         if song is None or self._loading:
@@ -272,9 +288,11 @@ class SongView(QWidget):
         song.set_tempo(value)
         self._edited()
 
+    # O(1) time, O(1) space
     def selected_position(self) -> int:
         return self.chain.currentRow()
 
+    # O(P + G·g + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); g = 528 bytes per song block; C = positions in the selected song's chain (at most 256)
     def add_pattern(self) -> None:
         """Append the picker's pattern to the end of the chain.
 
@@ -293,6 +311,7 @@ class SongView(QWidget):
         self._edited()
         self.chain.setCurrentCell(song.length - 1, 0)
 
+    # O(P + G·g + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); g = 528 bytes per song block; C = positions in the selected song's chain (at most 256)
     def remove_position(self) -> None:
         """Drop the selected position, then keep the selection in range.
 
@@ -311,6 +330,7 @@ class SongView(QWidget):
         self._edited()
         self.chain.setCurrentCell(min(position, song.length - 1), 0)
 
+    # O(P + G·g + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); g = 528 bytes per song block; C = positions in the selected song's chain (at most 256)
     def move_position(self, delta: int) -> None:
         """Move the selected position by `delta`, following it with the cursor.
 
@@ -326,6 +346,7 @@ class SongView(QWidget):
         self._edited()
         self.chain.setCurrentCell(target, 0)
 
+    # O(P + G·g + C) time, O(P + G + C) space — P = patterns in the bank (256); G = songs (64); g = 528 bytes per song block; C = positions in the selected song's chain (at most 256)
     def clear_song(self) -> None:
         """Reset the song to the machine's untouched default, after confirming.
 

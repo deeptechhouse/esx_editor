@@ -36,6 +36,7 @@ OK, FAIL, WARN = "\033[32mOK\033[0m", "\033[31mFAIL\033[0m", "\033[33mWARN\033[0
 failures: list[str] = []
 
 
+# O(1) time, O(1) space
 def check(label: str, passed: bool, detail: str = "", fatal: bool = True) -> bool:
     print(
         f"  [{OK if passed else (FAIL if fatal else WARN)}] {label}"
@@ -46,6 +47,7 @@ def check(label: str, passed: bool, detail: str = "", fatal: bool = True) -> boo
     return passed
 
 
+# O(1) time, O(1) space
 def section(name: str) -> None:
     print(f"\n=== {name} ===")
 
@@ -80,6 +82,7 @@ check(
 
 # ---------------------------------------------------------------------------
 section("3. Imports")
+# O(k) time, O(1) space — k = 5 modules imported (fixed tuple)
 for mod in ("numpy", "scipy", "soundfile", "librosa", "PySide6"):
     try:
         m = __import__(mod)
@@ -169,6 +172,7 @@ if not banks:
     )
 elif BankReader is not None:
     check("corpus present", True, f"{len(banks)} bank(s) in {corpus}")
+    # O(B) time, O(b) space — B = bytes across all corpus banks (each read, parsed, written, compared once); b = bytes in the largest bank
     for b in banks:
         data = b.read_bytes()
         try:
@@ -181,6 +185,7 @@ elif BankReader is not None:
 section("Result")
 if failures:
     print(f"  {FAIL} {len(failures)} check(s) failed:")
+    # O(u) time, O(1) space — u = failed checks
     for f in failures:
         print(f"        - {f}")
     print("\n  Environment is NOT ready — fix the above before editing a bank.")

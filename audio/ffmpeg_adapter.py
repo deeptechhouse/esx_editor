@@ -87,11 +87,13 @@ def _which(name: str) -> str | None:
     return shutil.which(name, path=_search_path())
 
 
+# O(d) time, O(d) space — d = directories on the search path
 def available() -> bool:
     """True when both binaries this adapter needs are present."""
     return _which("ffmpeg") is not None and _which("ffprobe") is not None
 
 
+# O(d) time, O(d) space — d = directories on the search path
 def _resolve(explicit: str | None, name: str) -> str:
     """Resolve a binary path, or refuse at construction.
 
@@ -115,6 +117,7 @@ class FfmpegConverter:
 
     __slots__ = ("_ffmpeg", "_ffprobe", "_timeout", "_engine")
 
+    # O(d + b) time, O(d + b) space — d = directories on the search path, b = bytes of ffmpeg's -buildconf output
     def __init__(
         self,
         ffmpeg: str | None = None,
@@ -126,6 +129,7 @@ class FfmpegConverter:
         self._timeout = timeout
         self._engine = self._detect_engine()
 
+    # O(1) time, O(1) space
     @property
     def resampler_engine(self) -> str:
         """'soxr' or 'swr' — which resampler this build actually has.
@@ -135,6 +139,7 @@ class FfmpegConverter:
         """
         return self._engine
 
+    # O(b) time, O(b) space — b = bytes of ffmpeg's -buildconf output (captured, then substring-searched)
     def _detect_engine(self) -> str:
         """Ask the binary which resamplers it was built with.
 
@@ -154,6 +159,7 @@ class FfmpegConverter:
         return "soxr" if "--enable-libsoxr" in (proc.stdout or "") else "swr"
 
     # -- probing ------------------------------------------------------------
+    # O(j) time, O(j) space — j = bytes of ffprobe's JSON reply (header only, no decode)
     def probe_duration(self, src_path: str) -> tuple[float, int, int]:
         """Return (duration_seconds, source_rate, channels) from the header.
 
@@ -201,6 +207,7 @@ class FfmpegConverter:
             )
         return (float(duration), rate, channels)
 
+    # O(1) time, O(1) space
     def formats(self) -> tuple[str, ...]:
         """Container extensions worth offering in a file dialog."""
         return (
@@ -218,6 +225,7 @@ class FfmpegConverter:
         )
 
     # -- conversion ---------------------------------------------------------
+    # O(s) time, O(e) space — s = samples ffmpeg decodes and resamples (in the child process), e = bytes of the child's captured output
     def convert(self, src_path: str, dst_path: str, spec: ConversionSpec) -> None:
         """Convert src -> dst at `spec`. The original is never modified."""
         if not os.path.exists(src_path):
@@ -262,6 +270,7 @@ class FfmpegConverter:
             raise InvariantError(f"ffmpeg produced no output for {src_path!r}")
 
     # -- internals ----------------------------------------------------------
+    # O(o) time, O(o) space — o = bytes the child writes to stdout/stderr (the child's own work is the caller's bound)
     def _run(self, args: list[str]) -> str:
         try:
             proc = subprocess.run(

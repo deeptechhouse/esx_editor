@@ -76,6 +76,7 @@ STANDARD_CC_NAMES = {
 CHANNEL_MODE_FIRST = 120
 
 
+# O(1) time, O(1) space
 def note_choice_label(number: int, name: str) -> str:
     """ "C2  (36)" — the NAME first, because that is what the ESX-1 displays.
 
@@ -86,6 +87,7 @@ def note_choice_label(number: int, name: str) -> str:
     return f"{name}  ({number})"
 
 
+# O(1) time, O(1) space
 def cc_label(number: int) -> str:
     """ "74 — Brightness / Cutoff", or just "53" where the spec says nothing."""
     name = STANDARD_CC_NAMES.get(number, "")

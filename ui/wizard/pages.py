@@ -56,6 +56,7 @@ NAME_STYLES = (
 )
 
 
+# O(1) time, O(1) space
 def _muted(text: str) -> QLabel:
     lab = QLabel(text)
     lab.setWordWrap(True)
@@ -63,6 +64,7 @@ def _muted(text: str) -> QLabel:
     return lab
 
 
+# O(1) time, O(1) space
 def _lcd(text: str = "") -> QLabel:
     lab = QLabel(text)
     lab.setWordWrap(True)
@@ -70,6 +72,7 @@ def _lcd(text: str = "") -> QLabel:
     return lab
 
 
+# O(1) time, O(1) space
 def _mono(widget: QPlainTextEdit) -> QPlainTextEdit:
     widget.setReadOnly(True)
     widget.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
@@ -86,6 +89,7 @@ class SkippablePage(QWizardPage):
     TITLE = ""
     SUBTITLE = ""
 
+    # O(B) time, O(B) space — B = work done by this page's build() hook (constant except AddSamplesPage and NamingPage, see there)
     def __init__(self, ctx, parent=None):
         super().__init__(parent)
         self._ctx = ctx
@@ -96,20 +100,25 @@ class SkippablePage(QWizardPage):
         self.build()
 
     # -- hooks subclasses fill ---------------------------------------------
+    # O(1) time, O(1) space
     def build(self) -> None:
         """Create the widgets. Called once, from __init__."""
 
+    # O(1) time, O(1) space
     def refresh(self) -> None:
         """Re-read the model. Called every time the page is shown."""
 
     # -- QWizardPage contract ----------------------------------------------
+    # O(1) time, O(1) space
     def isComplete(self) -> bool:  # noqa: N802
         """Always True — every screen is skippable (TDD §09)."""
         return True
 
+    # O(R) time, O(R) space — R = work done by this page's refresh() hook (see each page)
     def initializePage(self) -> None:  # noqa: N802
         self.refresh()
 
+    # O(1) time, O(1) space
     def reason(self, text: str) -> None:
         """Add the 'why this screen exists' paragraph."""
         self.layout.addWidget(_muted(text))
@@ -120,6 +129,7 @@ class StartPage(SkippablePage):
     TITLE = "1 · Start"
     SUBTITLE = "New bank from the blank template, or open an existing .esx."
 
+    # O(1) time, O(1) space
     def build(self) -> None:
         self.reason(
             "'New' loads a blank bank a real ESX-1 wrote, then edits it — five "
@@ -147,6 +157,7 @@ class StartPage(SkippablePage):
         self.layout.addWidget(self.status)
         self.layout.addStretch(1)
 
+    # O(n) time, O(n) space — n = bytes in the bundled blank template bank (parsed on every create)
     def create_new(self) -> None:
         try:
             self._ctx.session.new_bank()
@@ -156,6 +167,7 @@ class StartPage(SkippablePage):
         self._ctx.notify_changed()
         self.refresh()
 
+    # O(n) time, O(n) space — n = bytes in the chosen .esx file (via open_file)
     def browse(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Open ESX bank", "", "ESX banks (*.esx);;All files (*)"
@@ -163,6 +175,7 @@ class StartPage(SkippablePage):
         if path:
             self.open_file(path)
 
+    # O(n) time, O(n) space — n = bytes in the .esx file read and parsed
     def open_file(self, path: str) -> None:
         """Open `path` into the session. Reports failure in-page, not a dialog."""
         try:
@@ -174,6 +187,7 @@ class StartPage(SkippablePage):
         self._ctx.notify_changed()
         self.refresh()
 
+    # O(1) time, O(1) space
     def refresh(self) -> None:
         session = self._ctx.session
         if not session.is_open:
@@ -188,6 +202,7 @@ class CardCheckPage(SkippablePage):
     TITLE = "2 · Card check"
     SUBTITLE = "Back up the card before anything is written."
 
+    # O(1) time, O(1) space
     def build(self) -> None:
         self.reason(
             "Writing is already defensive — the app serialises to a temp file, "
@@ -201,6 +216,7 @@ class CardCheckPage(SkippablePage):
         self.layout.addWidget(self.status)
         self.layout.addStretch(1)
 
+    # O(1) time, O(1) space
     def refresh(self) -> None:
         path = self._ctx.session.path
         if path:
@@ -218,6 +234,7 @@ class AddSamplesPage(SkippablePage):
     TITLE = "3 · Add samples"
     SUBTITLE = "Drop files; the scoreboard fills as they land."
 
+    # O(f) time, O(f) space — f = entries swept from the staging temp root (only when no staging model exists yet)
     def build(self) -> None:
         self.reason(
             "Originals are never modified. Each file is copied into a session "
@@ -228,6 +245,7 @@ class AddSamplesPage(SkippablePage):
         self._ctx.adopt_staging_bank(self.staging.bank)
         self.layout.addWidget(self.staging, 1)
 
+    # O(m) time, O(m) space — m = staged samples (per-row string work is proportional to that file name)
     def refresh(self) -> None:
         self.staging.reload()
 
@@ -237,6 +255,7 @@ class QualityBudgetPage(SkippablePage):
     TITLE = "4 · Quality budget"
     SUBTITLE = "What the staged set costs against 25,165,824 bytes."
 
+    # O(1) time, O(1) space
     def build(self) -> None:
         self.reason(
             "Order of sacrifice: trim silence first, then fold stereo to mono, "
@@ -253,9 +272,11 @@ class QualityBudgetPage(SkippablePage):
         self.layout.addWidget(self.proposal)
         self.layout.addStretch(1)
 
+    # O(m) time, O(m) space — m = staged samples
     def staged_cost(self) -> int:
         """Total bytes the staged set would occupy at its chosen tiers."""
         total = 0
+        # O(m) time, O(m) space — m = staged samples
         for s in self._ctx.staged_samples():
             if s.duration_s is not None and s.spec is not None:
                 total += self._calc.cost_bytes(
@@ -263,12 +284,14 @@ class QualityBudgetPage(SkippablePage):
                 )
         return total
 
+    # O(m) time, O(m) space — m = staged samples
     def proposals(self) -> tuple[str, ...]:
         """Ordered, display-only suggestions for getting back under capacity."""
         cost = self.staged_cost()
         if cost <= CAPACITY:
             return ()
         over = cost - CAPACITY
+        # O(m) time, O(m) space — m = staged samples
         stereo = [
             s
             for s in self._ctx.staged_samples()
@@ -287,6 +310,7 @@ class QualityBudgetPage(SkippablePage):
         )
         return tuple(out)
 
+    # O(m) time, O(m) space — m = staged samples
     def refresh(self) -> None:
         cost = self.staged_cost()
         self.meter.set_used(min(cost, CAPACITY))
@@ -309,6 +333,7 @@ class KeyAnalysisPage(SkippablePage):
     TITLE = "5 · Key and pitch"
     SUBTITLE = "A key where there is one; a dominant note for everything else."
 
+    # O(1) time, O(1) space
     def build(self) -> None:
         self.reason(
             "KEY and NOTE are different claims and are detected separately. A "
@@ -331,15 +356,19 @@ class KeyAnalysisPage(SkippablePage):
         self.layout.addWidget(self.status)
         self.layout.addWidget(self.table, 1)
 
+    # O(m·c) time, O(m·c) space — m = staged samples; c = 5 table columns
     def refresh(self) -> None:
         staged = self._ctx.staged_samples()
+        # O(m) time, O(1) space — m = staged samples
         keyed = sum(1 for s in staged if s.key is not None)
+        # O(m) time, O(1) space — m = staged samples
         pitched = sum(1 for s in staged if s.note is not None)
         self.status.setText(
             f"{len(staged)} staged — {keyed} with a key, {pitched} with a "
             "dominant note."
         )
         self.table.setRowCount(len(staged))
+        # O(m·c) time, O(m·c) space — m = staged samples; c = 5 table columns
         for row, s in enumerate(staged):
             key = s.key
             note = s.note
@@ -350,6 +379,7 @@ class KeyAnalysisPage(SkippablePage):
                 s.pitch_label,
                 f"{note.frequency:.1f}" if note else "—",
             )
+            # O(c) time, O(c) space — c = 5 table columns
             for col, text in enumerate(vals):
                 self.table.setItem(row, col, QTableWidgetItem(text))
         self.table.resizeColumnsToContents()
@@ -360,6 +390,7 @@ class NamingPage(SkippablePage):
     TITLE = "6 · Naming"
     SUBTITLE = "Slot-name policy with a live 8-character preview."
 
+    # O(s + k log k) time, O(k) space — s = 3 name styles; k = 24 Camelot codes (sorted once)
     def build(self) -> None:
         self.reason(
             "The machine slot name is exactly 8 characters, so the policy is a "
@@ -368,11 +399,13 @@ class NamingPage(SkippablePage):
             "is lost — only the hardware display is constrained."
         )
         self.style = QComboBox()
+        # O(s) time, O(1) space — s = 3 name styles
         for label, value in NAME_STYLES:
             self.style.addItem(label, value)
         self.style.currentIndexChanged.connect(self.refresh)
         self.camelot = QComboBox()
         self.camelot.addItem("no key detected", None)
+        # O(k log k) time, O(k) space — k = 24 Camelot codes
         for code in sorted(CAMELOT, key=lambda c: (c[-1], int(c[:-1]))):
             self.camelot.addItem(code, code)
         self.camelot.currentIndexChanged.connect(self.refresh)
@@ -394,20 +427,24 @@ class NamingPage(SkippablePage):
         self.layout.addWidget(self.preview)
         self.layout.addStretch(1)
 
+    # O(1) time, O(1) space
     def current_style(self) -> str:
         return self.style.currentData() or "short"
 
+    # O(m) time, O(m) space — m = staged samples (per-row string work is proportional to that file name)
     def preview_lines(self) -> list[str]:
         """One '<source> -> |PACKED  |' line per staged sample, plus the example."""
         style = self.current_style()
         chosen = self.camelot.currentData()
         rows = [(self.example.text() or "example", chosen)]
+        # O(m) time, O(m) space — m = staged samples
         for s in self._ctx.staged_samples():
             key = s.key
             rows.append(
                 (os.path.basename(s.source_path), key.camelot if key else chosen)
             )
         lines = []
+        # O(m) time, O(m) space — m = staged samples (per-row string work is proportional to that file name)
         for name, code in rows:
             try:
                 packed = pack_slot_name(name, code, style)
@@ -416,6 +453,7 @@ class NamingPage(SkippablePage):
             lines.append(f"{name[:28]:<28} -> |{packed}|")
         return lines
 
+    # O(m) time, O(m) space — m = staged samples (per-row string work is proportional to that file name)
     def refresh(self) -> None:
         self.preview.setPlainText("\n".join(self.preview_lines()))
 
@@ -425,6 +463,7 @@ class SlotAssignmentPage(SkippablePage):
     TITLE = "7 · Slot assignment"
     SUBTITLE = "Mono and stereo pools are separate tables in the file."
 
+    # O(1) time, O(1) space
     def build(self) -> None:
         self.reason(
             "Mono samples occupy 256 slots, stereo 128 — separate header tables "
@@ -453,16 +492,20 @@ class SlotAssignmentPage(SkippablePage):
         self.layout.addLayout(row)
         self.layout.addWidget(self.status)
 
+    # O(S) time, O(S) space — S = 384 sample slots
     def free_slots(self) -> tuple[int, int]:
         """(free mono, free stereo) in the open bank; full pools when none open."""
         bank = self._ctx.session.bank
         if bank is None:
             return L.NUM_SAMPLES_MONO, L.NUM_SAMPLES_STEREO
         samples = bank.samples()
+        # O(M) time, O(M) space — M = 256 mono slots (the slice is a copy)
         mono = sum(1 for s in samples[: L.NUM_SAMPLES_MONO] if s.empty)
+        # O(K) time, O(K) space — K = 128 stereo slots (the slice is a copy)
         stereo = sum(1 for s in samples[L.NUM_SAMPLES_MONO :] if s.empty)
         return mono, stereo
 
+    # O(S + m) time, O(S + m) space — S = 384 sample slots; m = staged samples
     def targets(self) -> tuple[int, ...]:
         """The slots the staged samples would be written into."""
         bank = self._ctx.session.bank
@@ -471,6 +514,7 @@ class SlotAssignmentPage(SkippablePage):
             return ()
         return staging.next_free_slots(bank, len(staging.samples()))
 
+    # O(m·S + p) time, O(S + p) space — m = staged samples; S = 384 sample slots (each Bank.commit_sample rescans them for the write cursor); p = staged PCM bytes read and appended
     def commit(self) -> int:
         """Write every staged sample into the bank. Returns how many landed."""
         bank = self._ctx.session.bank
@@ -499,12 +543,14 @@ class SlotAssignmentPage(SkippablePage):
         used = bank.pcm_used_bytes()
         self.status.setText(
             f"Committed {len(filled)} sample(s) into slot(s) "
+            # O(m) time, O(m) space — m = slots filled by the commit
             f"{', '.join(str(i) for i in filled)}. "
             f"{used:,} B of {CAPACITY:,} B now used. "
             "Nothing is on disk until screen 11 writes the bank."
         )
         return len(filled)
 
+    # O(S + m·c) time, O(S + m·c) space — S = 384 sample slots; m = staged samples; c = 5 table columns
     def refresh(self) -> None:
         mono, stereo = self.free_slots()
         self.pools.setText(
@@ -517,6 +563,7 @@ class SlotAssignmentPage(SkippablePage):
             bool(staged) and self._ctx.session.bank is not None
         )
         self.table.setRowCount(len(staged))
+        # O(m·c) time, O(m·c) space — m = staged samples; c = 5 table columns
         for row, s in enumerate(staged):
             channels = s.spec.channels if s.spec is not None else 1
             target = str(targets[row]) if row < len(targets) else "— no free slot —"
@@ -527,6 +574,7 @@ class SlotAssignmentPage(SkippablePage):
                 "stereo" if channels > 1 else "mono",
                 target,
             )
+            # O(c) time, O(c) space — c = 5 table columns
             for col, text in enumerate(vals):
                 self.table.setItem(row, col, QTableWidgetItem(text))
         self.table.resizeColumnsToContents()
@@ -537,6 +585,7 @@ class PartSetupPage(SkippablePage):
     TITLE = "8 · Part setup"
     SUBTITLE = "The 16 parts of pattern 000."
 
+    # O(1) time, O(1) space
     def build(self) -> None:
         self.reason(
             "Which sample a part plays is a big-endian u16 at the start of the "
@@ -556,6 +605,7 @@ class PartSetupPage(SkippablePage):
         self.layout.addWidget(self.status)
         self.layout.addWidget(self.table, 1)
 
+    # O(P + S + K·c) time, O(P + S + K·c) space — P = 256 patterns; S = 384 sample slots; K = 16 parts; c = 5 table columns
     def refresh(self) -> None:
         pat = self._ctx.first_pattern()
         self.table.setRowCount(0)
@@ -570,6 +620,7 @@ class PartSetupPage(SkippablePage):
         bank = self._ctx.session.bank
         samples = bank.samples() if bank is not None else ()
         self.table.setRowCount(len(parts))
+        # O(K·c) time, O(K·c) space — K = 16 parts; c = 5 table columns (each step count reads a 16-byte bitmap)
         for row, part in enumerate(parts):
             try:
                 number = part.sample_number
@@ -582,6 +633,7 @@ class PartSetupPage(SkippablePage):
                 steps = str(part.sequence().count())
             except NotImplementedError:
                 steps = "—"
+            # O(c) time, O(c) space — c = 5 table columns
             for col, text in enumerate((str(row), part.kind, slot_text, name, steps)):
                 self.table.setItem(row, col, QTableWidgetItem(text))
         self.table.resizeColumnsToContents()
@@ -592,6 +644,7 @@ class PatternBasicsPage(SkippablePage):
     TITLE = "9 · Pattern basics"
     SUBTITLE = "Name now; tempo, length and last step when their offsets are proven."
 
+    # O(1) time, O(1) space
     def build(self) -> None:
         self.reason(
             "Tempo is decoded and editable: it is a big-endian u16 at header "
@@ -628,6 +681,7 @@ class PatternBasicsPage(SkippablePage):
         self.layout.addWidget(self.motion)
         self.layout.addStretch(1)
 
+    # O(P) time, O(P) space — P = 256 patterns (via first_pattern)
     def apply_tempo(self, value: float) -> None:
         pat = self._ctx.first_pattern()
         if pat is None or self._loading:
@@ -638,6 +692,7 @@ class PatternBasicsPage(SkippablePage):
         self._ctx.session.mark_dirty()
         self._ctx.notify_changed()
 
+    # O(P) time, O(P) space — P = 256 patterns (via first_pattern)
     def apply_name(self) -> None:
         pat = self._ctx.first_pattern()
         if pat is None:
@@ -648,6 +703,7 @@ class PatternBasicsPage(SkippablePage):
         self._ctx.session.mark_dirty()
         self._ctx.notify_changed()
 
+    # O(P + M) time, O(P) space — P = 256 patterns (via first_pattern); M = 24 motion slots counted
     def refresh(self) -> None:
         pat = self._ctx.first_pattern()
         self._loading = True
@@ -674,6 +730,7 @@ class MotionPage(SkippablePage):
     TITLE = "10 · Motion (optional)"
     SUBTITLE = "Draw curves in the Motion tab; the budget is shown here."
 
+    # O(1) time, O(1) space
     def build(self) -> None:
         self.reason(
             "A pattern has 24 motion slots. Drawing happens on the full canvas in "
@@ -686,6 +743,7 @@ class MotionPage(SkippablePage):
         self.layout.addWidget(self.status)
         self.layout.addWidget(self.slots, 1)
 
+    # O(P + M) time, O(P + M) space — P = 256 patterns (via first_pattern); M = 24 motion slots listed
     def refresh(self) -> None:
         pat = self._ctx.first_pattern()
         self.slots.clear()
@@ -697,6 +755,7 @@ class MotionPage(SkippablePage):
             f"{used}/{L.NUM_PARAMETERS_MOTION} motion slots used in pattern 000. "
             "Close the wizard and use the Motion tab to draw."
         )
+        # O(M) time, O(M) space — M = 24 motion slots
         for i, slot in enumerate(pat.motion_slots()):
             state = f"target 0x{slot.target:04X}" if slot.in_use else "free"
             self.slots.addItem(f"slot {i:02d}  {state}")
@@ -707,6 +766,7 @@ class ValidateWritePage(SkippablePage):
     TITLE = "11 · Validate & write"
     SUBTITLE = "Coherence findings, then a verified write with a backup."
 
+    # O(1) time, O(1) space
     def build(self) -> None:
         self.reason(
             "Round-tripping proves the file can be re-read; it does NOT prove the "
@@ -734,6 +794,7 @@ class ValidateWritePage(SkippablePage):
         self.layout.addWidget(self.allow_invalid)
         self.layout.addWidget(self.status)
 
+    # O(n + f) time, O(n + f) space — n = PCM bytes in the bank (the validator copies the region once); f = findings reported
     def run_validate(self) -> int:
         """Fill the findings list. Returns the number of findings."""
         self.findings.clear()
@@ -742,6 +803,7 @@ class ValidateWritePage(SkippablePage):
         except CodecError as exc:
             self.status.setText(str(exc))
             return 0
+        # O(f) time, O(f) space — f = findings reported
         for f in report.findings:
             self.findings.addItem(f"{f.severity:<7} {f.code:<20} {f.message}")
         n_err = len(report.errors())
@@ -755,6 +817,7 @@ class ValidateWritePage(SkippablePage):
         )
         return len(report)
 
+    # O(n) time, O(n) space — n = bytes of the serialised bank (written, then re-read to verify)
     def run_write(self, path: str | None = None) -> bool:
         """Write via the session. Returns True on success; never raises."""
         session = self._ctx.session
@@ -780,6 +843,7 @@ class ValidateWritePage(SkippablePage):
         )
         return True
 
+    # O(1) time, O(1) space
     def refresh(self) -> None:
         session = self._ctx.session
         if not session.is_open:

@@ -22,8 +22,10 @@ class StagingBlockedError(WorkspaceError):
     mono, drop a tier, trim) rather than a generic 'too big'.
     """
 
+    # O(n) time, O(n) space — n = findings (tuple copy plus the joined code list)
     def __init__(self, findings: Sequence[object], message: str | None = None):
         self.findings = tuple(findings)
+        # O(n) time, O(n) space — n = findings
         codes = ", ".join(
             getattr(f, "code", "?")
             for f in self.findings

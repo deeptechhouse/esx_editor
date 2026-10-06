@@ -27,6 +27,7 @@ class BankView(QWidget):
     #: Column holding the editable slot name.
     NAME_COLUMN = 1
 
+    # O(1) time, O(1) space
     def __init__(self, parent=None):
         super().__init__(parent)
         self._bank: Bank | None = None
@@ -63,6 +64,7 @@ class BankView(QWidget):
         layout.addWidget(self.table)
 
     @staticmethod
+    # O(1) time, O(1) space
     def _tune_text(slot) -> str:
         """Musical transposition, with rate compensation removed.
 
@@ -76,10 +78,12 @@ class BankView(QWidget):
         except InvariantError:
             return "—"
 
+    # O(s·k + m) time, O(s·k + m) space — s = sample slots (384); k = 7 table columns; m = PCM bytes, copied only if pcm_used_bytes() raises
     def bind_bank(self, bank: Bank | None) -> None:
         self._bank = bank
         self.reload()
 
+    # O(s) time, O(s) space — s = sample slots (384)
     def _on_item_changed(self, item) -> None:
         """Write an edited slot name back into the bank.
 
@@ -91,6 +95,7 @@ class BankView(QWidget):
             return
         if item.column() != self.NAME_COLUMN:
             return
+        # O(s) time, O(s) space — s = sample slots (384)
         slots = [s for s in self._bank.samples() if not s.empty]
         if not (0 <= item.row() < len(slots)):
             return
@@ -106,6 +111,7 @@ class BankView(QWidget):
             self._loading = False
         self.sampleEdited.emit()
 
+    # O(s·k + m) time, O(s·k + m) space — s = sample slots (384); k = 7 table columns; m = PCM bytes, copied only if pcm_used_bytes() raises
     def reload(self) -> None:
         self._loading = True
         try:
@@ -113,6 +119,7 @@ class BankView(QWidget):
         finally:
             self._loading = False
 
+    # O(s·k + m) time, O(s·k + m) space — s = sample slots (384); k = 7 table columns; m = PCM bytes, copied only if pcm_used_bytes() raises
     def _reload(self) -> None:
         self.table.setRowCount(0)
         if self._bank is None:
@@ -127,13 +134,17 @@ class BankView(QWidget):
         samples = self._bank.samples()
         mono = samples[: L.NUM_SAMPLES_MONO]
         stereo = samples[L.NUM_SAMPLES_MONO :]
+        # O(s) time, O(1) space — s = mono sample slots (256)
         n_m = sum(1 for s in mono if not s.empty)
+        # O(s) time, O(1) space — s = stereo sample slots (128)
         n_s = sum(1 for s in stereo if not s.empty)
         self._counts.setText(
             f"mono {n_m}/{L.NUM_SAMPLES_MONO}   stereo {n_s}/{L.NUM_SAMPLES_STEREO}"
         )
+        # O(s) time, O(s) space — s = sample slots (384)
         occupied = [s for s in samples if not s.empty]
         self.table.setRowCount(len(occupied))
+        # O(s·k) time, O(s·k) space — s = occupied sample slots (at most 384); k = 7 table columns
         for row, s in enumerate(occupied):
             pool = "stereo" if s.stereo else "mono"
             # The stereo rate offset was unconfirmed until 2026-08-23, when the
@@ -148,6 +159,7 @@ class BankView(QWidget):
                 f"0x{s.offset_start:X}",
                 f"0x{s.offset_end:X}",
             )
+            # O(k) time, O(k) space — k = 7 table columns
             for col, text in enumerate(vals):
                 item = QTableWidgetItem(text)
                 if col != self.NAME_COLUMN:

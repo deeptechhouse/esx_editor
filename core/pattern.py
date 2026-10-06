@@ -41,6 +41,7 @@ from core.part import (
 NAME_LEN = 8
 
 
+# O(1) time, O(1) space
 def pattern_label(index: int) -> str:
     """Machine display for a pattern index: A.01 - D.64 (manual p.2914).
 
@@ -99,6 +100,7 @@ class PatternHeader:
 
     __slots__ = ("_raw",)
 
+    # O(1) time, O(1) space
     def __init__(self, raw: bytes):
         if len(raw) != HEADER_LEN:
             raise InvariantError(
@@ -107,6 +109,7 @@ class PatternHeader:
         self._raw = bytearray(raw)
 
     @property
+    # O(1) time, O(1) space
     def tempo(self) -> float:
         """Pattern tempo in BPM (VERIFIED 2026-08-23).
 
@@ -131,6 +134,7 @@ class PatternHeader:
         raw = struct.unpack_from(">H", self._raw, TEMPO_OFFSET)[0]
         return raw / TEMPO_SCALE
 
+    # O(1) time, O(1) space
     def set_tempo(self, bpm: float) -> None:
         """Set the tempo, clamped to nothing — out of range raises."""
         if not (MIN_TEMPO <= bpm <= MAX_TEMPO):
@@ -140,16 +144,19 @@ class PatternHeader:
         struct.pack_into(">H", self._raw, TEMPO_OFFSET, int(round(bpm * TEMPO_SCALE)))
 
     @property
+    # O(1) time, O(1) space
     def length_bars(self) -> int:
         """NOT DECODED — see the class docstring. Raises deliberately."""
         raise NotImplementedError(_UNDECODED_MESSAGE.format(field="length_bars"))
 
     @property
+    # O(1) time, O(1) space
     def last_step(self) -> int:
         """NOT DECODED — see the class docstring. Raises deliberately."""
         raise NotImplementedError(_UNDECODED_MESSAGE.format(field="last_step"))
 
     @property
+    # O(1) time, O(1) space
     def playable_steps(self) -> int:
         """last_step * length_bars, capped at 128 (TDD §8.1).
 
@@ -157,6 +164,7 @@ class PatternHeader:
         """
         raise NotImplementedError(_UNDECODED_MESSAGE.format(field="playable_steps"))
 
+    # O(1) time, O(1) space
     def to_bytes(self) -> bytes:
         return bytes(self._raw)
 
@@ -198,6 +206,7 @@ class FxUnit:
 
     __slots__ = ("_raw",)
 
+    # O(1) time, O(1) space
     def __init__(self, raw: bytes):
         if len(raw) != L.CHUNK_PARAMETERS_FX:
             raise InvariantError(
@@ -206,13 +215,16 @@ class FxUnit:
         self._raw = bytearray(raw)
 
     @property
+    # O(1) time, O(1) space
     def fx_type(self) -> int:
         return self._raw[0]
 
     @property
+    # O(1) time, O(1) space
     def motion_enabled(self) -> bool:
         return bool(self._raw[3])
 
+    # O(1) time, O(1) space
     def to_bytes(self) -> bytes:
         return bytes(self._raw)
 
@@ -224,6 +236,7 @@ class Pattern:
 
     NUM_MOTION_SLOTS = L.NUM_PARAMETERS_MOTION  # 24
 
+    # O(K + M) time, O(K + M) space — K = 16 parts; M = 24 motion slots
     def __init__(
         self,
         name: bytes,
@@ -246,29 +259,36 @@ class Pattern:
         self._motion = list(motion)
 
     @property
+    # O(1) time, O(1) space
     def name(self) -> str:
         return self._name.decode("ascii", "replace").rstrip("\x00 ")
 
+    # O(v) time, O(v) space — v = characters in the supplied name (encoded before truncation)
     def set_name(self, value: str) -> None:
         """Set the 8-byte pattern name (pads/truncates)."""
         raw = value.encode("ascii", "replace")[:NAME_LEN].ljust(NAME_LEN, b" ")
         self._name = bytes(raw)
 
     @property
+    # O(1) time, O(1) space
     def header(self) -> PatternHeader:
         return self._header
 
+    # O(1) time, O(1) space
     def parts(self) -> tuple[Part, ...]:
         """Immutable view of the 16 parts, in file order."""
         return self._parts
 
+    # O(1) time, O(1) space
     def fx_units(self) -> tuple[FxUnit, ...]:
         return self._fx
 
+    # O(M) time, O(M) space — M = 24 motion slots
     def motion_slots(self) -> tuple[MotionSlot, ...]:
         """Immutable view of exactly 24 motion slots."""
         return tuple(self._motion)
 
+    # O(1) time, O(1) space
     def replace_motion(self, index: int, slot: MotionSlot) -> None:
         """Replace one motion slot in place (slots are replaced, never appended)."""
         if not (0 <= index < self.NUM_MOTION_SLOTS):
@@ -277,18 +297,24 @@ class Pattern:
             )
         self._motion[index] = slot
 
+    # O(M) time, O(1) space — M = 24 motion slots
     def motion_slots_used(self) -> int:
         """How many of the 24 slots are in use (for the n/24 budget display)."""
+        # O(M) time, O(1) space — M = 24 motion slots
         return sum(1 for m in self._motion if m.in_use)
 
+    # O(B) time, O(B) space — B = 4,280 bytes per pattern chunk
     def to_bytes(self) -> bytes:
         """Serialize to the 4280-byte chunk."""
         out = bytearray(self._name)
         out += self._header.to_bytes()
+        # O(B) time, O(B) space — B = 1,136 bytes across the 16 part chunks
         for part in self._parts:
             out += part.to_bytes()
+        # O(F) time, O(F) space — F = 3 FX units of 4 bytes
         for fx in self._fx:
             out += fx.to_bytes()
+        # O(M) time, O(M) space — M = 24 motion slots of 130 bytes
         for slot in self._motion:
             out += slot.to_bytes()
         if len(out) != L.CHUNK_PATTERN:
@@ -298,6 +324,7 @@ class Pattern:
         return bytes(out)
 
     @classmethod
+    # O(B) time, O(B) space — B = 4,280 bytes per pattern chunk
     def from_bytes(cls, raw: bytes) -> Pattern:
         if len(raw) != L.CHUNK_PATTERN:
             raise InvariantError(
@@ -306,10 +333,13 @@ class Pattern:
         name = raw[:NAME_LEN]
         header = PatternHeader(raw[NAME_LEN : NAME_LEN + HEADER_LEN])
         parts: list[Part] = []
+        # O(B) time, O(B) space — B = 1,136 bytes across the 16 part chunks
         for kind, base, count, size in _PART_GROUPS:
+            # O(B) time, O(B) space — B = 1,136 bytes across the 16 part chunks (one group's share)
             for i in range(count):
                 off = base + i * size
                 parts.append(Part.from_bytes(kind, i, raw[off : off + size]))
+        # O(F) time, O(F) space — F = 3 FX units of 4 bytes
         fx = [
             FxUnit(
                 raw[
@@ -321,6 +351,7 @@ class Pattern:
             for i in range(L.NUM_PARAMETERS_FX)
         ]
         motion = []
+        # O(M) time, O(M) space — M = 24 motion slots of 130 bytes
         for i in range(L.NUM_PARAMETERS_MOTION):
             off = L.PAT_OFF_PARAMETERS_MOTION + i * L.CHUNK_PARAMETERS_MOTION
             motion.append(

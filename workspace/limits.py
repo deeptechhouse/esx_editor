@@ -38,6 +38,7 @@ class Finding:
 
     __slots__ = ("_level", "_code", "_message", "_dismissible")
 
+    # O(1) time, O(1) space
     def __init__(self, level: str, code: str, message: str, dismissible: bool = True):
         self._level = level
         self._code = code
@@ -46,21 +47,26 @@ class Finding:
         self._dismissible = dismissible and level != Severity.BLOCK
 
     @property
+    # O(1) time, O(1) space
     def level(self) -> str:
         return self._level
 
     @property
+    # O(1) time, O(1) space
     def code(self) -> str:
         return self._code
 
     @property
+    # O(1) time, O(1) space
     def message(self) -> str:
         return self._message
 
     @property
+    # O(1) time, O(1) space
     def dismissible(self) -> bool:
         return self._dismissible
 
+    # O(1) time, O(1) space
     def __repr__(self) -> str:
         return f"<{self._level}:{self._code}>"
 
@@ -74,25 +80,32 @@ class WarningPolicy:
 
     __slots__ = ("_muted",)
 
+    # O(1) time, O(1) space
     def __init__(self) -> None:
         self._muted: set[str] = set()
 
+    # O(1) time, O(1) space
     def mute(self, code: str) -> None:
         self._muted.add(code)
 
+    # O(k) time, O(k) space — k = 3 size-warning codes (fixed)
     def mute_size_warnings(self) -> None:
         """One click: stop warning about large samples entirely."""
         self._muted.update(SIZE_WARNING_CODES)
 
+    # O(1) time, O(1) space
     def unmute(self, code: str) -> None:
         self._muted.discard(code)
 
     @property
+    # O(m log m) time, O(m) space — m = muted codes (sorted on every read)
     def muted(self) -> tuple[str, ...]:
         return tuple(sorted(self._muted))
 
+    # O(n) time, O(n) space — n = findings (mute check is a set lookup)
     def visible(self, findings: Sequence[Finding]) -> tuple[Finding, ...]:
         """Findings that survive the mute set (BLOCK always survives)."""
+        # O(n) time, O(n) space — n = findings
         return tuple(
             f
             for f in findings
@@ -120,6 +133,7 @@ class SampleLimitPolicy:
     WARN_SOURCE_BYTES = 20 * 1024 * 1024
     PARTIAL_ANALYSIS_SECONDS = 30.0
 
+    # O(1) time, O(1) space
     def __init__(
         self,
         analysis_max_seconds: float = ANALYSIS_MAX_SECONDS,
@@ -137,6 +151,7 @@ class SampleLimitPolicy:
         self._capacity = L.MAX_SAMPLE_BYTES if capacity is None else capacity
         self._calc = BudgetCalculator()
 
+    # O(t) time, O(1) space — t = 5 quality tiers (fixed TIERS ladder)
     def check_sample(
         self,
         path: str,
@@ -162,6 +177,7 @@ class SampleLimitPolicy:
             fixes: list[str] = []
             if channels > 1 and (frames * 2) <= single_cap:
                 fixes.append("fold to mono")
+            # O(t) time, O(1) space — t = 4 lower quality tiers (fixed TIERS[1:])
             for label, rate in TIERS[1:]:
                 if int(round(duration_s * rate)) * 2 <= single_cap:
                     fixes.append(f"drop to {label} ({rate} Hz) mono")

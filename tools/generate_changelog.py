@@ -91,6 +91,7 @@ FOOT = """
 """
 
 
+# O(c) time, O(c) space — c = characters of git log output (one line per commit)
 def commits() -> list[tuple[str, str]]:
     """(short sha, subject) for every commit, newest first."""
     out = subprocess.run(
@@ -101,6 +102,7 @@ def commits() -> list[tuple[str, str]]:
         check=True,
     ).stdout
     rows = []
+    # O(c) time, O(c) space — c = characters of git log output
     for line in out.splitlines():
         if "\x1f" in line:
             sha, subject = line.split("\x1f", 1)
@@ -108,9 +110,11 @@ def commits() -> list[tuple[str, str]]:
     return rows
 
 
+# O(c + h log h) time, O(c) space — c = characters of git log output; h = distinct commit-type headings (sorted once)
 def render() -> str:
     groups: dict[str, list[str]] = collections.defaultdict(list)
     skipped = 0
+    # O(c) time, O(c) space — c = characters of git log output (one anchored regex match per subject)
     for sha, subject in commits():
         m = SUBJECT.match(subject)
         if not m:
@@ -125,6 +129,7 @@ def render() -> str:
 
     body = ["<h2>All changes</h2>"]
     ordered = list(TYPES.values()) + sorted(set(groups) - set(TYPES.values()))
+    # O(n + h) time, O(n) space — n = commits listed; h = headings
     for heading in ordered:
         if heading not in groups:
             continue
@@ -140,6 +145,7 @@ def render() -> str:
     return HEAD + "\n".join(body) + FOOT
 
 
+# O(c + h log h) time, O(c) space — c = characters of git log output plus the changelog file; h = distinct headings
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(

@@ -49,20 +49,25 @@ import layout as L
 BLANK_PATTERN_NAMES = True
 
 
-def find_empty_header(data: bytes, table_addr: int, count: int, size: int) -> bytes | None:
+# O(c) time, O(h) space — c = slots in the header table; h = bytes per header (40 or 44)
+def find_empty_header(
+    data: bytes, table_addr: int, count: int, size: int
+) -> bytes | None:
     """Return the raw bytes of the first genuinely empty slot in a header table.
 
     We copy the machine's own empty-slot representation rather than inventing
     one, so the template only ever contains byte patterns the ESX-1 wrote.
     """
+    # O(c) time, O(h) space — c = slots in the header table; h = bytes per header returned
     for i in range(count):
         off = table_addr + i * size
         start = struct.unpack_from(">I", data, off + 8)[0]
         if start == L.EMPTY_OFFSET:
-            return data[off:off + size]
+            return data[off : off + size]
     return None
 
 
+# O(n) time, O(n) space — n = bytes in the source bank (copied once, then truncated)
 def make_template(data: bytes) -> tuple[bytes, dict]:
     """Strip every sample from a bank, preserving everything else byte-for-byte."""
     buf = bytearray(data)
@@ -70,26 +75,34 @@ def make_template(data: bytes) -> tuple[bytes, dict]:
 
     # --- find the machine's own empty-slot bytes for each table ------------
     empty_mono = find_empty_header(
-        data, L.ADDR_SAMPLE_HEADER_MONO, L.NUM_SAMPLES_MONO, L.CHUNK_SAMPLE_HEADER_MONO)
+        data, L.ADDR_SAMPLE_HEADER_MONO, L.NUM_SAMPLES_MONO, L.CHUNK_SAMPLE_HEADER_MONO
+    )
     empty_stereo = find_empty_header(
-        data, L.ADDR_SAMPLE_HEADER_STEREO, L.NUM_SAMPLES_STEREO, L.CHUNK_SAMPLE_HEADER_STEREO)
+        data,
+        L.ADDR_SAMPLE_HEADER_STEREO,
+        L.NUM_SAMPLES_STEREO,
+        L.CHUNK_SAMPLE_HEADER_STEREO,
+    )
     if empty_mono is None or empty_stereo is None:
         raise SystemExit(
             "source bank has no empty slot to copy an empty-header pattern from; "
-            "use a bank with at least one free mono and one free stereo slot")
+            "use a bank with at least one free mono and one free stereo slot"
+        )
 
     # --- overwrite every sample slot with that empty pattern ---------------
     cleared = 0
+    # O(h) time, O(1) space — h = bytes in the mono header table (256 slots x 40 B)
     for i in range(L.NUM_SAMPLES_MONO):
         off = L.ADDR_SAMPLE_HEADER_MONO + i * L.CHUNK_SAMPLE_HEADER_MONO
-        if buf[off:off + L.CHUNK_SAMPLE_HEADER_MONO] != empty_mono:
+        if buf[off : off + L.CHUNK_SAMPLE_HEADER_MONO] != empty_mono:
             cleared += 1
-        buf[off:off + L.CHUNK_SAMPLE_HEADER_MONO] = empty_mono
+        buf[off : off + L.CHUNK_SAMPLE_HEADER_MONO] = empty_mono
+    # O(h) time, O(1) space — h = bytes in the stereo header table (128 slots x 44 B)
     for i in range(L.NUM_SAMPLES_STEREO):
         off = L.ADDR_SAMPLE_HEADER_STEREO + i * L.CHUNK_SAMPLE_HEADER_STEREO
-        if buf[off:off + L.CHUNK_SAMPLE_HEADER_STEREO] != empty_stereo:
+        if buf[off : off + L.CHUNK_SAMPLE_HEADER_STEREO] != empty_stereo:
             cleared += 1
-        buf[off:off + L.CHUNK_SAMPLE_HEADER_STEREO] = empty_stereo
+        buf[off : off + L.CHUNK_SAMPLE_HEADER_STEREO] = empty_stereo
     stats["slots_cleared"] = cleared
 
     # --- reset the sample-area bookkeeping ---------------------------------
@@ -100,25 +113,28 @@ def make_template(data: bytes) -> tuple[bytes, dict]:
     # --- optionally blank pattern names ------------------------------------
     if BLANK_PATTERN_NAMES:
         blanked = 0
+        # O(k) time, O(1) space — k = 256 patterns x 8 name bytes
         for p in range(L.NUM_PATTERNS):
             off = L.ADDR_PATTERN_DATA + p * L.CHUNK_PATTERN
-            if buf[off:off + L.PATTERN_NAME_LEN] != b" " * L.PATTERN_NAME_LEN:
+            if buf[off : off + L.PATTERN_NAME_LEN] != b" " * L.PATTERN_NAME_LEN:
                 blanked += 1
-            buf[off:off + L.PATTERN_NAME_LEN] = b" " * L.PATTERN_NAME_LEN
+            buf[off : off + L.PATTERN_NAME_LEN] = b" " * L.PATTERN_NAME_LEN
         stats["pattern_names_blanked"] = blanked
 
     # --- truncate the PCM region to the bare 16-byte trailer ---------------
     # Everything before ADDR_SAMPLE_DATA -- including all five unknown
     # regions and the slice table -- is carried through untouched.
-    out = bytes(buf[:L.SIZE_FILE_MIN])
+    out = bytes(buf[: L.SIZE_FILE_MIN])
     stats["size_before"] = len(data)
     stats["size_after"] = len(out)
     return out, stats
 
 
+# O(n) time, O(n) space — n = bytes in the source bank
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("source", help="a real .esx bank to derive the template from")
     ap.add_argument("-o", "--output", default="default.esx")
     args = ap.parse_args()
@@ -133,8 +149,10 @@ def main() -> int:
     if "pattern_names_blanked" in stats:
         print(f"  pattern names blanked   : {stats['pattern_names_blanked']}")
     saved = stats["size_before"] - stats["size_after"]
-    print(f"  size reduction          : {saved:,} B "
-          f"({100*saved/stats['size_before']:.1f}%)")
+    print(
+        f"  size reduction          : {saved:,} B "
+        f"({100*saved/stats['size_before']:.1f}%)"
+    )
     print("\n  All five unknown regions and the slice table preserved verbatim.")
     return 0
 

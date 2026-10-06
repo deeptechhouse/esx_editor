@@ -16,20 +16,25 @@ from ui.theme import PALETTE
 
 
 class WaveformView(QWidget):
+    # O(1) time, O(1) space
     def __init__(self, parent=None):
         super().__init__(parent)
         self._peaks: tuple[float, ...] = ()
         self.setMinimumHeight(48)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
+    # O(n) time, O(n) space — n = peak samples pushed by the caller
     def set_peaks(self, peaks: Sequence[float]) -> None:
+        # O(n) time, O(n) space — n = peak samples pushed by the caller
         self._peaks = tuple(max(-1.0, min(1.0, float(x))) for x in peaks)
         self.update()
 
     @property
+    # O(1) time, O(1) space
     def peaks(self) -> tuple[float, ...]:
         return self._peaks
 
+    # O(n) time, O(n) space — n = peak samples (one polygon vertex per peak per edge, so the paint is linear in peaks, not pixels)
     def paintEvent(self, event) -> None:  # noqa: N802
         p = QPainter(self)
         p.fillRect(self.rect(), QColor(PALETTE.lcd_bg))
@@ -42,10 +47,12 @@ class WaveformView(QWidget):
         mid = h / 2
         n = len(self._peaks)
         poly = QPolygonF()
+        # O(n) time, O(n) space — n = peak samples
         for i, peak in enumerate(self._peaks):
             x = i * w / max(1, n - 1)
             y = mid - abs(peak) * (mid - 2)
             poly.append(QPointF(x, y))
+        # O(n) time, O(n) space — n = peak samples
         for i, peak in enumerate(reversed(self._peaks)):
             x = (n - 1 - i) * w / max(1, n - 1)
             y = mid + abs(peak) * (mid - 2)

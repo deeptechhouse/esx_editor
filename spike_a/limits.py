@@ -51,24 +51,24 @@ MAX_SINGLE_SAMPLE_FRACTION = 0.80
 
 # Independent of bank fraction, warn on any source file larger than this.
 # Purely a "did you mean to add this?" guard against dropping in whole mixes.
-WARN_SOURCE_BYTES = 20 * 1024 * 1024        # 20 MB
+WARN_SOURCE_BYTES = 20 * 1024 * 1024  # 20 MB
 
 # Offer "analyse only the first N seconds" for long files. Never applied
 # automatically -- silently analysing a fragment and presenting it as the
 # file's key would be the same mislabelling problem in a subtler form.
 PARTIAL_ANALYSIS_SECONDS = 30.0
 
-CAPACITY = L.MAX_SAMPLE_BYTES                # 25,165,824
-MAX_SECONDS_AT_CD = CAPACITY / (44100 * 2)   # ~285.3 s
+CAPACITY = L.MAX_SAMPLE_BYTES  # 25,165,824
+MAX_SECONDS_AT_CD = CAPACITY / (44100 * 2)  # ~285.3 s
 
 
 # ===========================================================================
 # Severity levels
 # ===========================================================================
-OK = "ok"              # nothing to say
-NOTICE = "notice"      # informational, no dialog
-WARN = "warn"          # dismissible, supports "ignore for all"
-BLOCK = "block"        # cannot proceed -- physically will not fit
+OK = "ok"  # nothing to say
+NOTICE = "notice"  # informational, no dialog
+WARN = "warn"  # dismissible, supports "ignore for all"
+BLOCK = "block"  # cannot proceed -- physically will not fit
 
 
 class Finding:
@@ -76,6 +76,7 @@ class Finding:
 
     __slots__ = ("level", "code", "message", "dismissible")
 
+    # O(1) time, O(1) space
     def __init__(self, level, code, message, dismissible=True):
         self.level = level
         self.code = code
@@ -83,10 +84,12 @@ class Finding:
         # BLOCK findings are never dismissible: the audio genuinely cannot fit.
         self.dismissible = dismissible and level != BLOCK
 
+    # O(1) time, O(1) space
     def __repr__(self):
         return f"<{self.level}:{self.code}>"
 
 
+# O(1) time, O(1) space
 def check_sample(path, duration_s, channels, target_rate, used_bytes=0):
     """Evaluate one candidate sample. Returns (findings, analyse_ok).
 
@@ -96,7 +99,7 @@ def check_sample(path, duration_s, channels, target_rate, used_bytes=0):
     findings = []
 
     frames = int(round(duration_s * target_rate))
-    cost = ((frames * 2 * channels) + 2 + 3) // 4 * 4      # align_up(bytes+2, 4)
+    cost = ((frames * 2 * channels) + 2 + 3) // 4 * 4  # align_up(bytes+2, 4)
     free = CAPACITY - used_bytes
 
     # --- 1. capacity -------------------------------------------------------
@@ -106,58 +109,81 @@ def check_sample(path, duration_s, channels, target_rate, used_bytes=0):
         fixes = []
         if channels > 1 and (frames * 2) <= single_cap:
             fixes.append("fold to mono")
-        for label, r in (("Broadcast", 32000), ("Radio", 22050),
-                         ("Lo-fi", 16000), ("Telephone", 11025)):
+        # O(k) time, O(1) space — k = 4 fallback tiers
+        for label, r in (
+            ("Broadcast", 32000),
+            ("Radio", 22050),
+            ("Lo-fi", 16000),
+            ("Telephone", 11025),
+        ):
             if int(round(duration_s * r)) * 2 <= single_cap:
                 fixes.append(f"drop to {label} ({r} Hz) mono")
                 break
         fixes.append(f"trim to {single_cap/(44100*2):.0f}s at CD mono")
-        findings.append(Finding(
-            BLOCK, "exceeds_single_cap",
-            f"{duration_s:.1f}s at {target_rate} Hz needs {cost:,} B. One sample "
-            f"may use at most {MAX_SINGLE_SAMPLE_FRACTION:.0%} of sample memory "
-            f"({single_cap:,} B), leaving {1-MAX_SINGLE_SAMPLE_FRACTION:.0%} free. "
-            f"Options: " + "; ".join(fixes) + ".",
-            dismissible=False))
+        findings.append(
+            Finding(
+                BLOCK,
+                "exceeds_single_cap",
+                f"{duration_s:.1f}s at {target_rate} Hz needs {cost:,} B. One sample "
+                f"may use at most {MAX_SINGLE_SAMPLE_FRACTION:.0%} of sample memory "
+                f"({single_cap:,} B), leaving {1-MAX_SINGLE_SAMPLE_FRACTION:.0%} free. "
+                f"Options: " + "; ".join(fixes) + ".",
+                dismissible=False,
+            )
+        )
     elif cost > CAPACITY * WARN_BANK_FRACTION and cost > single_cap * 0.5:
         # Large but allowed -- explain the trade-off rather than just flagging size.
         steps = duration_s / 128.0
-        findings.append(Finding(
-            WARN, "dominant_sample",
-            f"uses {cost:,} B — {100*cost/CAPACITY:.0f}% of the bank, leaving "
-            f"{CAPACITY-cost:,} B ({(CAPACITY-cost)/(44100*2):.0f}s at CD mono) for "
-            f"everything else. Motion-sequencing Start Point across its 128 "
-            f"positions moves ~{steps:.2f}s per step."))
+        findings.append(
+            Finding(
+                WARN,
+                "dominant_sample",
+                f"uses {cost:,} B — {100*cost/CAPACITY:.0f}% of the bank, leaving "
+                f"{CAPACITY-cost:,} B ({(CAPACITY-cost)/(44100*2):.0f}s at CD mono) for "
+                f"everything else. Motion-sequencing Start Point across its 128 "
+                f"positions moves ~{steps:.2f}s per step.",
+            )
+        )
     elif cost > free:
-        findings.append(Finding(
-            BLOCK, "exceeds_free",
-            f"needs {cost:,} B but only {free:,} B remain in this bank.",
-            dismissible=False))
+        findings.append(
+            Finding(
+                BLOCK,
+                "exceeds_free",
+                f"needs {cost:,} B but only {free:,} B remain in this bank.",
+                dismissible=False,
+            )
+        )
     elif cost > CAPACITY * WARN_BANK_FRACTION:
         pct = 100 * cost / CAPACITY
-        findings.append(Finding(
-            WARN, "large_sample",
-            f"uses {cost:,} B — {pct:.0f}% of the whole bank."))
+        findings.append(
+            Finding(
+                WARN, "large_sample", f"uses {cost:,} B — {pct:.0f}% of the whole bank."
+            )
+        )
 
     # --- 2. source file size ----------------------------------------------
     try:
         src = os.path.getsize(path)
         if src > WARN_SOURCE_BYTES:
-            findings.append(Finding(
-                WARN, "large_source",
-                f"source file is {src/1048576:.1f} MB."))
+            findings.append(
+                Finding(WARN, "large_source", f"source file is {src/1048576:.1f} MB.")
+            )
     except OSError:
         pass
 
     # --- 3. analysis viability --------------------------------------------
     analyse_ok = duration_s <= ANALYSIS_MAX_SECONDS
     if not analyse_ok:
-        findings.append(Finding(
-            NOTICE, "analysis_skipped",
-            f"{duration_s:.1f}s exceeds the {ANALYSIS_MAX_SECONDS:.0f}s analysis "
-            f"limit — key detection skipped, no key appended. A single key for a "
-            f"recording this long would not be meaningful. You can analyse the "
-            f"first {PARTIAL_ANALYSIS_SECONDS:.0f}s explicitly if you want one."))
+        findings.append(
+            Finding(
+                NOTICE,
+                "analysis_skipped",
+                f"{duration_s:.1f}s exceeds the {ANALYSIS_MAX_SECONDS:.0f}s analysis "
+                f"limit — key detection skipped, no key appended. A single key for a "
+                f"recording this long would not be meaningful. You can analyse the "
+                f"first {PARTIAL_ANALYSIS_SECONDS:.0f}s explicitly if you want one.",
+            )
+        )
 
     if not findings:
         findings.append(Finding(OK, "ok", "fine"))
@@ -178,32 +204,42 @@ class WarningPolicy:
     suppressible; ignoring them would produce a bank that cannot be written.
     """
 
+    # O(1) time, O(1) space
     def __init__(self):
         self._muted = set()
 
+    # O(1) time, O(1) space
     def mute(self, code):
         self._muted.add(code)
 
+    # O(k) time, O(k) space — k = 3 size-warning codes
     def mute_size_warnings(self):
         """One click: stop warning about large samples entirely."""
         self._muted.update(SIZE_WARNING_CODES)
 
+    # O(1) time, O(1) space
     def unmute(self, code):
         self._muted.discard(code)
 
     @property
+    # O(c log c) time, O(c) space — c = muted warning codes
     def muted(self):
         return sorted(self._muted)
 
+    # O(f) time, O(f) space — f = findings passed in (set lookup per finding)
     def visible(self, findings):
-        return [f for f in findings
-                if f.level != OK
-                and not (f.dismissible and f.code in self._muted)]
+        # O(f) time, O(f) space — f = findings passed in
+        return [
+            f
+            for f in findings
+            if f.level != OK and not (f.dismissible and f.code in self._muted)
+        ]
 
 
 # ===========================================================================
 # Demo
 # ===========================================================================
+# O(1) time, O(1) space
 def _probe(path):
     try:
         with wave.open(path, "rb") as w:
@@ -214,7 +250,9 @@ def _probe(path):
 
 if __name__ == "__main__":
     import sys
+
     d = sys.argv[1] if len(sys.argv) > 1 else "/Users/aaandy/Documents/TEST_SAMPLES"
+    # O(n log n) time, O(n) space — n = entries in the demo folder
     files = sorted(f for f in os.listdir(d) if f.lower().endswith(".wav"))
     policy = WarningPolicy()
 
@@ -222,6 +260,7 @@ if __name__ == "__main__":
     skipped = 0
     shown = 0
     print(f"Adding {len(files)} file(s) at CD mono, warning policy active\n")
+    # O(n) time, O(1) space — n = .wav files in the demo folder (k = 4 findings max each)
     for f in files:
         info = _probe(os.path.join(d, f))
         if not info:
@@ -230,11 +269,13 @@ if __name__ == "__main__":
         findings, analyse = check_sample(os.path.join(d, f), dur, 1, 44100)
         if not analyse:
             skipped += 1
+        # O(k) time, O(1) space — k = 4 findings at most per sample
         for fd in findings:
             counts[fd.level] = counts.get(fd.level, 0) + 1
         vis = policy.visible(findings)
         if vis and shown < 6:
             print(f"  {f[:48]:<50} ({dur:.1f}s)")
+            # O(k) time, O(1) space — k = 4 findings at most per sample
             for fd in vis:
                 print(f"     [{fd.level.upper():6}] {fd.message[:100]}")
             shown += 1
@@ -247,6 +288,8 @@ if __name__ == "__main__":
     print(f"  BLOCK  (cannot fit, not dismissible): {counts[BLOCK]}")
     print(f"  WARN   (dismissible)                : {counts[WARN]}")
     print(f"  NOTICE (analysis skipped)           : {counts[NOTICE]}")
-    print(f"  key analysis skipped on {skipped} file(s) "
-          f"(> {ANALYSIS_MAX_SECONDS:.0f}s)")
+    print(
+        f"  key analysis skipped on {skipped} file(s) "
+        f"(> {ANALYSIS_MAX_SECONDS:.0f}s)"
+    )
     print(f"  currently muted codes: {policy.muted}")

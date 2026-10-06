@@ -14,6 +14,7 @@ from midi.null import NullMidiInput
 from midi.ports import MidiInput
 
 
+# O(d) time, O(1) space — d = sys.path entries find_spec searches (first call only, cached after)
 @lru_cache(maxsize=1)
 def _backend_error() -> str:
     """Empty when a MIDI backend is INSTALLED; else why not.
@@ -35,6 +36,7 @@ def _backend_error() -> str:
     return ""
 
 
+# O(d) time, O(1) space — d = sys.path entries find_spec searches (first call only, cached after)
 def midi_input() -> MidiInput:
     """A live MidiInput, or a Null one carrying the reason it is not live."""
     error = _backend_error()
@@ -45,6 +47,7 @@ def midi_input() -> MidiInput:
     return MidoMidiInput()
 
 
+# O(d + q) time, O(q) space — d = sys.path entries searched (first call only), q = characters across attached input-port names
 def describe() -> str:
     """One line for the UI: what MIDI can do here right now."""
     error = _backend_error()

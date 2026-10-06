@@ -28,6 +28,7 @@ class MotionCanvas(QWidget):
 
     changed = Signal()
 
+    # O(1) time, O(1) space
     def __init__(
         self,
         parent=None,
@@ -49,39 +50,49 @@ class MotionCanvas(QWidget):
         self.setMouseTracking(True)
 
     @property
+    # O(1) time, O(1) space
     def slot(self) -> MotionSlot:
         return self._slot
 
     @property
+    # O(1) time, O(1) space
     def domain(self) -> MotionDomain:
         return self._domain
 
     @property
+    # O(1) time, O(1) space
     def length(self) -> int:
         return self._length
 
+    # O(1) time, O(1) space
     def set_slot(self, slot: MotionSlot, domain: MotionDomain) -> None:
         self._slot = slot
         self._domain = domain
         self.update()
 
+    # O(1) time, O(1) space
     def set_length(self, length: int) -> None:
         self._length = max(1, min(MotionSlot.NUM_STEPS, length))
         self.update()
 
+    # O(1) time, O(1) space
     def set_trig_hold(self, stepped: bool) -> None:
         self._trig_hold = bool(stepped)
         self.update()
 
+    # O(1) time, O(1) space
     def set_tool(self, name: str) -> None:
         self._tool = name
 
+    # O(1) time, O(1) space
     def _stepped(self) -> bool:
         return self._domain.forced_trig or self._trig_hold
 
+    # O(1) time, O(1) space
     def _cell_w(self) -> float:
         return self.width() / MotionSlot.NUM_STEPS
 
+    # O(1) time, O(1) space
     def _pos_to_step_value(self, pos) -> tuple[int, int]:
         step = int(pos.x() / self._cell_w())
         step = max(0, min(MotionSlot.NUM_STEPS - 1, step))
@@ -89,16 +100,19 @@ class MotionCanvas(QWidget):
         value = max(0, min(127, int(round(y * 127))))
         return step, value
 
+    # O(v) time, O(v) space — v = ≤ 128 legal stored bytes scanned by a discrete snap
     def apply_pencil(self, step: int, value: int) -> None:
         tools.write_step(self._slot, step, value, self._domain, length=self._length)
         self.changed.emit()
         self.update()
 
+    # O(1) time, O(1) space
     def apply_eraser(self, step: int) -> None:
         tools.eraser(self._slot, step, self._domain, length=self._length)
         self.changed.emit()
         self.update()
 
+    # O(n) time, O(1) space — n = playable steps plotted (≤ 128); k = 8 bar lines
     def paintEvent(self, event) -> None:  # noqa: N802
         p = QPainter(self)
         p.fillRect(self.rect(), QColor(PALETTE.lcd_bg))
@@ -116,6 +130,7 @@ class MotionCanvas(QWidget):
             p.drawLine(QPointF(0, h * (1 - 64 / 127)), QPointF(w, h * (1 - 64 / 127)))
 
         p.setPen(QPen(QColor(PALETTE.line), 1))
+        # O(k) time, O(1) space — k = 8 bar lines (128 steps / 16)
         for bar in range(0, MotionSlot.NUM_STEPS, 16):
             x = bar * cell
             p.drawLine(QPointF(x, 0), QPointF(x, h))
@@ -125,6 +140,7 @@ class MotionCanvas(QWidget):
         color = QColor(PALETTE.amber if not stepped else PALETTE.step)
         p.setPen(QPen(color, 2))
         last: QPointF | None = None
+        # O(n) time, O(1) space — n = playable steps plotted (≤ 128)
         for i in range(self._length):
             if self._slot.is_disabled(i):
                 last = None
@@ -155,6 +171,7 @@ class MotionCanvas(QWidget):
             p.drawRect(self.rect().adjusted(1, 1, -1, -1))
         p.end()
 
+    # O(v) time, O(v) space — v = ≤ 128 legal stored bytes scanned by a discrete snap
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         step, value = self._pos_to_step_value(event.position())
         self._drawing = True
@@ -165,6 +182,7 @@ class MotionCanvas(QWidget):
             self.apply_pencil(step, value)
         self.setFocus()
 
+    # O(v) time, O(v) space — v = ≤ 128 legal stored bytes scanned by a discrete snap
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if not self._drawing:
             return
@@ -174,6 +192,7 @@ class MotionCanvas(QWidget):
         elif self._tool == "pencil":
             self.apply_pencil(step, value)
 
+    # O(s·v) time, O(v) space — s = steps spanned by the line drag (≤ 128); v = ≤ 128 legal stored bytes per snap
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if self._drawing and self._tool == "line" and self._anchor is not None:
             step, value = self._pos_to_step_value(event.position())

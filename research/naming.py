@@ -27,6 +27,7 @@ CAMELOT = {
 }
 
 
+# O(1) time, O(1) space
 def classical(cam, style):
     flat, _ = CAMELOT[cam]
     minor = cam.endswith("A")
@@ -38,6 +39,7 @@ def classical(cam, style):
     raise ValueError
 
 
+# O(L) time, O(L) space — L = characters in name (only the last `limit` are kept)
 def build(name, cam, style, limit=8):
     letter = cam[-1].lower()
     num = cam[:-1].zfill(2)
@@ -50,9 +52,11 @@ def build(name, cam, style, limit=8):
 
 
 NAME = "kickdrum"
+# O(s·c) time, O(1) space — s = 2 styles (fixed); c = 6 Camelot codes per style (fixed)
 for style in ("long", "short"):
     print(f"\n=== classical style: {style}  (name='{NAME}') ===")
     print(f"{'Camelot':>8} {'result':>10} {'name chars kept':>16}")
+    # O(c) time, O(1) space — c = 6 Camelot codes (fixed)
     for cam in ["8B", "8A", "12A", "11A", "10B", "3B"]:
         out, room = build(NAME, cam, style)
         flag = (
@@ -64,6 +68,7 @@ for style in ("long", "short"):
 print(
     "\n=== Camelot only (classical dropped; the two encode identical information) ==="
 )
+# O(c) time, O(1) space — c = 4 Camelot codes (fixed)
 for cam in ["8B", "8A", "12A", "11A"]:
     letter = cam[-1].lower()
     num = cam[:-1].zfill(2)

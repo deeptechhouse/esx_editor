@@ -83,6 +83,7 @@ class Probe(abc.ABC):
 
     _registry: dict[str, Probe] = {}
 
+    # O(1) time, O(1) space
     def __init_subclass__(cls, **kwargs) -> None:
         # Self-registration: adding a probe never means editing a lookup table
         # somewhere else, which is the usual way a new kind gets silently
@@ -92,13 +93,16 @@ class Probe(abc.ABC):
             Probe._registry[cls.kind] = cls()
 
     @staticmethod
+    # O(1) time, O(1) space
     def for_kind(kind: str) -> Probe | None:
         return Probe._registry.get(kind)
 
     @abc.abstractmethod
+    # O(1) time, O(1) space
     def read(self, bank, params: dict):
         """Return the current value, or raise to signal 'could not read'."""
 
+    # O(1) time, O(1) space
     def describe(self, params: dict) -> str:
         """Human label for the report line. Override where coordinates help."""
         return self.kind
@@ -107,9 +111,11 @@ class Probe(abc.ABC):
 class PatternTempoProbe(Probe):
     kind = "pattern_tempo"
 
+    # O(p) time, O(p) space — p = 256 patterns (fixed ESX-1 bank size, patterns() copies the tuple)
     def read(self, bank, params):
         return bank.patterns()[params["pattern"]].header.tempo
 
+    # O(1) time, O(1) space
     def describe(self, params):
         return f"pattern {params['pattern'] + 1:02d} tempo"
 
@@ -117,10 +123,12 @@ class PatternTempoProbe(Probe):
 class StepActiveProbe(Probe):
     kind = "step_active"
 
+    # O(p) time, O(p) space — p = 256 patterns (patterns() tuple copy, the step bitmap is a fixed 16 bytes)
     def read(self, bank, params):
         part = bank.patterns()[params["pattern"]].parts()[params["part"]]
         return part.sequence().is_active(params["step"])
 
+    # O(1) time, O(1) space
     def describe(self, params):
         return (
             f"pattern {params['pattern'] + 1:02d} part {params['part'] + 1} "
@@ -131,9 +139,11 @@ class StepActiveProbe(Probe):
 class PartSampleNumberProbe(Probe):
     kind = "part_sample_number"
 
+    # O(p) time, O(p) space — p = 256 patterns (patterns() tuple copy)
     def read(self, bank, params):
         return bank.patterns()[params["pattern"]].parts()[params["part"]].sample_number
 
+    # O(1) time, O(1) space
     def describe(self, params):
         return (
             f"pattern {params['pattern'] + 1:02d} part {params['part'] + 1} "
@@ -144,9 +154,11 @@ class PartSampleNumberProbe(Probe):
 class SampleNameProbe(Probe):
     kind = "sample_name"
 
+    # O(s) time, O(s) space — s = 384 sample slots (fixed, samples() copies the tuple)
     def read(self, bank, params):
         return bank.samples()[params["slot"]].name
 
+    # O(1) time, O(1) space
     def describe(self, params):
         return f"sample {params['slot']:03d} name"
 
@@ -154,9 +166,11 @@ class SampleNameProbe(Probe):
 class SampleRateProbe(Probe):
     kind = "sample_rate"
 
+    # O(s) time, O(s) space — s = 384 sample slots (fixed, samples() copies the tuple)
     def read(self, bank, params):
         return bank.samples()[params["slot"]].sample_rate
 
+    # O(1) time, O(1) space
     def describe(self, params):
         return f"sample {params['slot']:03d} rate"
 
@@ -164,9 +178,11 @@ class SampleRateProbe(Probe):
 class SampleBytesProbe(Probe):
     kind = "sample_bytes"
 
+    # O(s) time, O(s) space — s = 384 sample slots (fixed, samples() copies the tuple)
     def read(self, bank, params):
         return bank.samples()[params["slot"]].audio_bytes
 
+    # O(1) time, O(1) space
     def describe(self, params):
         return f"sample {params['slot']:03d} length in bytes"
 
@@ -174,10 +190,13 @@ class SampleBytesProbe(Probe):
 class MotionStoredProbe(Probe):
     kind = "motion_stored"
 
+    # O(p + v) time, O(p + v) space — p = 256 patterns (fixed tuple copy); v = values listed in the expectation
     def read(self, bank, params):
         slot = bank.patterns()[params["pattern"]].motion_slots()[params["slot"]]
+        # O(v) time, O(v) space — v = values listed in the expectation (get_step is a constant-time index)
         return [slot.get_step(step) for step in range(len(params["value"]))]
 
+    # O(1) time, O(1) space
     def describe(self, params):
         return (
             f"pattern {params['pattern'] + 1:02d} motion slot "
@@ -188,9 +207,11 @@ class MotionStoredProbe(Probe):
 class SongNameProbe(Probe):
     kind = "song_name"
 
+    # O(g) time, O(g) space — g = 64 songs (fixed, songs() copies the tuple)
     def read(self, bank, params):
         return bank.songs()[params["slot"]].name
 
+    # O(1) time, O(1) space
     def describe(self, params):
         return f"song {params['slot'] + 1:02d} name"
 
@@ -198,11 +219,13 @@ class SongNameProbe(Probe):
 class SongChainProbe(Probe):
     kind = "song_chain"
 
+    # O(g + c) time, O(g + c) space — g = 64 songs (fixed tuple copy); c = patterns in this song's chain
     def read(self, bank, params):
         # chain is a tuple property; the manifest stores JSON lists, so compare
         # like for like rather than making the caller remember the difference.
         return list(bank.songs()[params["slot"]].chain)
 
+    # O(1) time, O(1) space
     def describe(self, params):
         return f"song {params['slot'] + 1:02d} pattern chain"
 
@@ -210,9 +233,11 @@ class SongChainProbe(Probe):
 class CcAssignmentsProbe(Probe):
     kind = "cc_assignments"
 
+    # O(r) time, O(r) space — r = 33 CC assign rows (fixed)
     def read(self, bank, params):
         return list(bank.globals.cc_assignments())
 
+    # O(1) time, O(1) space
     def describe(self, params):
         return "MIDI CC assign table (all 33 rows)"
 
@@ -229,6 +254,7 @@ class ProbeOutcome:
 
     __slots__ = ("_label", "_status", "_expected", "_actual", "_note")
 
+    # O(1) time, O(1) space
     def __init__(self, label, status, expected=None, actual=None, note=""):
         self._label = label
         self._status = status
@@ -237,17 +263,21 @@ class ProbeOutcome:
         self._note = note
 
     @property
+    # O(1) time, O(1) space
     def label(self) -> str:
         return self._label
 
     @property
+    # O(1) time, O(1) space
     def status(self) -> str:
         return self._status
 
     @property
+    # O(1) time, O(1) space
     def holds(self) -> bool:
         return self._status == self.HOLDS
 
+    # O(w) time, O(w) space — w = characters rendered by _fmt (lists cut to 8 items per level)
     def line(self) -> str:
         if self.holds:
             return f"      ok    {self._label} = {_fmt(self._actual)}"
@@ -265,6 +295,7 @@ class TestOutcome:
 
     __slots__ = ("_name", "_summary", "_path", "_probes", "_delta", "_error")
 
+    # O(q) time, O(q) space — q = probe outcomes passed in (tuple copy)
     def __init__(self, name, summary, path, probes, delta, error=""):
         self._name = name
         self._summary = summary
@@ -274,18 +305,23 @@ class TestOutcome:
         self._error = error
 
     @property
+    # O(1) time, O(1) space
     def name(self) -> str:
         return self._name
 
     @property
+    # O(1) time, O(1) space
     def returned(self) -> bool:
         return self._path is not None
 
     @property
+    # O(q) time, O(1) space — q = probe outcomes in this test
     def clean(self) -> bool:
         """Came back, parsed, and every expectation still holds."""
+        # O(q) time, O(1) space — q = probe outcomes, short-circuits on the first failure
         return self.returned and not self._error and all(p.holds for p in self._probes)
 
+    # O(c) time, O(c) space — c = characters in the rendered report (one line per probe)
     def report(self) -> str:
         head = f"  {self._name:<12} {self._summary}"
         if not self.returned:
@@ -310,6 +346,7 @@ class TestOutcome:
                     f"      {self._delta:,} {plural} from what we wrote "
                     "(see below for whether it matters)"
                 )
+        # O(c) time, O(c) space — c = characters across the rendered probe lines
         lines += [p.line() for p in self._probes]
         return "\n".join(lines)
 
@@ -320,12 +357,14 @@ class TestOutcome:
 class ReadBackSession:
     """Matches returned banks to their tests and evaluates every expectation."""
 
+    # O(1) time, O(1) space
     def __init__(self, generated_dir: str, returned_dir: str):
         self._generated = generated_dir
         self._returned = returned_dir
         self._manifest: dict = {}
         self._unmatched: list[str] = []
 
+    # O(m) time, O(m) space — m = bytes in manifest.json
     def load_manifest(self) -> dict:
         path = os.path.join(self._generated, "manifest.json")
         if not os.path.exists(path):
@@ -339,13 +378,24 @@ class ReadBackSession:
             self._manifest = json.load(fh)
         return self._manifest
 
+    # O(f log f + t) time, O(f + t) space — f = entries in the returned directory; t = tests in the manifest
     def match(self) -> dict[str, str]:
         """Route each returned .esx to a test name by its tN token."""
         by_test: dict[str, str] = {}
+        # Index tests by their 2-character tN token once, instead of scanning
+        # every test name for every returned file (that was files x tests).
+        # setdefault keeps the FIRST test in manifest order per token, which is
+        # exactly what the old next(t for t in tests if t.startswith(token))
+        # returned — token is always 2 chars, so startswith == t[:2] equality.
+        by_token: dict[str, str] = {}
+        # O(t) time, O(t) space — t = tests in the manifest
+        for test_name in self._manifest.get("tests", {}):
+            by_token.setdefault(test_name[:2], test_name)
         # NOT glob("*.esx"): fnmatch is case-sensitive on posix whatever the
         # filesystem does, and the ESX-1 writes uppercase 8.3 names — so the
         # obvious version silently finds nothing after a real session and
         # reports "you did not do the test" to someone who did.
+        # O(f log f) time, O(f) space — f = entries in the returned directory (sorted once)
         files = [
             os.path.join(self._returned, n)
             for n in sorted(os.listdir(self._returned))
@@ -354,16 +404,13 @@ class ReadBackSession:
             # not banks and reading one looks like a corrupt save.
             and not n.startswith("._")
         ]
+        # O(f) time, O(f) space — f = returned banks, each one regex search on its filename and a dict lookup
         for path in files:
             m = TEST_TOKEN.search(os.path.basename(path))
             if not m:
                 self._unmatched.append(path)
                 continue
-            token = m.group(1).lower()
-            name = next(
-                (t for t in self._manifest.get("tests", {}) if t.startswith(token)),
-                None,
-            )
+            name = by_token.get(m.group(1).lower())
             if name is None:
                 self._unmatched.append(path)
             else:
@@ -372,9 +419,11 @@ class ReadBackSession:
                 by_test.setdefault(name, path)
         return by_test
 
+    # O(t log t + B + E) time, O(b + E) space — t = tests in the manifest; B = bytes across all returned and generated banks; E = expectations across all tests; b = bytes in the largest single bank
     def evaluate(self, by_test: dict[str, str]) -> list[TestOutcome]:
         reader = BankReader()
         outcomes = []
+        # O(t log t + B + E) time, O(b + E) space — t = tests; B = bytes across all banks read; E = expectations; b = largest single bank (one parsed at a time)
         for name, spec in sorted(self._manifest.get("tests", {}).items()):
             path = by_test.get(name)
             if path is None:
@@ -398,24 +447,29 @@ class ReadBackSession:
                 )
                 continue
 
+            # O(e) time, O(e) space — e = expectations for this test (each probe touches a fixed 256/384-entry tuple)
             probes = [self._run_probe(bank, e) for e in spec.get("expect", [])]
             outcomes.append(TestOutcome(name, spec["summary"], path, probes, delta))
         return outcomes
 
+    # O(b) time, O(b) space — b = bytes in the larger of the two banks (ours is read into memory)
     def _byte_delta(self, spec: dict, returned: bytes) -> int | None:
         """How many bytes differ from the bank we put ON the card."""
         original = os.path.join(self._generated, spec["file"])
         if not os.path.exists(original):
             return None
         ours = open(original, "rb").read()
+        # O(b) time, O(1) space — b = bytes in the shorter bank
         n = sum(
             1 for i in range(min(len(ours), len(returned))) if ours[i] != returned[i]
         )
         return n + abs(len(ours) - len(returned))
 
     @staticmethod
+    # O(k + v) time, O(k + v) space — k = keys in the expectation; v = items in its value (probe tuple copies are fixed-size)
     def _run_probe(bank, expectation: dict) -> ProbeOutcome:
         kind = expectation.get("kind", "?")
+        # O(k) time, O(k) space — k = keys in the expectation
         params = {k: v for k, v in expectation.items() if k != "kind"}
         probe = Probe.for_kind(kind)
         if probe is None:
@@ -450,6 +504,7 @@ class ReadBackSession:
             actual,
         )
 
+    # O(c + Q) time, O(o) space — c = characters printed; Q = probe outcomes across all tests; o = outcomes
     def report(self, outcomes: list[TestOutcome]) -> int:
         print("=" * 72)
         print("ESX-1 HARDWARE TEST — RETURN TRIP REPORT")
@@ -457,12 +512,14 @@ class ReadBackSession:
         print(f"\ngenerated: {self._generated}")
         print(f"returned:  {self._returned}\n")
 
+        # O(c) time, O(1) space — c = characters of the rendered outcome reports
         for outcome in outcomes:
             print(outcome.report())
             print()
 
         if self._unmatched:
             print("Returned files that could not be routed to a test:")
+            # O(u) time, O(1) space — u = returned files that matched no test
             for path in self._unmatched:
                 print(f"  {os.path.basename(path)}")
             print(
@@ -470,7 +527,9 @@ class ReadBackSession:
                 "   the file to spike_a/hw_session.py if it is a checklist save.)\n"
             )
 
+        # O(o) time, O(o) space — o = outcomes
         done = [o for o in outcomes if o.returned]
+        # O(o + Q) time, O(o) space — o = returned outcomes; Q = their probe outcomes (clean scans each one's probes)
         clean = [o for o in done if o.clean]
         print("=" * 72)
         print(
@@ -489,6 +548,7 @@ class ReadBackSession:
         return 0 if done and len(clean) == len(outcomes) else 1
 
 
+# O(v) time, O(d) space — v = elements across both nested values; d = nesting depth (recursion stack)
 def _equal(expected, actual) -> bool:
     """Compare a manifest value (JSON types) with a live value.
 
@@ -497,6 +557,7 @@ def _equal(expected, actual) -> bool:
     to the hardware for nothing.
     """
     if isinstance(expected, (list, tuple)) and isinstance(actual, (list, tuple)):
+        # O(v) time, O(d) space — v = elements across both nested values; d = nesting depth
         return len(expected) == len(actual) and all(
             _equal(e, a) for e, a in zip(expected, actual, strict=False)
         )
@@ -507,9 +568,11 @@ def _equal(expected, actual) -> bool:
     return expected == actual
 
 
+# O(w) time, O(w) space — w = characters in the result (lists are cut to 8 items per level, so long lists do not grow it)
 def _fmt(value) -> str:
     """Short, readable rendering — long lists are truncated, not wrapped."""
     if isinstance(value, (list, tuple)):
+        # O(w) time, O(w) space — w = characters in the rendered first 8 items
         body = ", ".join(_fmt(v) for v in value[:8])
         return f"[{body}{', …' if len(value) > 8 else ''}]"
     if isinstance(value, str):
@@ -517,6 +580,7 @@ def _fmt(value) -> str:
     return str(value)
 
 
+# O(t log t + f log f + B + E) time, O(b + E + f + m) space — t = tests; f = returned files; B = bytes across all banks; E = expectations; b = largest bank; m = manifest bytes
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Check whether an ESX-1 preserved what this editor wrote.",

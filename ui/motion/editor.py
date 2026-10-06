@@ -54,6 +54,7 @@ RESEARCH = os.path.join(
 )
 
 
+# O(1) time, O(1) space
 def domain_for(target: MotionTarget) -> MotionDomain:
     return MotionDomain(target.kind, target.option_count, target.forced_trig)
 
@@ -62,9 +63,11 @@ class MotionEditor(QWidget):
     slotChanged = Signal()
     assignmentRefused = Signal(str)
 
+    # O(t) time, O(t) space — t = motion targets in the operation table (313 shipped, loaded from disk when none is passed)
     def __init__(self, parent=None, *, table: OperationTable | None = None):
         super().__init__(parent)
         self._table = table or OperationTable.load(RESEARCH)
+        # O(k·c) time, O(k·c) space — k = 24 motion slots; c = 128 step bytes per slot
         self._slots: list[MotionSlot] = [MotionSlot.empty() for _ in range(24)]
         self._index = 0
         self._target: MotionTarget | None = None
@@ -89,6 +92,7 @@ class MotionEditor(QWidget):
         self._trig.toggled.connect(self.canvas.set_trig_hold)
 
         self._slot_box = QComboBox()
+        # O(k) time, O(1) space — k = 24 motion slots
         for i in range(24):
             self._slot_box.addItem(f"slot {i + 1}")
         self._slot_box.currentIndexChanged.connect(self._on_slot_index)
@@ -96,6 +100,7 @@ class MotionEditor(QWidget):
         tools_row = QHBoxLayout()
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
+        # O(b) time, O(1) space — b = 13 tool buttons
         for name, label in TOOL_BUTTONS:
             btn = QPushButton(label)
             btn.setCheckable(name in ("pencil", "eraser", "line"))
@@ -124,6 +129,7 @@ class MotionEditor(QWidget):
         layout.addLayout(body)
         self._refresh_budget()
 
+    # O(k) time, O(k) space — k = 24 motion slots
     def bind_pattern(self, pattern: Pattern) -> None:
         """Edit the pattern's 24 motion slots in place."""
         self._slots = list(pattern.motion_slots())
@@ -132,10 +138,12 @@ class MotionEditor(QWidget):
         self.canvas.set_slot(self._slots[0], self.canvas.domain)
         self._refresh_budget()
 
+    # O(L) time, O(L) space — L = characters in the current target's name
     def set_sample_duration(self, seconds: float | None) -> None:
         self._sample_duration_s = seconds
         self._refresh_start_help()
 
+    # O(1) time, O(1) space
     def _on_slot_index(self, index: int) -> None:
         self._index = index
         slot = self._slots[index]
@@ -144,8 +152,10 @@ class MotionEditor(QWidget):
         self._target = target
         self.canvas.set_slot(slot, domain)
 
+    # O(k + L) time, O(L) space — k = 24 motion slots; L = characters in the target's name
     def _on_target(self, target: MotionTarget) -> None:
         slot = self._slots[self._index]
+        # O(k) time, O(1) space — k = 24 motion slots
         used = sum(1 for s in self._slots if s.in_use)
         assigning_new = not slot.in_use
         if assigning_new and used >= 24:
@@ -168,6 +178,7 @@ class MotionEditor(QWidget):
         self._refresh_start_help()
         self.slotChanged.emit()
 
+    # O(n·v) time, O(n + v) space — n = playable steps (≤ 128); v = ≤ 128 legal stored bytes per snap
     def _on_tool(self, name: str) -> None:
         slot, domain, n = self.canvas.slot, self.canvas.domain, self.canvas.length
         if name in ("pencil", "eraser", "line"):
@@ -190,13 +201,16 @@ class MotionEditor(QWidget):
         self.canvas.update()
         self.slotChanged.emit()
 
+    # O(k) time, O(1) space — k = 24 motion slots
     def _refresh_budget(self) -> None:
+        # O(k) time, O(1) space — k = 24 motion slots
         used = sum(1 for s in self._slots if s.in_use)
         self._budget.setText(f"{used}/24 used")
         self._budget.setStyleSheet(
             f"color: {PALETTE.red if used >= 24 else PALETTE.lcd};"
         )
 
+    # O(L) time, O(L) space — L = characters in the current target's name
     def _refresh_start_help(self) -> None:
         if (
             self._target

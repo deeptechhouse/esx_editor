@@ -44,6 +44,7 @@ TAB_SHOTS = {
 }
 
 
+# O(b + v) time, O(b + v) space — b = bytes of the bank opened; v = views in the window (shots are a fixed 6 tabs + 11 wizard pages at 1300x800)
 def capture(bank_path: str, out_dir: str, *, wizard: bool = True) -> list[str]:
     """Write one PNG per tab (and per wizard page) and return the paths."""
     from PySide6.QtWidgets import QApplication
@@ -59,9 +60,12 @@ def capture(bank_path: str, out_dir: str, *, wizard: bool = True) -> list[str]:
         raise SystemExit(f"could not open {bank_path}")
 
     written = []
-    labels = list(window.views)
+    # Tab label -> index, built once rather than list.index() per shot.
+    # O(v) time, O(v) space — v = views (tabs) in the main window
+    tab_index = {label: i for i, label in enumerate(window.views)}
+    # O(t) time, O(t) space — t = 6 tab shots in TAB_SHOTS, each a fixed 1300x800 grab
     for label, filename in TAB_SHOTS.items():
-        window.tabs.setCurrentIndex(labels.index(label))
+        window.tabs.setCurrentIndex(tab_index[label])
         if label == "Song":
             # Select a song with a real chain; song 1 is the populated one.
             window.song_view.list.setCurrentRow(0)
@@ -80,6 +84,7 @@ def capture(bank_path: str, out_dir: str, *, wizard: bool = True) -> list[str]:
     return written
 
 
+# O(w) time, O(w) space — w = wizard pages, each a fixed 1300x800 grab
 def _capture_wizard(window, app, out_dir: str) -> list[str]:
     """One shot per wizard page, walked in order with every page skipped.
 
@@ -89,6 +94,7 @@ def _capture_wizard(window, app, out_dir: str) -> list[str]:
     wizard = window.open_wizard()
     wizard.resize(*WINDOW)
     written = []
+    # O(w) time, O(w) space — w = wizard pages
     for number, page_id in enumerate(wizard.pageIds(), start=1):
         wizard.setStartId(page_id)
         wizard.restart()
@@ -100,6 +106,7 @@ def _capture_wizard(window, app, out_dir: str) -> list[str]:
     return written
 
 
+# O(b + v) time, O(b + v) space — b = bytes of the bank opened; v = views in the window (see capture)
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bank", default=DEFAULT_BANK)
@@ -110,6 +117,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     os.makedirs(args.out, exist_ok=True)
+    # O(b + v) time, O(b + v) space — b = bank bytes; v = window views (the print loop is over the fixed shot list)
     for path in capture(args.bank, args.out, wizard=not args.no_wizard):
         print(f"  wrote {path}")
     return 0

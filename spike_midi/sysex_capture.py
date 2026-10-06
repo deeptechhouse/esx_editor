@@ -58,8 +58,8 @@ except ImportError:
     sys.exit("mido not installed:  pip3 install mido python-rtmidi")
 
 # --- Adjustable ------------------------------------------------------------
-IDLE_SECONDS = 5.0      # silence after the last message that ends the capture
-MAX_WAIT = 300.0        # absolute ceiling on one capture session
+IDLE_SECONDS = 5.0  # silence after the last message that ends the capture
+MAX_WAIT = 300.0  # absolute ceiling on one capture session
 POLL = 0.01
 
 # Korg's MIDI manufacturer ID, and the ESX-1's device family byte. Both are
@@ -69,6 +69,7 @@ KORG_ID = 0x42
 ESX_FAMILY = 0x71
 
 
+# O(1) time, O(1) space
 def describe(msg_bytes: bytes) -> str:
     """Best-effort structural read of one SysEx message."""
     if len(msg_bytes) < 5:
@@ -84,8 +85,10 @@ def describe(msg_bytes: bytes) -> str:
         parts.append(f"channel {chan + 1} (byte 0x{b[2]:02X})")
         if len(b) > 3:
             fam = b[3]
-            parts.append(f"family 0x{fam:02X}"
-                         + (" = ESX-1" if fam == ESX_FAMILY else " (unexpected)"))
+            parts.append(
+                f"family 0x{fam:02X}"
+                + (" = ESX-1" if fam == ESX_FAMILY else " (unexpected)")
+            )
         if len(b) > 4:
             parts.append(f"function 0x{b[4]:02X}")
     else:
@@ -93,20 +96,31 @@ def describe(msg_bytes: bytes) -> str:
     return "; ".join(parts)
 
 
+# O(t + n) time, O(n) space — t = poll iterations (<= max_wait / POLL); n = SysEx bytes received
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--list", action="store_true", help="list MIDI ports and exit")
-    ap.add_argument("-p", "--port", default=None,
-                    help="input port name (default: first available)")
-    ap.add_argument("-o", "--output", default=None,
-                    help="file to write raw SysEx to (.syx)")
-    ap.add_argument("--idle", type=float, default=IDLE_SECONDS,
-                    help=f"seconds of silence that end the capture (default {IDLE_SECONDS})")
+    ap.add_argument(
+        "-p", "--port", default=None, help="input port name (default: first available)"
+    )
+    ap.add_argument(
+        "-o", "--output", default=None, help="file to write raw SysEx to (.syx)"
+    )
+    ap.add_argument(
+        "--idle",
+        type=float,
+        default=IDLE_SECONDS,
+        help=f"seconds of silence that end the capture (default {IDLE_SECONDS})",
+    )
     ap.add_argument("--max-wait", type=float, default=MAX_WAIT)
-    ap.add_argument("--monitor", action="store_true",
-                    help="print EVERY incoming message (connectivity test: "
-                         "turn any knob on the ESX-1 and watch for traffic)")
+    ap.add_argument(
+        "--monitor",
+        action="store_true",
+        help="print EVERY incoming message (connectivity test: "
+        "turn any knob on the ESX-1 and watch for traffic)",
+    )
     args = ap.parse_args()
 
     inputs = mido.get_input_names()
@@ -129,14 +143,15 @@ def main() -> int:
     clock_count = 0
     other_count = 0
     started = time.time()
-    last_sysex = None        # drives the idle timeout -- ONLY SysEx resets it
-    first_activity = None    # any traffic at all, for the connectivity report
+    last_sysex = None  # drives the idle timeout -- ONLY SysEx resets it
+    first_activity = None  # any traffic at all, for the connectivity report
     announced = False
     last_beat = 0.0
 
     # mido delivers SysEx as one message with .type == 'sysex', so reassembly
     # across USB packet boundaries is handled for us.
     with mido.open_input(port_name) as port:
+        # O(t + n) time, O(n) space — t = poll iterations (<= max_wait / POLL); n = bytes of MIDI received
         while True:
             now = time.time()
             if now - started > args.max_wait:
@@ -148,6 +163,8 @@ def main() -> int:
             if last_sysex is not None and now - last_sysex > args.idle:
                 break
 
+            # bigo-lint: disable=BIGO006 — amortised: each received message is drained exactly once over the whole session, so summed over all polls p totals n
+            # O(p) time, O(p) space — p = bytes of MIDI messages pending since the last poll
             for msg in port.iter_pending():
                 if first_activity is None:
                     first_activity = now
@@ -155,8 +172,10 @@ def main() -> int:
                     raw = bytes(msg.bytes())
                     messages.append(raw)
                     last_sysex = time.time()
-                    print(f"  [{len(messages):3}] SysEx {len(raw):>8,} bytes  — {describe(raw)}",
-                          flush=True)
+                    print(
+                        f"  [{len(messages):3}] SysEx {len(raw):>8,} bytes  — {describe(raw)}",
+                        flush=True,
+                    )
                 elif msg.type == "clock":
                     clock_count += 1
                 else:
@@ -166,16 +185,21 @@ def main() -> int:
 
             if first_activity is not None and not announced:
                 announced = True
-                print("  >>> MIDI traffic detected — cable direction is CORRECT.\n",
-                      flush=True)
+                print(
+                    "  >>> MIDI traffic detected — cable direction is CORRECT.\n",
+                    flush=True,
+                )
 
             # Heartbeat so a long silent wait is visibly alive, without
             # printing thousands of clock ticks.
             if args.monitor and now - last_beat > 10:
                 last_beat = now
                 waited = int(now - started)
-                print(f"        ...{waited}s  clock={clock_count}  "
-                      f"other={other_count}  sysex={len(messages)}", flush=True)
+                print(
+                    f"        ...{waited}s  clock={clock_count}  "
+                    f"other={other_count}  sysex={len(messages)}",
+                    flush=True,
+                )
 
             time.sleep(POLL)
 
@@ -183,7 +207,9 @@ def main() -> int:
     if not messages:
         print("  No SysEx received.")
         if clock_count or other_count:
-            print(f"  ({clock_count:,} clock + {other_count} other message(s) DID arrive —")
+            print(
+                f"  ({clock_count:,} clock + {other_count} other message(s) DID arrive —"
+            )
             print("   the cable direction and port are correct, so re-check the")
             print("   front-panel dump steps.)")
         else:
@@ -191,10 +217,13 @@ def main() -> int:
             print("  adapter MIDI IN), the adapter's own LEDs, and the port choice.")
         return 1
 
+    # O(s) time, O(1) space — s = SysEx messages captured
     total = sum(len(m) for m in messages)
     print(f"  captured {len(messages)} message(s), {total:,} bytes total")
     if clock_count or other_count:
-        print(f"  (plus {clock_count:,} clock and {other_count} other message(s), ignored)")
+        print(
+            f"  (plus {clock_count:,} clock and {other_count} other message(s), ignored)"
+        )
 
     if args.output:
         out = Path(args.output)

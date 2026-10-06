@@ -32,6 +32,7 @@ class BankWriter:
 
     __slots__ = ()
 
+    # O(n) time, O(n) space — n = bytes in the output image
     def write(self, bank: Bank) -> bytes:
         """Serialize a Bank to a complete .esx image (in memory).
 
@@ -46,9 +47,11 @@ class BankWriter:
         out += raw.get("magic")
         out += bank.globals.to_bytes()
         out += raw.get("unknown_1")
+        # O(P) time, O(P) space — P = 256 patterns, each a fixed 4280-byte chunk
         for pattern in bank.patterns():
             out += pattern.to_bytes()
         out += raw.get("pre_songs")
+        # O(G) time, O(G) space — G = 64 songs, each a fixed 528-byte block
         for song in bank.songs():
             out += song.to_bytes()
         out += raw.get("post_songs")
@@ -57,16 +60,19 @@ class BankWriter:
         out += raw.get("hdr_gap")
 
         samples = bank.samples()
+        # O(M) time, O(M) space — M = 256 mono headers, each 40 bytes
         for slot in samples[: L.NUM_SAMPLES_MONO]:
             out += slot.to_bytes()
         if raw.has("gap_hdr"):
             out += raw.get("gap_hdr")
+        # O(S) time, O(S) space — S = 128 stereo headers, each 44 bytes
         for slot in samples[L.NUM_SAMPLES_MONO :]:
             out += slot.to_bytes()
         out += raw.get("tail")
         out += bank.pcm
         return bytes(out)
 
+    # O(n) time, O(n) space — n = bytes in the bank image (validate, serialise, write, re-read, re-serialise: a constant number of passes)
     def write_file(
         self,
         bank: Bank,
@@ -92,6 +98,7 @@ class BankWriter:
 
             report = BankValidator().validate(bank)
             if not report.ok:
+                # O(f log f) time, O(f) space — f = error findings (deduplicated, then sorted for the message)
                 codes = ", ".join(sorted({f.code for f in report.errors()}))
                 raise CodecError(
                     f"refusing to write an incoherent bank "
@@ -134,11 +141,13 @@ class BankWriter:
                 os.unlink(tmp)
 
 
+# O(n) time, O(n) space — n = bytes in the file
 def _read_bytes(path: str) -> bytes:
     with open(path, "rb") as f:
         return f.read()
 
 
+# O(1) time, O(1) space
 def _replace(src: str, dst: str) -> None:
     try:
         os.replace(src, dst)

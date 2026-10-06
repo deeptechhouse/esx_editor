@@ -27,14 +27,17 @@ class MidoMidiInput:
 
     __slots__ = ("_port", "_name")
 
+    # O(1) time, O(1) space
     def __init__(self):
         self._port = None
         self._name = ""
 
+    # O(1) time, O(1) space
     @property
     def available(self) -> bool:
         return True
 
+    # O(q) time, O(q) space — q = attached MIDI input ports
     def ports(self) -> tuple[str, ...]:
         import mido
 
@@ -45,6 +48,7 @@ class MidoMidiInput:
             # yanked USB device). No ports is the honest answer, not a crash.
             return ()
 
+    # O(1) time, O(1) space
     def open(self, port: str) -> None:
         import mido
 
@@ -52,6 +56,7 @@ class MidoMidiInput:
         self._port = mido.open_input(port)
         self._name = port
 
+    # O(1) time, O(1) space
     def close(self) -> None:
         if self._port is not None:
             try:
@@ -60,19 +65,23 @@ class MidoMidiInput:
                 self._port = None
                 self._name = ""
 
+    # O(1) time, O(1) space
     @property
     def is_open(self) -> bool:
         return self._port is not None
 
+    # O(1) time, O(1) space
     @property
     def port_name(self) -> str:
         return self._name
 
+    # O(p) time, O(k) space — p = messages pending in the backend queue, k = 64 kept at most (MAX_PER_POLL)
     def poll(self) -> tuple[MidiEvent, ...]:
         if self._port is None:
             return ()
         found: list[MidiEvent] = []
         try:
+            # O(p) time, O(k) space — p = messages pending in the backend queue, k = 64 kept at most (MAX_PER_POLL)
             for message in self._port.iter_pending():
                 if message.type == "control_change":
                     found.append(

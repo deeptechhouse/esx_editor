@@ -27,6 +27,7 @@ from core.errors import InvariantError
 BYTES_PER_SAMPLE = 2
 
 
+# O(n) time, O(n) space — n = bytes of PCM
 def swap_endianness(data: bytes) -> bytes:
     """Swap every 16-bit word. Its own inverse.
 
@@ -43,6 +44,7 @@ def swap_endianness(data: bytes) -> bytes:
     return words.tobytes()
 
 
+# O(s) time, O(s) space — s = 16-bit samples across all channels
 def fold_to_mono(interleaved: bytes, channels: int) -> bytes:
     """Average interleaved native-endian 16-bit frames down to one channel.
 
@@ -61,12 +63,14 @@ def fold_to_mono(interleaved: bytes, channels: int) -> bytes:
             f"{len(words)} samples do not divide into {channels} channels"
         )
     out = array.array("h", bytes(len(words) // channels * BYTES_PER_SAMPLE))
+    # O(s) time, O(c) space — s = samples across all channels, c = channels per frame (one slice per frame)
     for frame in range(len(words) // channels):
         base = frame * channels
         out[frame] = sum(words[base : base + channels]) // channels
     return out.tobytes()
 
 
+# O(s) time, O(s) space — s = 16-bit samples in the interleaved block
 def split_stereo(interleaved: bytes) -> tuple[bytes, bytes]:
     """De-interleave native-endian 16-bit stereo into (left, right).
 
@@ -82,6 +86,7 @@ def split_stereo(interleaved: bytes) -> tuple[bytes, bytes]:
     return left.tobytes(), right.tobytes()
 
 
+# O(n) time, O(n) space — n = 8-bit input samples
 def expand_8bit(data: bytes) -> bytes:
     """Zero-expand unsigned 8-bit PCM to signed 16-bit (manual p.88).
 
@@ -89,6 +94,7 @@ def expand_8bit(data: bytes) -> bytes:
     offline keeps the two paths equivalent.
     """
     out = array.array("h", bytes(len(data) * BYTES_PER_SAMPLE))
+    # O(n) time, O(1) space — n = 8-bit input samples (out is preallocated)
     for i, byte in enumerate(data):
         out[i] = (byte - 128) << 8
     return out.tobytes()
@@ -101,6 +107,7 @@ class WavPcmReader:
     splits channels as asked. Anything else raises rather than guessing.
     """
 
+    # O(n) time, O(n) space — n = bytes of PCM in the WAV file
     def read(
         self, path: str, *, channels: int = 1
     ) -> tuple[bytes | tuple[bytes, bytes], int, int]:

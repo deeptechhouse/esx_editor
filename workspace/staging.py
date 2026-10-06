@@ -45,6 +45,7 @@ LOCKFILE = ".lock"
 SESSION_PREFIX = "esxstudio-"
 
 
+# O(1) time, O(1) space
 def _pid_alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -62,15 +63,18 @@ class SessionWorkspace:
 
     __slots__ = ("_root", "_pid", "_dir")
 
+    # O(1) time, O(1) space
     def __init__(self, temp_root: str | None = None):
         self._root = temp_root
         self._pid: int | None = None
         self._dir: str | None = None
 
+    # O(1) time, O(1) space
     def _root_dir(self) -> str:
         return self._root if self._root is not None else tempfile.gettempdir()
 
     @property
+    # O(1) time, O(1) space
     def path(self) -> str:
         """The current session directory (created lazily)."""
         if self._dir is None:
@@ -78,6 +82,7 @@ class SessionWorkspace:
         assert self._dir is not None
         return self._dir
 
+    # O(1) time, O(1) space
     def create(self) -> str:
         """Create esxstudio-<pid>-<ts>/ with a PID lockfile; return its path."""
         if self._dir is not None and os.path.isdir(self._dir):
@@ -92,6 +97,7 @@ class SessionWorkspace:
             f.write(str(self._pid))
         return self._dir
 
+    # O(e + r) time, O(1) space — e = entries in the temp root; r = files removed from orphaned session dirs
     def sweep_orphans(self) -> int:
         """Remove session dirs whose owning PID is no longer alive; return count."""
         root = self._root_dir()
@@ -99,6 +105,7 @@ class SessionWorkspace:
             return 0
         removed = 0
         current = os.path.abspath(self._dir) if self._dir else None
+        # O(e + r) time, O(1) space — e = entries in the temp root; r = files removed by rmtree across orphans
         for name in os.listdir(root):
             if not name.startswith(SESSION_PREFIX):
                 continue
@@ -119,6 +126,7 @@ class SessionWorkspace:
                 removed += 1
         return removed
 
+    # O(r) time, O(1) space — r = files in this session's dir (rmtree)
     def clear(self) -> None:
         """Remove this session's converted copies and reset."""
         if self._dir and os.path.isdir(self._dir):
@@ -139,6 +147,7 @@ class StagingSample:
         "_duration_s",
     )
 
+    # O(1) time, O(1) space
     def __init__(self, source_path: str):
         self._source_path = source_path
         self._converted_path: str | None = None
@@ -148,27 +157,33 @@ class StagingSample:
         self._duration_s: float | None = None
 
     @property
+    # O(1) time, O(1) space
     def source_path(self) -> str:
         return self._source_path
 
     @property
+    # O(1) time, O(1) space
     def converted_path(self) -> str | None:
         return self._converted_path
 
     @property
+    # O(1) time, O(1) space
     def spec(self) -> ConversionSpec | None:
         return self._spec
 
     @property
+    # O(1) time, O(1) space
     def duration_s(self) -> float | None:
         return self._duration_s
 
     @property
+    # O(1) time, O(1) space
     def key(self) -> KeyResult | None:
         """The detected KeyResult or None (not analysed / not tonal)."""
         return self._key
 
     @property
+    # O(1) time, O(1) space
     def note(self) -> NoteResult | None:
         """The dominant pitch, or None for genuinely broadband material.
 
@@ -178,18 +193,21 @@ class StagingSample:
         return self._note
 
     @property
+    # O(1) time, O(1) space
     def pitch_label(self) -> str:
         """'A1 -3c', or '—' when there is no measurable pitch."""
         if self._note is None:
             return "—"
         return f"{self._note.label} {self._note.cents:+.0f}c"
 
+    # O(L) time, O(L) space — L = characters in the source path
     def staging_filename(self) -> str:
         """The on-disk name carrying the full both-notation name (TDD §5.3)."""
         classical = self._key.classical if self._key else None
         camelot = self._key.camelot if self._key else None
         return _staging_filename(self._source_path, classical, camelot)
 
+    # O(L) time, O(L) space — L = characters in the source path
     def slot_name(self) -> str:
         """The packed 8-byte machine name via the naming policy (TDD §5.3)."""
         camelot = self._key.camelot if self._key else None
@@ -211,8 +229,10 @@ class StagingBank:
         "_session",
         "_samples",
         "_calc",
+        "_used",
     )
 
+    # O(1) time, O(1) space
     def __init__(
         self,
         converter: AudioConverter,
@@ -228,15 +248,19 @@ class StagingBank:
         self._session = session
         self._samples: list[StagingSample] = []
         self._calc = BudgetCalculator()
+        # Running byte cost of everything in _samples. Kept in step by add()
+        # and clear() — the ONLY two places _samples changes — so add() does
+        # not re-sum every staged sample per file (that made a u-file drop
+        # O(u·n) in the staging view). If you add a remove/replace path, it
+        # MUST adjust _used too, or the fit check drifts from reality.
+        self._used = 0
 
+    # O(1) time, O(1) space
     def _used_bytes(self) -> int:
-        total = 0
-        for s in self._samples:
-            if s.duration_s is None or s.spec is None:
-                continue
-            total += self._calc.cost_bytes(s.duration_s, s.spec.rate, s.spec.channels)
-        return total
+        """Bytes the staged samples will cost (the running total, see __init__)."""
+        return self._used
 
+    # O(a) time, O(a) space — a = bytes of this file's audio (probe, convert and detect each pass over it once, the used-bytes total is a running sum)
     def add(self, source_path: str, spec: ConversionSpec) -> StagingSample:
         """Run drop->probe->convert->analyse->rename for one file.
 
@@ -251,6 +275,7 @@ class StagingBank:
             spec.rate,
             used_bytes=self._used_bytes(),
         )
+        # O(f) time, O(1) space — f = findings for this candidate
         if any(f.level == Severity.BLOCK for f in findings):
             raise StagingBlockedError(findings)
 
@@ -281,12 +306,17 @@ class StagingBank:
                 named = os.path.join(session_dir, f"{stem}-{len(self._samples)}{ext}")
             os.replace(dest, named)
             sample._converted_path = named
+        # Same arguments check_sample() already costed above, so this cannot
+        # raise here; it is the one place the running total grows.
+        self._used += self._calc.cost_bytes(duration_s, spec.rate, spec.channels)
         self._samples.append(sample)
         return sample
 
+    # O(n) time, O(n) space — n = staged samples
     def samples(self) -> tuple[StagingSample, ...]:
         return tuple(self._samples)
 
+    # O(k + P) time, O(P) space — k = assignments (each commit also scans the fixed 384 slots); P = PCM bytes across the assigned samples (bytearray tail writes are amortised)
     def commit_to(
         self,
         bank,
@@ -310,9 +340,11 @@ class StagingBank:
 
         pcm_reader = reader or WavPcmReader()
         prepared: list[tuple[int, bytes, int, str]] = []
+        # O(s) time, O(s) space — s = 384 sample slots (fixed)
         free = {i for i, slot in enumerate(bank.samples()) if slot.empty}
         budget = bank.pcm_free_bytes()
 
+        # O(k + P) time, O(P) space — k = assignments; P = PCM bytes read across them
         for sample, slot_index in assignments:
             if slot_index not in free:
                 raise StagingBlockedError(
@@ -361,14 +393,18 @@ class StagingBank:
             prepared.append((slot_index, pcm, source_rate, sample.slot_name()))
             free.discard(slot_index)
 
+        # O(k + P) time, O(1) space — k = prepared samples, each commit_sample scanning the fixed 384 slots; P = PCM bytes written across them
         for slot_index, pcm, rate, name in prepared:
             bank.commit_sample(
                 slot_index, pcm, stereo=False, sample_rate=rate, name=name
             )
+        # O(k) time, O(k) space — k = prepared samples
         return tuple(index for index, _, _, _ in prepared)
 
+    # O(s) time, O(s) space — s = 384 sample slots (fixed, only the 256 mono are scanned)
     def next_free_slots(self, bank, count: int) -> tuple[int, ...]:
         """The first `count` free MONO slots in `bank`, in order."""
+        # O(s) time, O(s) space — s = 256 mono sample slots (fixed slice)
         free = [
             i
             for i, slot in enumerate(bank.samples()[: L.NUM_SAMPLES_MONO])
@@ -376,7 +412,9 @@ class StagingBank:
         ]
         return tuple(free[:count])
 
+    # O(n + r) time, O(1) space — n = staged samples; r = files in the session dir
     def clear(self) -> None:
         """Reset the staging bank and remove converted copies."""
         self._samples.clear()
+        self._used = 0
         self._session.clear()

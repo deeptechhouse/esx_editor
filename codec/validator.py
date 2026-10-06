@@ -34,23 +34,28 @@ class Finding:
     # severity: "error" (bank is self-contradictory) | "warning" | "info"
     __slots__ = ("_severity", "_code", "_message")
 
+    # O(1) time, O(1) space
     def __init__(self, severity: str, code: str, message: str):
         self._severity = severity
         self._code = code
         self._message = message
 
+    # O(1) time, O(1) space
     @property
     def severity(self) -> str:
         return self._severity
 
+    # O(1) time, O(1) space
     @property
     def code(self) -> str:
         return self._code
 
+    # O(1) time, O(1) space
     @property
     def message(self) -> str:
         return self._message
 
+    # O(1) time, O(1) space
     def __repr__(self) -> str:
         return f"<{self._severity}:{self._code}>"
 
@@ -60,24 +65,32 @@ class ValidationReport:
 
     __slots__ = ("_findings",)
 
+    # O(f) time, O(f) space — f = findings
     def __init__(self, findings: Sequence[Finding]):
         self._findings = tuple(findings)
 
+    # O(1) time, O(1) space
     @property
     def findings(self) -> tuple[Finding, ...]:
         return self._findings
 
+    # O(f) time, O(f) space — f = findings
     @property
     def ok(self) -> bool:
         """True if there are no error-severity findings."""
         return not self.errors()
 
+    # O(f) time, O(f) space — f = findings
     def errors(self) -> tuple[Finding, ...]:
+        # O(f) time, O(f) space — f = findings
         return tuple(f for f in self._findings if f.severity == "error")
 
+    # O(f) time, O(f) space — f = findings
     def warnings(self) -> tuple[Finding, ...]:
+        # O(f) time, O(f) space — f = findings
         return tuple(f for f in self._findings if f.severity == "warning")
 
+    # O(1) time, O(1) space
     def __len__(self) -> int:
         return len(self._findings)
 
@@ -87,9 +100,11 @@ class BankValidator:
 
     __slots__ = ("_ops",)
 
+    # O(1) time, O(1) space
     def __init__(self, operation_table: OperationTable | None = None):
         self._ops = operation_table
 
+    # O(b + p*k) time, O(b + f) space — b = PCM bytes (bank.pcm hands back a copy), p = patterns, k = 24 motion slots per pattern, f = findings
     def validate(self, bank: Bank) -> ValidationReport:
         """Return a report of every coherence problem found. Never mutates."""
         findings: list[Finding] = []
@@ -102,6 +117,7 @@ class BankValidator:
         self._check_motion(bank, findings)
         return ValidationReport(findings)
 
+    # O(b + s) time, O(b + f) space — b = PCM bytes (len(bank.pcm) copies it), s = 384 sample slots, f = findings
     def _check_samples(self, bank: Bank, findings: list[Finding]) -> None:
         n_mono_hdr, n_stereo_hdr, current_offset = bank.sample_area_header()
         pcm_len = len(bank.pcm)
@@ -109,7 +125,9 @@ class BankValidator:
         mono = samples[: L.NUM_SAMPLES_MONO]
         stereo = samples[L.NUM_SAMPLES_MONO :]
 
+        # O(m) time, O(1) space — m = 256 mono slots
         occ_mono = sum(1 for s in mono if not s.empty)
+        # O(t) time, O(1) space — t = 128 stereo slots
         occ_stereo = sum(1 for s in stereo if not s.empty)
         if occ_mono != n_mono_hdr:
             findings.append(
@@ -129,6 +147,7 @@ class BankValidator:
             )
 
         highest_end = 0
+        # O(s) time, O(f) space — s = 384 sample slots, f = findings appended
         for s in samples:
             if s.empty:
                 continue
@@ -192,10 +211,13 @@ class BankValidator:
                 )
             )
 
+    # O(p*k) time, O(f) space — p = patterns, k = 24 motion slots per pattern, f = findings
     def _check_motion(self, bank: Bank, findings: list[Finding]) -> None:
         if self._ops is None:
             return
+        # O(p*k) time, O(f) space — p = patterns (256, or 0 in a PSG), k = 24 motion slots each, f = findings
         for p_idx, pattern in enumerate(bank.patterns()):
+            # O(k) time, O(f) space — k = 24 motion slots in this pattern, f = findings appended
             for slot in pattern.motion_slots():
                 if not slot.in_use:
                     continue

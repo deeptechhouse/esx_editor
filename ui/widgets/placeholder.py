@@ -9,6 +9,7 @@ from ui.theme import PALETTE
 
 
 class PlaceholderView(QWidget):
+    # O(1) time, O(1) space
     def __init__(self, title: str, hint: str = "", parent=None):
         super().__init__(parent)
         self._title = title

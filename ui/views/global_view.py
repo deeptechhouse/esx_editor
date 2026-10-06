@@ -61,12 +61,18 @@ LEARN_TIMEOUT_MS = 15_000
 DUMP_STRIDE = 16
 
 
+# O(d) time, O(d) space — d = bytes dumped
 def hex_dump(data: bytes, base: int = 0, stride: int = DUMP_STRIDE) -> str:
     """Classic offset / hex / ASCII dump. Pure function — easy to unit-test."""
     lines = []
+    # O(d) time, O(d) space — d = bytes dumped (d / w lines of w bytes)
     for start in range(0, len(data), stride):
         chunk = data[start : start + stride]
+        # bigo-lint: disable=BIGO006 — amortised: each line's join walks only its own w-byte chunk, so every byte is visited once overall
+        # O(w) time, O(w) space — w = stride bytes per line (DUMP_STRIDE, 16 by default)
         hexed = " ".join(f"{b:02x}" for b in chunk).ljust(stride * 3 - 1)
+        # bigo-lint: disable=BIGO006 — amortised: each line's join walks only its own w-byte chunk, so every byte is visited once overall
+        # O(w) time, O(w) space — w = stride bytes per line (DUMP_STRIDE, 16 by default)
         ascii_ = "".join(chr(b) if 32 <= b < 127 else "." for b in chunk)
         lines.append(f"{base + start:08X}  {hexed}  |{ascii_}|")
     return "\n".join(lines)
@@ -77,6 +83,7 @@ class GlobalView(QWidget):
 
     globalsEdited = Signal()
 
+    # O(p) time, O(p) space — p = MIDI input ports, enumerated only when the input gives no reason (no bank is bound yet)
     def __init__(self, parent=None):
         super().__init__(parent)
         self._bank: Bank | None = None
@@ -213,19 +220,23 @@ class GlobalView(QWidget):
         self.reload()
 
     # -- binding ------------------------------------------------------------
+    # O((r + q)·(v + p)) time, O((r + q)·v) space — r = 13 drum-note rows; q = 33 CC rows; v = 128 picker values; p = MIDI input ports, enumerated per Learn row only when the input gives no reason
     def bind_bank(self, bank: Bank | None) -> None:
         self._bank = bank
         self.reload()
 
+    # O(1) time, O(1) space
     def block_bytes(self) -> bytes:
         """The raw global block, or b'' when no bank is open."""
         if self._bank is None:
             return b""
         return self._bank.globals.to_bytes()
 
+    # O(1) time, O(1) space
     def globals_or_none(self):
         return None if self._bank is None else self._bank.globals
 
+    # O((r + q)·(v + p)) time, O((r + q)·v) space — r = 13 drum-note rows; q = 33 CC rows; v = 128 picker values; p = MIDI input ports, enumerated per Learn row only when the input gives no reason
     def reload(self) -> None:
         self._loading = True
         try:
@@ -233,6 +244,7 @@ class GlobalView(QWidget):
         finally:
             self._loading = False
 
+    # O((r + q)·(v + p)) time, O((r + q)·v) space — r = 13 drum-note rows; q = 33 CC rows; v = 128 picker values; p = MIDI input ports, enumerated per Learn row only when the input gives no reason
     def _reload(self) -> None:
         raw = self.block_bytes()
         if not raw:
@@ -259,11 +271,13 @@ class GlobalView(QWidget):
 
     # -- tables --------------------------------------------------------------
 
+    # O(r·(v + p)) time, O(r·v) space — r = 13 drum-note rows; v = 128 note values per picker; p = MIDI input ports, enumerated per row only when the input gives no reason
     def _fill_notes(self) -> None:
         params = self.globals_or_none()
         if params is None:
             return
         self.notes.setRowCount(len(DRUM_NOTE_PARTS))
+        # O(r·(v + p)) time, O(r·v) space — r = 13 drum-note rows; v = 128 note values per picker; p = MIDI input ports, enumerated per row only when the input gives no reason
         for row, part in enumerate(DRUM_NOTE_PARTS):
             self.notes.setItem(row, 0, _cell(part))
 
@@ -296,6 +310,7 @@ class GlobalView(QWidget):
         self.notes.setColumnWidth(2, self._learn_column_width())
         self._refresh_notes_warning()
 
+    # O((r + q)·(v + p)) time, O((r + q)·v) space — r = 13 drum-note rows; q = 33 CC rows; v = 128 picker values; p = MIDI input ports, enumerated per Learn row only when the input gives no reason
     def reset_drum_notes(self) -> None:
         """Restore the manual's factory table and redraw."""
         params = self.globals_or_none()
@@ -305,6 +320,7 @@ class GlobalView(QWidget):
         self.reload()
         self.globalsEdited.emit()
 
+    # O(r log r) time, O(r) space — r = 13 drum-note parts
     def _refresh_notes_warning(self) -> None:
         params = self.globals_or_none()
         if params is None:
@@ -314,8 +330,10 @@ class GlobalView(QWidget):
         if not clashes:
             self._notes_warning.setText("")
             return
+        # O(r log r) time, O(r) space — r = 13 drum-note parts (sorted clashes)
         shared = "; ".join(
             f"{note_name(number)} triggers "
+            # O(r) time, O(r) space — r = parts sharing this note (at most 13)
             + " + ".join(DRUM_NOTE_PARTS[p] for p in parts)
             for number, parts in sorted(clashes.items())
         )
@@ -324,6 +342,7 @@ class GlobalView(QWidget):
             "deliberate, but check it is meant."
         )
 
+    # O(1) time, O(1) space
     def _learn_column_width(self) -> int:
         """Width for a Learn column, from the button rather than the header.
 
@@ -336,11 +355,13 @@ class GlobalView(QWidget):
         probe.deleteLater()
         return width
 
+    # O(q·(v + p)) time, O(q·v) space — q = 33 CC rows; v = 128 CC values per picker; p = MIDI input ports, enumerated per row only when the input gives no reason
     def _fill_cc(self) -> None:
         params = self.globals_or_none()
         if params is None:
             return
         self.cc.setRowCount(NUM_CC_ASSIGN)
+        # O(q·(v + p)) time, O(q·v) space — q = 33 CC rows; v = 128 CC values per picker; p = MIDI input ports, enumerated per row only when the input gives no reason
         for row in range(NUM_CC_ASSIGN):
             self.cc.setItem(row, 0, _cell(f"{row + 1}"))
             self.cc.setItem(row, 1, _cell(CC_ASSIGN_NAMES[row]))
@@ -373,6 +394,7 @@ class GlobalView(QWidget):
 
     # -- MIDI Learn ----------------------------------------------------------
 
+    # O(q log q) time, O(q) space — q = 33 CC rows
     def _refresh_cc_warning(self) -> None:
         params = self.globals_or_none()
         if params is None:
@@ -382,18 +404,22 @@ class GlobalView(QWidget):
         if not clashes:
             self._cc_warning.setText("")
             return
+        # O(q log q) time, O(q) space — q = 33 CC rows (sorted clashes)
         shared = "; ".join(
+            # O(q) time, O(q) space — q = knobs sharing this CC (at most 33)
             f"CC {cc} drives " + " + ".join(CC_ASSIGN_NAMES[r] for r in rows)
             for cc, rows in sorted(clashes.items())
         )
         self._cc_warning.setText(f"Shared: {shared}. Legal, but check it is meant.")
 
+    # O(p) time, O(p) space — p = MIDI input ports, enumerated only when the input gives no reason
     def _idle_status(self) -> str:
         """Status line that costs nothing — no device enumeration."""
         if not self.midi.available:
             return self._unavailable_reason()
         return "MIDI Learn ready — press Rescan MIDI to list connected devices."
 
+    # O(p) time, O(p) space — p = MIDI input ports enumerated by describe_midi() when the input gives no reason
     def _unavailable_reason(self) -> str:
         """Why Learn is off, according to the input THIS view holds.
 
@@ -404,6 +430,7 @@ class GlobalView(QWidget):
         reason = getattr(self.midi, "reason", "")
         return reason or describe_midi()
 
+    # O(p + (r + q)·(v + p)) time, O((r + q)·v + p) space — r = 13 drum-note rows; q = 33 CC rows; v = 128 picker values; p = MIDI input ports, enumerated per Learn row only when the input gives no reason
     def rescan_midi(self) -> None:
         """Re-probe the MIDI stack, for a device plugged in after launch."""
         from midi import factory
@@ -416,6 +443,7 @@ class GlobalView(QWidget):
         self._midi_status.setText(describe_midi())
         self.reload()
 
+    # O(p) time, O(p) space — p = MIDI input ports listed
     def toggle_learn(self, kind: str, row: int) -> None:
         """Arm one row for the next matching gesture, or disarm it.
 
@@ -450,6 +478,7 @@ class GlobalView(QWidget):
         self._learn_timer.start()
         self._learn_deadline.start()
 
+    # O(p) time, O(p) space — p = MIDI input ports, enumerated only when the input gives no reason
     def stop_learn(self, *, captured: bool) -> None:
         """Disarm, close the port, and say what happened."""
         self._learn_timer.stop()
@@ -462,16 +491,19 @@ class GlobalView(QWidget):
                 self._midi_status.setText(self._idle_status())
         self.midi.close()
 
+    # O(1) time, O(1) space
     def _learn_button(self, kind: str, row: int):
         table, column = (self.cc, 3) if kind == "cc" else (self.notes, 2)
         return table.cellWidget(row, column)
 
+    # O(1) time, O(1) space
     def _set_learn_checked(self, kind: str, row: int, checked: bool) -> None:
         button = self._learn_button(kind, row)
         if button is not None:
             button.setChecked(checked)
             button.setText("Listening…" if checked else "Learn")
 
+    # O(n + p) time, O(n + p) space — n = MIDI messages queued since the last 30 ms poll; p = MIDI input ports, enumerated only on the no-bank path
     def _poll_midi(self) -> None:
         if self._learning is None:
             return
@@ -479,6 +511,7 @@ class GlobalView(QWidget):
         wanted = ControlChange if kind == "cc" else NoteOn
         # Filter by kind BEFORE taking the first: a controller that sends a CC
         # alongside every pad hit would otherwise capture the wrong one.
+        # O(n) time, O(n) space — n = MIDI messages queued since the last poll
         matching = [m for m in self.midi.poll() if isinstance(m, wanted)]
         if not matching:
             return
@@ -513,12 +546,14 @@ class GlobalView(QWidget):
         self._midi_status.setText(summary)
 
     @staticmethod
+    # O(v) time, O(1) space — v = 128 picker values (index lookup once the list is built)
     def _sync_picker(table, row: int, column: int, value: int) -> None:
         """Move a picker to match the model without re-entering the edit path."""
         picker = table.cellWidget(row, column)
         if picker is not None:
             picker.set_value(value)
 
+    # O(r) time, O(r) space — r = 13 drum-note parts (clash refresh)
     def _set_note(self, part: int, value: int) -> None:
         params = self.globals_or_none()
         if params is None or self._loading or params.drum_note(part) == value:
@@ -527,6 +562,7 @@ class GlobalView(QWidget):
         self._refresh_notes_warning()
         self.globalsEdited.emit()
 
+    # O(q) time, O(q) space — q = 33 CC rows (clash refresh)
     def _set_cc(self, row: int, value: int) -> None:
         params = self.globals_or_none()
         if params is None or self._loading or params.cc_assignment(row) == value:
@@ -536,6 +572,7 @@ class GlobalView(QWidget):
         self.globalsEdited.emit()
 
 
+# O(1) time, O(1) space
 def _cell(text: str) -> QTableWidgetItem:
     item = QTableWidgetItem(text)
     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)

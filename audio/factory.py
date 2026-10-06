@@ -24,6 +24,7 @@ class Capabilities:
 
     __slots__ = ("_converter", "_detector", "_pitch", "_notes")
 
+    # O(1) time, O(1) space
     def __init__(
         self,
         converter: AudioConverter,
@@ -36,37 +37,45 @@ class Capabilities:
         self._pitch = pitch
         self._notes = notes
 
+    # O(1) time, O(1) space
     @property
     def converter(self) -> AudioConverter:
         return self._converter
 
+    # O(1) time, O(1) space
     @property
     def detector(self) -> KeyDetector:
         return self._detector
 
+    # O(1) time, O(1) space
     @property
     def pitch(self) -> PitchDetector | None:
         """The dominant-pitch detector, or None when unavailable."""
         return self._pitch
 
+    # O(1) time, O(1) space
     @property
     def can_detect_note(self) -> bool:
         return self._pitch is not None
 
+    # O(1) time, O(1) space
     @property
     def notes(self) -> tuple[str, ...]:
         """One human-readable line per capability, live or missing."""
         return self._notes
 
+    # O(1) time, O(1) space
     @property
     def can_convert_any_format(self) -> bool:
         return type(self._converter).__name__ != "WavPassthroughConverter"
 
+    # O(1) time, O(1) space
     @property
     def can_detect_key(self) -> bool:
         return type(self._detector).__name__ != "NullKeyDetector"
 
 
+# O(d + b) time, O(d + b) space — d = directories on the binary search path, b = bytes of ffmpeg's -buildconf output
 def build_converter() -> tuple[AudioConverter, str]:
     """The best AudioConverter available, plus a line describing it."""
     from audio import ffmpeg_adapter
@@ -92,6 +101,7 @@ def build_converter() -> tuple[AudioConverter, str]:
     )
 
 
+# O(d) time, O(1) space — d = sys.path entries find_spec searches
 def build_detector() -> tuple[KeyDetector, str]:
     """The best KeyDetector available, plus a line describing it."""
     from audio import librosa_adapter
@@ -110,6 +120,7 @@ def build_detector() -> tuple[KeyDetector, str]:
     )
 
 
+# O(d) time, O(1) space — d = sys.path entries find_spec searches (first call only, cached after)
 @functools.lru_cache(maxsize=1)
 def build_pitch_detector() -> tuple[PitchDetector | None, str]:
     """The dominant-pitch detector, plus a line describing it."""
@@ -127,6 +138,7 @@ def build_pitch_detector() -> tuple[PitchDetector | None, str]:
     return None, "No note detection — needs numpy and librosa"
 
 
+# O(d + b) time, O(d + b) space — d = PATH and sys.path entries probed, b = bytes of ffmpeg's -buildconf output (first call only, cached after)
 @functools.lru_cache(maxsize=1)
 def detect_capabilities() -> Capabilities:
     """Probe the machine ONCE and return the adapters to use.

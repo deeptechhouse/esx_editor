@@ -51,19 +51,24 @@ class BankFile:
     readable: bool = True
 
     @property
+    # O(1) time, O(1) space
     def name(self) -> str:
         return os.path.basename(self.path)
 
     @property
+    # O(1) time, O(1) space
     def samples(self) -> int:
         return self.num_mono + self.num_stereo
 
     @property
+    # O(1) time, O(1) space
     def ram_fraction(self) -> float:
         """How much of the machine's sample RAM this bank would occupy."""
         return self.pcm_used / L.MAX_SAMPLE_BYTES if L.MAX_SAMPLE_BYTES else 0.0
 
 
+# Constant whatever the bank size: it reads a fixed 16 + 12 header bytes.
+# O(1) time, O(1) space
 def describe_bank(path: str) -> BankFile:
     """Read one bank's headline numbers from its header only.
 
@@ -96,25 +101,32 @@ class CardContents:
     capacity: int
 
     @property
+    # O(n) time, O(1) space — n = banks on the card
     def used(self) -> int:
         """Bytes the banks occupy. Not total disk usage — banks only."""
+        # O(n) time, O(1) space — n = banks on the card
         return sum(b.size for b in self.banks)
 
     @property
+    # O(n) time, O(1) space — n = banks on the card (via used)
     def free(self) -> int:
         return max(0, self.capacity - self.used)
 
     @property
+    # O(n) time, O(1) space — n = banks on the card (via used)
     def fraction(self) -> float:
         return self.used / self.capacity if self.capacity else 0.0
 
+    # O(n) time, O(1) space — n = banks on the card (via free)
     def fits(self, size: int) -> bool:
         return size <= self.free
 
+    # O(n) time, O(1) space — n = banks on the card (via free)
     def room_for_full_banks(self) -> int:
         """How many more maximum-size banks would fit."""
         return self.free // MAX_BANK_BYTES
 
+    # O(n) time, O(1) space — n = banks on the card (used is summed a few times)
     def summary(self) -> str:
         mib = 1024 * 1024
         return (
@@ -124,6 +136,7 @@ class CardContents:
         )
 
 
+# O(e log e) time, O(e) space — e = directory entries (sorted once, each bank costs a fixed header read)
 def scan(directory: str, capacity: int = MAX_CARD_BYTES) -> CardContents:
     """List every .esx in `directory`, newest layout first by name.
 
@@ -135,6 +148,7 @@ def scan(directory: str, capacity: int = MAX_CARD_BYTES) -> CardContents:
         entries = sorted(os.listdir(directory))
     except OSError:
         entries = []
+    # O(e) time, O(e) space — e = directory entries, each a constant-size header read
     for entry in entries:
         if not entry.lower().endswith(".esx"):
             continue
@@ -144,6 +158,7 @@ def scan(directory: str, capacity: int = MAX_CARD_BYTES) -> CardContents:
     return CardContents(directory, tuple(banks), capacity)
 
 
+# O(1) time, O(1) space
 def detect_capacity(directory: str) -> int:
     """Real capacity of the filesystem holding `directory`, clamped to a card.
 

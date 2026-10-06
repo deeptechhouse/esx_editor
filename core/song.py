@@ -94,6 +94,7 @@ class Song:
 
     __slots__ = ("_raw",)
 
+    # O(B) time, O(B) space — B = 528 bytes per song block
     def __init__(self, raw: bytes):
         if len(raw) != L.CHUNK_SONG:
             raise InvariantError(
@@ -104,10 +105,12 @@ class Song:
     # ---------------------------------------------------------------- name
 
     @property
+    # O(1) time, O(1) space
     def name(self) -> str:
         raw = bytes(self._raw[SONG_OFF_NAME : SONG_OFF_NAME + SONG_NAME_LEN])
         return raw.decode("ascii", "replace").rstrip("\x00 ")
 
+    # O(v) time, O(v) space — v = characters in the supplied name (encoded before truncation)
     def set_name(self, name: str) -> None:
         """Set the 8-character name, NUL-padded as the machine writes it."""
         encoded = name.encode("ascii", "replace")[:SONG_NAME_LEN]
@@ -117,10 +120,12 @@ class Song:
     # --------------------------------------------------------------- tempo
 
     @property
+    # O(1) time, O(1) space
     def tempo(self) -> float:
         """Song tempo in BPM (big-endian u16 at 1/128)."""
         return struct.unpack_from(">H", self._raw, SONG_OFF_TEMPO)[0] / SONG_TEMPO_SCALE
 
+    # O(1) time, O(1) space
     def set_tempo(self, bpm: float) -> None:
         if not (MIN_TEMPO <= bpm <= MAX_TEMPO):
             raise InvariantError(
@@ -132,21 +137,26 @@ class Song:
     # --------------------------------------------------------------- chain
 
     @property
+    # O(1) time, O(1) space
     def length(self) -> int:
         """Number of positions in the chain (stored minus one; never zero)."""
         return struct.unpack_from(">H", self._raw, SONG_OFF_LENGTH)[0] + 1
 
     @property
+    # O(c) time, O(c) space — c = chain length (at most 256 positions)
     def chain(self) -> tuple[int, ...]:
         """The ordered pattern indices this song plays."""
         n = self.length
         start = SONG_OFF_CHAIN
         return tuple(self._raw[start : start + n])
 
+    # O(c) time, O(c) space — c = chain length (at most 256 positions)
     def chain_labels(self) -> tuple[str, ...]:
         """The chain as the machine displays it: A.01 - D.64."""
+        # O(c) time, O(c) space — c = chain length (at most 256 positions)
         return tuple(pattern_label(i) for i in self.chain)
 
+    # O(c + B) time, O(c + B) space — c = positions supplied by the caller; B = 528 bytes per song block (the zero-padded chain tail)
     def set_chain(self, patterns: Sequence[int]) -> None:
         """Replace the chain. Zeroes the tail, as the hardware's save does.
 
@@ -162,6 +172,7 @@ class Song:
             raise InvariantError(
                 f"a song chain holds at most {MAX_CHAIN} positions, got {len(items)}"
             )
+        # O(c) time, O(1) space — c = positions supplied by the caller
         for index in items:
             if not (0 <= index < L.NUM_PATTERNS):
                 raise InvariantError(
@@ -171,14 +182,17 @@ class Song:
         tail = L.CHUNK_SONG - SONG_OFF_CHAIN
         self._raw[SONG_OFF_CHAIN:] = bytes(items).ljust(tail, b"\x00")
 
+    # O(c + B) time, O(c + B) space — c = chain length (list.insert shifts the tail); B = 528 bytes per song block
     def insert_pattern(self, position: int, index: int) -> None:
         chain = list(self.chain)
         chain.insert(position, index)
         self.set_chain(chain)
 
+    # O(c + B) time, O(c + B) space — c = chain length; B = 528 bytes per song block
     def append_pattern(self, index: int) -> None:
         self.set_chain([*self.chain, index])
 
+    # O(c + B) time, O(c + B) space — c = chain length (del shifts the tail); B = 528 bytes per song block
     def remove_position(self, position: int) -> None:
         """Drop one position from the chain.
 
@@ -199,6 +213,7 @@ class Song:
         del chain[position]
         self.set_chain(chain)
 
+    # O(c + B) time, O(c + B) space — c = chain length (pop/insert shift the tail); B = 528 bytes per song block
     def move_position(self, position: int, delta: int) -> None:
         """Move one position up or down the chain, clamped at the ends."""
         chain = list(self.chain)
@@ -213,6 +228,7 @@ class Song:
     # --------------------------------------------------------------- state
 
     @classmethod
+    # O(B) time, O(B) space — B = 528 bytes per song block
     def default_bytes(cls) -> bytes:
         """The untouched block the machine ships: blank name, 120 BPM, 1 x A.01."""
         blk = bytearray(L.CHUNK_SONG)
@@ -223,35 +239,43 @@ class Song:
         return bytes(blk)
 
     @property
+    # O(B) time, O(B) space — B = 528 bytes per song block
     def is_blank(self) -> bool:
         """True when the block is byte-for-byte the untouched default."""
         return bytes(self._raw) == self.default_bytes()
 
+    # O(B) time, O(B) space — B = 528 bytes per song block
     def clear(self) -> None:
         """Reset to the untouched default, including any undecoded bytes."""
         self._raw = bytearray(self.default_bytes())
 
     @property
+    # O(1) time, O(1) space
     def tempo_lock(self) -> bool:
         raise NotImplementedError(_UNDECODED.format(field="tempo_lock"))
 
     @property
+    # O(1) time, O(1) space
     def mute_hold(self) -> bool:
         raise NotImplementedError(_UNDECODED.format(field="mute_hold"))
 
     @property
+    # O(1) time, O(1) space
     def next_song(self) -> int:
         raise NotImplementedError(_UNDECODED.format(field="next_song"))
 
     # ------------------------------------------------------------ codec io
 
+    # O(B) time, O(B) space — B = 528 bytes per song block
     def to_bytes(self) -> bytes:
         return bytes(self._raw)
 
     @classmethod
+    # O(B) time, O(B) space — B = 528 bytes per song block
     def from_bytes(cls, raw: bytes) -> Song:
         return cls(raw)
 
     @classmethod
+    # O(B) time, O(B) space — B = 528 bytes per song block
     def blank(cls) -> Song:
         return cls(cls.default_bytes())

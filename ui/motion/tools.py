@@ -23,6 +23,7 @@ from core.motion import MotionDomain, MotionSlot
 SHAPES = ("sine", "tri", "saw", "square")
 
 
+# O(v) time, O(v) space — v = ≤ 128 legal stored bytes scanned by a discrete snap
 def write_step(
     slot: MotionSlot,
     step: int,
@@ -35,6 +36,7 @@ def write_step(
     slot.write_stored(step, stored, domain, length=length)
 
 
+# O(1) time, O(1) space
 def eraser(
     slot: MotionSlot,
     step: int,
@@ -45,14 +47,17 @@ def eraser(
     slot.write_stored(step, None, domain, length=length)
 
 
+# O(n) time, O(1) space — n = playable steps, min(length, 128)
 def clear(
     slot: MotionSlot, domain: MotionDomain, *, length: int = MotionSlot.NUM_STEPS
 ) -> None:
     """Fill the playable range with Disabl; keep the target id."""
+    # O(n) time, O(1) space — n = playable steps, min(length, 128)
     for i in range(min(length, MotionSlot.NUM_STEPS)):
         slot.write_stored(i, None, domain, length=length)
 
 
+# O(s·v) time, O(v) space — s = steps from x0 to x1 inclusive; v = ≤ 128 legal stored bytes per snap
 def line(
     slot: MotionSlot,
     domain: MotionDomain,
@@ -70,12 +75,14 @@ def line(
     if x1 < x0:
         x0, x1, y0, y1 = x1, x0, y1, y0
     span = x1 - x0
+    # O(s·v) time, O(v) space — s = steps from x0 to x1 inclusive; v = ≤ 128 legal stored bytes per snap
     for x in range(x0, x1 + 1):
         t = (x - x0) / span
         y = y0 + t * (y1 - y0)
         write_step(slot, x, int(round(y)), domain, length=length)
 
 
+# O(n·v) time, O(v) space — n = playable steps, min(length, 128); v = ≤ 128 legal stored bytes per snap
 def ramp(
     slot: MotionSlot,
     domain: MotionDomain,
@@ -91,6 +98,7 @@ def ramp(
     line(slot, domain, 0, start, last, end, length=length)
 
 
+# O(n·v) time, O(v) space — n = playable steps, min(length, 128); v = ≤ 128 legal stored bytes per snap
 def lfo(
     slot: MotionSlot,
     domain: MotionDomain,
@@ -107,6 +115,7 @@ def lfo(
     if n <= 0:
         return
     amp = depth / 2.0
+    # O(n·v) time, O(v) space — n = playable steps; v = ≤ 128 legal stored bytes per snap
     for i in range(n):
         t = i / n  # [0, 1)
         if shape == "sine":
@@ -123,6 +132,7 @@ def lfo(
         write_step(slot, i, int(round(y)), domain, length=length)
 
 
+# O(n·v) time, O(v) space — n = playable steps, min(length, 128); v = ≤ 128 legal stored bytes of the domain
 def sample_and_hold(
     slot: MotionSlot,
     domain: MotionDomain,
@@ -142,23 +152,27 @@ def sample_and_hold(
     hold = max(1, hold)
     n = min(length, MotionSlot.NUM_STEPS)
     current = legal[rng.randrange(len(legal))]
+    # O(n·v) time, O(v) space — n = playable steps; v = ≤ 128 legal stored bytes per snap
     for i in range(n):
         if i % hold == 0:
             current = legal[rng.randrange(len(legal))]
         write_step(slot, i, current, domain, length=length)
 
 
+# O(n·v) time, O(v) space — n = playable steps, min(length, 128); v = ≤ 128 legal stored bytes per snap
 def invert(
     slot: MotionSlot, domain: MotionDomain, *, length: int = MotionSlot.NUM_STEPS
 ) -> None:
     """Mirror enabled steps around 63.5; Disabl and masked steps stay put."""
     n = min(length, MotionSlot.NUM_STEPS)
+    # O(n·v) time, O(v) space — n = playable steps; v = ≤ 128 legal stored bytes per snap
     for i in range(n):
         if slot.is_disabled(i):
             continue
         write_step(slot, i, 127 - slot.get_step(i), domain, length=length)
 
 
+# O(n·v) time, O(v) space — n = playable steps, min(length, 128); v = ≤ 128 legal stored bytes per snap
 def scale(
     slot: MotionSlot,
     domain: MotionDomain,
@@ -168,6 +182,7 @@ def scale(
     length: int = MotionSlot.NUM_STEPS,
 ) -> None:
     n = min(length, MotionSlot.NUM_STEPS)
+    # O(n·v) time, O(v) space — n = playable steps; v = ≤ 128 legal stored bytes per snap
     for i in range(n):
         if slot.is_disabled(i):
             continue
@@ -175,13 +190,17 @@ def scale(
         write_step(slot, i, int(round(y)), domain, length=length)
 
 
+# O(n·v) time, O(n + v) space — n = playable steps, min(length, 128); v = ≤ 128 legal stored bytes per snap
 def smooth(
     slot: MotionSlot, domain: MotionDomain, *, length: int = MotionSlot.NUM_STEPS
 ) -> None:
     """3-point average of neighbouring *enabled* steps; Disabl is a wall."""
     n = min(length, MotionSlot.NUM_STEPS)
+    # O(n) time, O(n) space — n = playable steps
     original = [slot.get_step(i) for i in range(n)]
+    # O(n) time, O(n) space — n = playable steps
     disabled = [slot.is_disabled(i) for i in range(n)]
+    # O(n·v) time, O(v) space — n = playable steps; v = ≤ 128 legal stored bytes per snap
     for i in range(n):
         if disabled[i]:
             continue
@@ -193,6 +212,7 @@ def smooth(
         write_step(slot, i, int(round(sum(acc) / len(acc))), domain, length=length)
 
 
+# O(n·v) time, O(v) space — n = playable steps, min(length, 128); v = ≤ 128 legal stored bytes of the domain
 def randomise(
     slot: MotionSlot,
     domain: MotionDomain,
@@ -203,5 +223,6 @@ def randomise(
     rng = rng or random.Random()
     legal = domain.legal_values()
     n = min(length, MotionSlot.NUM_STEPS)
+    # O(n·v) time, O(v) space — n = playable steps; v = ≤ 128 legal stored bytes per snap
     for i in range(n):
         write_step(slot, i, legal[rng.randrange(len(legal))], domain, length=length)

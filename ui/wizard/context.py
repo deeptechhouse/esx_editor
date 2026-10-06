@@ -23,6 +23,7 @@ class WizardContext:
 
     __slots__ = ("_session", "_staging_bank", "_on_changed")
 
+    # O(1) time, O(1) space
     def __init__(
         self,
         session: BankSession,
@@ -34,24 +35,29 @@ class WizardContext:
         self._on_changed = on_changed
 
     @property
+    # O(1) time, O(1) space
     def session(self) -> BankSession:
         return self._session
 
     @property
+    # O(1) time, O(1) space
     def staging_bank(self) -> StagingBank | None:
         """The staging model, or None until the Add-samples page builds one."""
         return self._staging_bank
 
+    # O(1) time, O(1) space
     def adopt_staging_bank(self, bank: StagingBank) -> None:
         """Record the staging model the Add-samples page ended up rendering."""
         self._staging_bank = bank
 
+    # O(m) time, O(m) space — m = staged samples (tuple copy)
     def staged_samples(self) -> tuple:
         """Every staged sample, or an empty tuple before staging exists."""
         if self._staging_bank is None:
             return ()
         return self._staging_bank.samples()
 
+    # O(P) time, O(P) space — P = 256 patterns (Bank.patterns() copies the tuple)
     def first_pattern(self):
         """Pattern 0 of the open bank, or None."""
         bank = self._session.bank
@@ -60,6 +66,7 @@ class WizardContext:
         patterns = bank.patterns()
         return patterns[0] if patterns else None
 
+    # O(c) time, O(c) space — c = work done by the shell's on_changed callback
     def notify_changed(self) -> None:
         """Tell the shell the bank or its dirty flag moved."""
         if self._on_changed is not None:

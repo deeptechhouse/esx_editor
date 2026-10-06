@@ -51,26 +51,28 @@ import layout as L
 
 # --- Adjustable: the quality ladder -----------------------------------------
 TIERS = [
-    ("CD",        44100),
+    ("CD", 44100),
     ("Broadcast", 32000),
-    ("Radio",     22050),
-    ("Lo-fi",     16000),
+    ("Radio", 22050),
+    ("Lo-fi", 16000),
     ("Telephone", 11025),
 ]
 DEFAULT_RATE = 44100
 
-CAPACITY = L.MAX_SAMPLE_BYTES          # 25,165,824 bytes
-SLOTS_MONO = L.NUM_SAMPLES_MONO        # 256
-SLOTS_STEREO = L.NUM_SAMPLES_STEREO    # 128
+CAPACITY = L.MAX_SAMPLE_BYTES  # 25,165,824 bytes
+SLOTS_MONO = L.NUM_SAMPLES_MONO  # 256
+SLOTS_STEREO = L.NUM_SAMPLES_STEREO  # 128
 
 
 # ===========================================================================
 # Cost model
 # ===========================================================================
+# O(1) time, O(1) space
 def align_up(n, boundary):
     return ((n + boundary - 1) // boundary) * boundary
 
 
+# O(1) time, O(1) space
 def cost_bytes(duration_s, rate, channels=1):
     """Exact bytes a sample of this duration occupies at this rate.
 
@@ -82,6 +84,7 @@ def cost_bytes(duration_s, rate, channels=1):
     return align_up(raw + 2, 4)
 
 
+# O(1) time, O(1) space
 def seconds_available(rate, channels=1):
     """How many seconds of audio fit in an empty bank at this rate."""
     return CAPACITY / (rate * 2 * channels)
@@ -90,6 +93,8 @@ def seconds_available(rate, channels=1):
 # ===========================================================================
 # Duration probing -- metadata only, never decodes audio
 # ===========================================================================
+# Reads the header / ffprobe metadata only, never the audio payload.
+# O(1) time, O(1) space
 def probe_duration(path):
     """Return (duration_seconds, source_rate, channels) or None.
 
@@ -104,9 +109,21 @@ def probe_duration(path):
         pass
     try:
         out = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-print_format", "json",
-             "-show_streams", "-select_streams", "a:0", path],
-            capture_output=True, text=True, timeout=15)
+            [
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_streams",
+                "-select_streams",
+                "a:0",
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
         st = json.loads(out.stdout)["streams"][0]
         return (float(st["duration"]), int(st["sample_rate"]), int(st["channels"]))
     except Exception:
@@ -116,20 +133,28 @@ def probe_duration(path):
 # ===========================================================================
 # Scoreboard
 # ===========================================================================
+# O(w) time, O(w) space — w = bar width in characters (default 34)
 def _bar(frac, width=34):
     frac = max(0.0, min(1.5, frac))
     filled = int(min(frac, 1.0) * width)
     over = frac > 1.0
-    return ("[" + "#" * filled + "." * (width - filled) + "]" +
-            ("  OVER BUDGET" if over else ""))
+    return (
+        "["
+        + "#" * filled
+        + "." * (width - filled)
+        + "]"
+        + ("  OVER BUDGET" if over else "")
+    )
 
 
+# O(n) time, O(n) space — n = samples in items
 def scoreboard(items, rate_for=None):
     """items: list of (name, duration_s, source_rate, channels)."""
     rate_for = rate_for or (lambda name: DEFAULT_RATE)
     total = 0
     mono = stereo = 0
     rows = []
+    # O(n) time, O(n) space — n = samples in items
     for name, dur, srate, ch in items:
         r = rate_for(name)
         c = cost_bytes(dur, r, ch)
@@ -141,25 +166,35 @@ def scoreboard(items, rate_for=None):
         rows.append((name, dur, srate, ch, r, c))
 
     print(f"{'sample':<40}{'dur':>7}{'src':>8}{'ch':>3}{'tier':>8}{'bytes':>12}")
+    # O(k) time, O(1) space — k = 14 rows printed at most
     for name, dur, srate, ch, r, c in rows[:14]:
-        print(f"  {os.path.basename(name)[:36]:<38}{dur:>7.2f}{srate:>8}{ch:>3}"
-              f"{r:>8}{c:>12,}")
+        print(
+            f"  {os.path.basename(name)[:36]:<38}{dur:>7.2f}{srate:>8}{ch:>3}"
+            f"{r:>8}{c:>12,}"
+        )
     if len(rows) > 14:
         print(f"  ... and {len(rows)-14} more")
 
-    print(f"\n  MEMORY   {total:>12,} / {CAPACITY:,} bytes   "
-          f"({100*total/CAPACITY:5.1f}%)")
+    print(
+        f"\n  MEMORY   {total:>12,} / {CAPACITY:,} bytes   "
+        f"({100*total/CAPACITY:5.1f}%)"
+    )
     print(f"           {_bar(total/CAPACITY)}")
     free = CAPACITY - total
-    print(f"  FREE     {free:>12,} bytes = {free/(44100*2):6.1f} s more at CD, "
-          f"{free/(22050*2):6.1f} s at Radio")
+    print(
+        f"  FREE     {free:>12,} bytes = {free/(44100*2):6.1f} s more at CD, "
+        f"{free/(22050*2):6.1f} s at Radio"
+    )
     print(f"  SLOTS    mono {mono}/{SLOTS_MONO}   stereo {stereo}/{SLOTS_STEREO}")
     if total > CAPACITY:
-        print(f"\n  ! OVER by {total-CAPACITY:,} bytes "
-              f"({(total-CAPACITY)/(44100*2):.1f} s of CD-quality audio)")
+        print(
+            f"\n  ! OVER by {total-CAPACITY:,} bytes "
+            f"({(total-CAPACITY)/(44100*2):.1f} s of CD-quality audio)"
+        )
     return total
 
 
+# O(n log n) time, O(n) space — n = samples in items (one sort per tier, t = 5 tiers)
 def what_if(items):
     """Show the decision space: rate ladder CROSSED WITH mono/stereo.
 
@@ -168,60 +203,97 @@ def what_if(items):
     instead of one of 256 mono slots. Folding to mono is the same 2x saving as
     halving the rate, but for most drum and bass material it is far less audible.
     """
-    print(f"\n{'tier':<12}{'rate':>8}{'as-is':>16}{'forced mono':>16}"
-          f"{'fits mono?':>12}")
+    print(
+        f"\n{'tier':<12}{'rate':>8}{'as-is':>16}{'forced mono':>16}"
+        f"{'fits mono?':>12}"
+    )
+    # O(t * n) time, O(1) space — t = 5 tiers; n = samples in items
     for label, rate in TIERS:
+        # O(n) time, O(1) space — n = samples in items
         asis = sum(cost_bytes(d, rate, ch) for _, d, _, ch in items)
+        # O(n) time, O(1) space — n = samples in items
         mono = sum(cost_bytes(d, rate, 1) for _, d, _, _ in items)
-        print(f"{label:<12}{rate:>8}{asis:>16,}{mono:>16,}"
-              f"{('yes' if mono <= CAPACITY else 'NO'):>12}")
+        print(
+            f"{label:<12}{rate:>8}{asis:>16,}{mono:>16,}"
+            f"{('yes' if mono <= CAPACITY else 'NO'):>12}"
+        )
 
     # Duration is the third and often largest lever -- show where the bytes are.
     ranked = sorted(items, key=lambda it: -cost_bytes(it[1], 44100, it[3]))
     top = ranked[:5]
+    # O(n) time, O(1) space — n = samples in items
     tot_all = sum(cost_bytes(d, 44100, ch) for _, d, _, ch in items)
     print(f"\n  biggest consumers at CD (trimming length beats any tier change):")
+    # O(k) time, O(1) space — k = 5 top consumers
     for name, dur, _, ch in top:
         c = cost_bytes(dur, 44100, ch)
-        print(f"    {c:>12,} B  {dur:>7.1f}s {'st' if ch>=2 else 'mo'}  "
-              f"{os.path.basename(name)[:40]}")
-    print(f"    top 5 = {sum(cost_bytes(d,44100,ch) for _,d,_,ch in top)/tot_all*100:.0f}%"
-          f" of the total")
+        print(
+            f"    {c:>12,} B  {dur:>7.1f}s {'st' if ch>=2 else 'mo'}  "
+            f"{os.path.basename(name)[:40]}"
+        )
+    # O(k) time, O(1) space — k = 5 top consumers
+    print(
+        f"    top 5 = {sum(cost_bytes(d,44100,ch) for _,d,_,ch in top)/tot_all*100:.0f}%"
+        f" of the total"
+    )
 
+    # O(n) time, O(1) space — n = samples in items
     n_st = sum(1 for _, _, _, ch in items if ch >= 2)
     if n_st:
+        # O(n) time, O(1) space — n = samples in items
         asis = sum(cost_bytes(d, 44100, ch) for _, d, _, ch in items)
+        # O(n) time, O(1) space — n = samples in items
         mono = sum(cost_bytes(d, 44100, 1) for _, d, _, _ in items)
-        print(f"\n  {n_st} stereo source(s). Folding all to mono at CD quality "
-              f"frees {asis-mono:,} B")
-        print(f"  -- the same saving as dropping every sample to Radio (22.05k), "
-              f"usually far less audible.")
+        print(
+            f"\n  {n_st} stereo source(s). Folding all to mono at CD quality "
+            f"frees {asis-mono:,} B"
+        )
+        print(
+            f"  -- the same saving as dropping every sample to Radio (22.05k), "
+            f"usually far less audible."
+        )
 
     print(f"\n{'per-sample savings, CD -> tier (largest first)':<52}")
+    # O(n) time, O(n) space — n = samples in items
     base = {n: cost_bytes(d, 44100, ch) for n, d, _, ch in items}
+    # O(t * n log n) time, O(n) space — t = 4 non-CD tiers; n = samples in items
     for label, rate in TIERS[1:]:
-        deltas = sorted(((base[n] - cost_bytes(d, rate, ch), n)
-                         for n, d, _, ch in items), reverse=True)
+        # O(n) time, O(n) space — n = samples in items
+        deltas = sorted(
+            ((base[n] - cost_bytes(d, rate, ch), n) for n, d, _, ch in items),
+            reverse=True,
+        )
         top = deltas[0]
+        # O(n) time, O(1) space — n = samples in items
         tot = sum(x for x, _ in deltas)
-        print(f"  -> {label:<10} frees {tot:>12,} B total; "
-              f"biggest single win {top[0]:,} B ({os.path.basename(top[1])[:28]})")
+        print(
+            f"  -> {label:<10} frees {tot:>12,} B total; "
+            f"biggest single win {top[0]:,} B ({os.path.basename(top[1])[:28]})"
+        )
 
 
+# O(n log n) time, O(n) space — n = audio files named or found in the --fit folder
 def main(argv):
     args = argv[1:]
     tier = None
     if args and args[0] == "--tier":
-        tier = int(args[1]); args = args[2:]
+        tier = int(args[1])
+        args = args[2:]
     if args and args[0] == "--fit":
         d = args[1]
-        args = [os.path.join(d, f) for f in sorted(os.listdir(d))
-                if f.lower().endswith((".wav", ".aif", ".aiff", ".mp3"))]
+        # O(n log n) time, O(n) space — n = entries in the --fit folder (sorted once)
+        args = [
+            os.path.join(d, f)
+            for f in sorted(os.listdir(d))
+            if f.lower().endswith((".wav", ".aif", ".aiff", ".mp3"))
+        ]
     if not args:
-        print(__doc__); return 2
+        print(__doc__)
+        return 2
 
     items = []
     skipped = 0
+    # O(n) time, O(n) space — n = audio paths (one metadata probe each)
     for p in args:
         info = probe_duration(p)
         if not info:
@@ -231,7 +303,8 @@ def main(argv):
     if skipped:
         print(f"(skipped {skipped} unreadable file(s))\n")
     if not items:
-        print("no readable audio files"); return 1
+        print("no readable audio files")
+        return 1
 
     scoreboard(items, (lambda n: tier) if tier else None)
     what_if(items)

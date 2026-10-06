@@ -19,6 +19,7 @@ from core.bank import Bank
 class BankSession:
     """The currently-open bank and its on-disk path."""
 
+    # O(1) time, O(1) space
     def __init__(self) -> None:
         self._bank: Bank | None = None
         self._path: str | None = None
@@ -29,24 +30,30 @@ class BankSession:
         self._validator = BankValidator()
 
     @property
+    # O(1) time, O(1) space
     def bank(self) -> Bank | None:
         return self._bank
 
     @property
+    # O(1) time, O(1) space
     def path(self) -> str | None:
         return self._path
 
     @property
+    # O(1) time, O(1) space
     def dirty(self) -> bool:
         return self._dirty
 
     @property
+    # O(1) time, O(1) space
     def is_open(self) -> bool:
         return self._bank is not None
 
+    # O(1) time, O(1) space
     def mark_dirty(self) -> None:
         self._dirty = True
 
+    # O(B) time, O(B) space — B = bytes in the embedded blank template
     def new_bank(self) -> Bank:
         """Load the embedded blank template. Raises CodecError if missing."""
         self._bank = self._template.new_bank()
@@ -54,6 +61,7 @@ class BankSession:
         self._dirty = True
         return self._bank
 
+    # O(B) time, O(B) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM)
     def open_path(self, path: str) -> Bank:
         """Parse a bank from disk and make it the session's open document.
 
@@ -65,6 +73,7 @@ class BankSession:
         self._dirty = False
         return self._bank
 
+    # O(B) time, O(B) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM) (the validator copies the PCM)
     def validation_report(self):
         """Coherence report for the open bank, or None when nothing is open.
 
@@ -77,6 +86,7 @@ class BankSession:
 
         return BankValidator().validate(self._bank)
 
+    # O(B) time, O(B) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM) (validate, write, re-read verify)
     def save(self, path: str | None = None, *, allow_invalid: bool = False) -> str:
         """Write the bank. Uses `path` or the current path. Returns the path used."""
         if self._bank is None:
@@ -89,6 +99,7 @@ class BankSession:
         self._dirty = False
         return dest
 
+    # O(B) time, O(B) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM) (the validator copies the PCM)
     def validate(self) -> ValidationReport:
         """Coherence-check the open bank (TDD §4.4).
 
@@ -101,6 +112,7 @@ class BankSession:
             raise CodecError("no bank is open")
         return self._validator.validate(self._bank)
 
+    # O(m) time, O(m) space — m = PCM bytes, copied only if pcm_used_bytes() raises (the normal path is constant)
     def pcm_used(self) -> int:
         if self._bank is None:
             return 0
