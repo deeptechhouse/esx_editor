@@ -31,10 +31,12 @@ composition root (`ui/session.BankSession`) does.
 | `research/` | Reference | Verified byte encodings, the 313-target table, the findings log, the hardware checklist. **Read `CODEC_FINDINGS_LOG.md` before touching the codec.** |
 | `spike_a/` | Research tooling | The original format spike: probe, fixture generator, hardware session runner. Not part of the app. |
 | `deploy/` | Ops | Environment verification, run commands, local requirements, and the hardware round trip: `make_hw_test_banks.py` writes eight one-change banks plus a manifest of what each must still show, `hw_readback.py` checks the saves coming back. |
+| `packaging/macos/` | Distribution | `build_app.sh` builds the self-contained `ESX Bank Studio.app` (PyInstaller: `esx_bank_studio.spec`, icon from `make_icon.py`), smoke-tests it, and installs it to /Applications. Rebuild after every code change. |
 
 ## Key Entry Points
 
 - **Application start:** `ui/app.py` → `main()`; run with `python -m ui.app`
+- **Standalone Mac app:** `packaging/macos/build_app.sh` → `/Applications/ESX Bank Studio.app`
 - **Shell / menus:** `ui/main_window.py` → `MainWindow`
 - **Open/save/validate:** `ui/session.py` → `BankSession` (the only UI object that imports `codec/`)
 - **Read a bank:** `codec/reader.py` → `BankReader.read_auto(bytes)`
