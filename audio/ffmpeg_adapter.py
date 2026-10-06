@@ -26,6 +26,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 
 from audio.ports import ConversionSpec
 from core.errors import InvariantError
@@ -49,11 +50,41 @@ TIMEOUT_SECONDS = 300
 
 
 class FfmpegUnavailable(InvariantError):
-    """Raised when the ffmpeg/ffprobe binaries are not on PATH."""
+    """Raised when the ffmpeg/ffprobe binaries cannot be found (see `_search_path`)."""
 
 
+#: Where Homebrew puts binaries (Intel, then Apple Silicon). Searched AFTER the
+#: inherited PATH, never before it, so a user's own PATH choice still wins.
+#: THE TRAP: an app launched from Finder/Dock does not get the shell's PATH —
+#: launchd hands it /usr/bin:/bin:/usr/sbin:/sbin — so `shutil.which("ffmpeg")`
+#: misses /usr/local/bin/ffmpeg and the app quietly drops to WAV-only import
+#: even though ffmpeg is installed (seen 2026-10-06 building the .app).
+HOMEBREW_BIN_DIRS = ("/usr/local/bin", "/opt/homebrew/bin")
+
+
+# O(d) time, O(d) space — d = directories on the search path (a handful)
+def _search_path() -> str:
+    """The directories ffmpeg is looked for in, best first.
+
+    1. `bin/` inside a frozen build (PyInstaller sets `sys._MEIPASS`), so the
+       packaged .app uses the ffmpeg it was shipped with and needs nothing
+       installed on the machine.
+    2. The inherited PATH — a dev checkout behaves exactly as before.
+    3. Homebrew's locations, for a GUI launch that did not inherit PATH.
+    """
+    dirs: list[str] = []
+    bundle = getattr(sys, "_MEIPASS", None)  # set only inside a frozen app
+    if bundle:
+        dirs.append(os.path.join(bundle, "bin"))
+    dirs.extend(os.environ.get("PATH", "").split(os.pathsep))
+    dirs.extend(HOMEBREW_BIN_DIRS)
+    # O(d) time, O(d) space — d = directories collected above (empties dropped)
+    return os.pathsep.join(d for d in dirs if d)
+
+
+# O(d) time, O(d) space — d = directories on the search path
 def _which(name: str) -> str | None:
-    return shutil.which(name)
+    return shutil.which(name, path=_search_path())
 
 
 def available() -> bool:
