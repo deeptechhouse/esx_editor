@@ -25,6 +25,7 @@ PAGE_COUNT = len(PAGE_CLASSES)
 class SetupWizard(QWizard):
     """The eleven-screen guided setup."""
 
+    # O(p + f) time, O(p + f) space — p = 11 pages built once; f = entries swept from the staging temp root when AddSamplesPage builds a fresh staging model
     def __init__(
         self,
         session: BankSession,
@@ -40,22 +41,28 @@ class SetupWizard(QWizard):
         self.resize(860, 660)
 
         self._ctx = WizardContext(session, staging_bank, on_changed)
+        # O(p + f) time, O(p + f) space — p = 11 pages; f = entries swept from the staging temp root by AddSamplesPage
         self._pages = [cls(self._ctx) for cls in PAGE_CLASSES]
+        # O(p) time, O(1) space — p = 11 pages
         for page in self._pages:
             self.addPage(page)
 
     @property
+    # O(1) time, O(1) space
     def context(self) -> WizardContext:
         return self._ctx
 
+    # O(p) time, O(p) space — p = 11 pages
     def pages(self) -> tuple:
         """The eleven page objects, in flow order."""
         return tuple(self._pages)
 
+    # O(1) time, O(1) space
     def page_at(self, index: int):
         """The page at a 0-based flow position."""
         return self._pages[index]
 
+    # O(1) time, O(1) space
     def staging_bank(self) -> StagingBank | None:
         """The staging model the Add-samples page ended up rendering."""
         return self._ctx.staging_bank

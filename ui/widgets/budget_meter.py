@@ -29,6 +29,7 @@ from workspace.budget import CAPACITY, DEFAULT_RATE
 class BudgetMeter(QWidget):
     """Horizontal usage bar for sample memory."""
 
+    # O(1) time, O(1) space
     def __init__(self, parent=None, *, capacity: int = CAPACITY):
         super().__init__(parent)
         self._used = 0
@@ -41,6 +42,7 @@ class BudgetMeter(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setToolTip("sample memory used / 25 165 824 B")
 
+    # O(1) time, O(1) space
     def _label_width(self) -> int:
         """Pixels needed by the widest label, plus the rounded border."""
         from PySide6.QtGui import QFontMetrics
@@ -48,19 +50,23 @@ class BudgetMeter(QWidget):
         widest = self._format_label(self._capacity, self._capacity)
         return QFontMetrics(self.font()).horizontalAdvance(widest) + 2 * SPACE.md
 
+    # O(1) time, O(1) space
     def set_used(self, used: int) -> None:
         self._used = max(0, used)
         self.update()
 
     @property
+    # O(1) time, O(1) space
     def used(self) -> int:
         return self._used
 
     @property
+    # O(1) time, O(1) space
     def fraction(self) -> float:
         return 0.0 if self._capacity <= 0 else self._used / self._capacity
 
     @staticmethod
+    # O(1) time, O(1) space
     def _format_label(used: int, capacity: int) -> str:
         """The scoreboard text. Static so its width can be measured before any
         paint, and so the sizing and the drawing can never disagree."""
@@ -71,6 +77,7 @@ class BudgetMeter(QWidget):
             f"{remain_s:.0f}s CD left"
         )
 
+    # O(1) time, O(1) space
     def paintEvent(self, event) -> None:  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)

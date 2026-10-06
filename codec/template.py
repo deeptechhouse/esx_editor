@@ -29,6 +29,7 @@ class BankTemplate:
 
     __slots__ = ()
 
+    # O(1) time, O(1) space
     def _candidate_paths(self) -> tuple[str, ...]:
         """Where to look for the bundled blank template, in priority order.
 
@@ -43,8 +44,10 @@ class BankTemplate:
             os.path.join(project, "spike_a", TEMPLATE_FILENAME),
         )
 
+    # O(n) time, O(n) space — n = bytes in the template file
     def blank_bytes(self) -> bytes:
         """Return the raw bytes of the bundled blank template."""
+        # O(n) time, O(n) space — n = bytes of the template read (at most 2 candidate paths are checked)
         for path in self._candidate_paths():
             if os.path.exists(path):
                 with open(path, "rb") as f:
@@ -56,6 +59,7 @@ class BankTemplate:
             f"{self._candidate_paths()}"
         )
 
+    # O(n) time, O(n) space — n = bytes in the template image
     def new_bank(self) -> Bank:
         """Parse the bundled template into a fresh, editable Bank."""
         from codec.reader import BankReader

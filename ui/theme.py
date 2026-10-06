@@ -67,6 +67,7 @@ LCD_FONT_CANDIDATES = (
 )
 
 
+# O(c + a) time, O(a) space — c = candidate families; a = installed families (hashed once unless already a set)
 def resolve_family(candidates: Sequence[str], available: Collection[str]) -> str:
     """First candidate the font database actually has, else "" for the default.
 
@@ -74,12 +75,18 @@ def resolve_family(candidates: Sequence[str], available: Collection[str]) -> str
     with none of the candidates degrades to the application default instead of
     to an unresolvable name.
     """
+    # Hash the installed list once: `in` on a list/tuple is a linear scan, so
+    # c candidates × a installed families would be O(c·a). A set is reused as is.
+    if not isinstance(available, (set, frozenset)):
+        available = frozenset(available)
+    # O(c) time, O(1) space — c = candidate families (each a constant-time set lookup)
     for family in candidates:
         if family in available:
             return family
     return ""
 
 
+# O(F) time, O(F) space — F = installed font families
 def _installed_families() -> frozenset[str]:
     try:
         from PySide6.QtGui import QFontDatabase
@@ -98,14 +105,17 @@ class Type:
     size_title: int = 16
 
     @property
+    # O(1) time, O(1) space
     def ui_rule(self) -> str:
         """`font-family: X;` or nothing — never `font-family: ;`."""
         return f"font-family: {self.ui};" if self.ui else ""
 
     @property
+    # O(1) time, O(1) space
     def lcd_rule(self) -> str:
         return f"font-family: {self.lcd};" if self.lcd else ""
 
+    # O(F) time, O(F) space — F = installed font families (6 candidates checked per role)
     def resolved(self, available: Collection[str] | None = None) -> Type:
         """A copy with `ui` and `lcd` bound to real installed families."""
         families = _installed_families() if available is None else available
@@ -131,6 +141,7 @@ TYPE = Type()
 SPACE = Space()
 
 
+# O(1) time, O(1) space
 def qss(palette: Palette = PALETTE, typ: Type = TYPE, space: Space = SPACE) -> str:
     """Return the application-wide stylesheet derived from the tokens."""
     p, t, s = palette, typ, space
@@ -268,6 +279,7 @@ QLabel[role="muted"] {{
 """
 
 
+# O(F) time, O(F) space — F = installed font families
 def apply(app) -> None:
     """Apply the theme to a QApplication.
 

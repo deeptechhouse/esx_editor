@@ -79,6 +79,7 @@ MAX_FFT = 16384
 #:     median, skip 0.50 -> mean error  2.4 cents, worst  7.7  (all correct)
 
 
+# O(d) time, O(1) space — d = sys.path entries find_spec searches
 def available() -> bool:
     """True when the numeric stack needed for an FFT is importable."""
     return (
@@ -87,6 +88,7 @@ def available() -> bool:
     )
 
 
+# O(1) time, O(1) space
 def frequency_to_note(frequency: float) -> tuple[str, int, float]:
     """Hz -> (pitch class, octave, cents deviation).
 
@@ -104,6 +106,7 @@ def frequency_to_note(frequency: float) -> tuple[str, int, float]:
     return PITCH_CLASSES[midi % 12], octave, cents
 
 
+# O(k) time, O(1) space — k = 12 pitch classes searched by tuple.index
 def note_to_frequency(name: str, octave: int) -> float:
     """The inverse, for tests and for tuning displays."""
     try:
@@ -114,6 +117,7 @@ def note_to_frequency(name: str, octave: int) -> float:
     return A4_HZ * 2 ** ((midi - A4_MIDI) / 12)
 
 
+# O(1) time, O(1) space
 def refine_peak(magnitudes, index: int) -> float:
     """Parabolic interpolation around a peak bin, returning a fractional bin.
 
@@ -139,6 +143,7 @@ class SpectralPitchDetector:
 
     __slots__ = ("_min_prominence", "_max_seconds")
 
+    # O(d) time, O(1) space — d = sys.path entries find_spec searches
     def __init__(
         self,
         min_prominence: float = MIN_PROMINENCE,
@@ -152,6 +157,7 @@ class SpectralPitchDetector:
         self._min_prominence = min_prominence
         self._max_seconds = max_seconds
 
+    # O(e) time, O(e) space — e = spectrum elements (bins x frames), np.median partitions in linear time
     @staticmethod
     def _body_spectrum(spectrum, np):
         """Average the spectrum over the sound's BODY, skipping the attack.
@@ -173,6 +179,7 @@ class SpectralPitchDetector:
         start = min(start, frames - 2)
         return np.median(spectrum[:, start:], axis=1)
 
+    # O(s) time, O(s) space — s = decoded samples, capped at max_seconds x rate (n_fft is capped at MAX_FFT, so the STFT is linear in s)
     def detect_note(
         self, path: str, max_seconds: float | None = None
     ) -> NoteResult | None:

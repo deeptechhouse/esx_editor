@@ -47,6 +47,7 @@ class BankReader:
 
     __slots__ = ()
 
+    # O(n) time, O(n) space — n = bytes in the image (every region is sliced once)
     def read(self, data: bytes) -> Bank:
         """Parse a full .esx image (All-save) into a Bank.
 
@@ -78,16 +79,19 @@ class BankReader:
         globals_ = GlobalParameters(data[L.ADDR_GLOBAL_PARAMETERS : L.ADDR_UNKNOWN_1])
 
         patterns = []
+        # O(P) time, O(P) space — P = 256 patterns, each a fixed 4280-byte chunk
         for i in range(L.NUM_PATTERNS):
             off = L.ADDR_PATTERN_DATA + i * L.CHUNK_PATTERN
             patterns.append(Pattern.from_bytes(data[off : off + L.CHUNK_PATTERN]))
 
         samples = []
+        # O(M) time, O(M) space — M = 256 mono slots, each a fixed 40-byte header
         for i in range(L.NUM_SAMPLES_MONO):
             off = L.ADDR_SAMPLE_HEADER_MONO + i * L.CHUNK_SAMPLE_HEADER_MONO
             samples.append(
                 SampleSlot(data[off : off + L.CHUNK_SAMPLE_HEADER_MONO], False, i)
             )
+        # O(S) time, O(S) space — S = 128 stereo slots, each a fixed 44-byte header
         for i in range(L.NUM_SAMPLES_STEREO):
             off = L.ADDR_SAMPLE_HEADER_STEREO + i * L.CHUNK_SAMPLE_HEADER_STEREO
             samples.append(
@@ -118,18 +122,18 @@ class BankReader:
         # the old verbatim "mid" region into pre_songs / songs / post_songs is
         # what keeps the round-trip gate byte-identical: a Song patches only
         # decoded fields into the block it was read from.
+        # Stepping by the chunk size (rather than computing i * CHUNK inside a
+        # slice) also keeps black and ruff-format agreeing on the layout.
+        songs_end = L.ADDR_SONG_DATA + L.NUM_SONGS * L.CHUNK_SONG
+        # O(G) time, O(G) space — G = 64 songs, each a fixed 528-byte block
         songs = [
-            Song.from_bytes(
-                data[
-                    L.ADDR_SONG_DATA + i * L.CHUNK_SONG : L.ADDR_SONG_DATA
-                    + (i + 1) * L.CHUNK_SONG
-                ]
-            )
-            for i in range(L.NUM_SONGS)
+            Song.from_bytes(data[at : at + L.CHUNK_SONG])
+            for at in range(L.ADDR_SONG_DATA, songs_end, L.CHUNK_SONG)
         ]
         pcm = data[L.ADDR_SAMPLE_DATA :]
         return Bank(globals_, patterns, songs, samples, pcm, raw, SAVE_ALL, sample_area)
 
+    # O(n) time, O(n) space — n = bytes in the PSG image (kept verbatim)
     def read_psg(self, data: bytes) -> Bank:
         """Parse a Save-PSG image (no sample area) into a Bank.
 
@@ -146,15 +150,18 @@ class BankReader:
         )
         return Bank(globals_, [], [], [], b"", raw, SAVE_PSG)
 
+    # O(n) time, O(n) space — n = bytes in the image
     def read_auto(self, data: bytes) -> Bank:
         """Detect All vs PSG by structure and dispatch to the right parser."""
         return self.read_psg(data) if self.is_psg(data) else self.read(data)
 
+    # O(n) time, O(n) space — n = bytes in the file
     def read_file(self, path: str) -> Bank:
         """Convenience: read bytes from a path, then read_auto()."""
         with open(path, "rb") as f:
             return self.read_auto(f.read())
 
+    # O(1) time, O(1) space
     def is_psg(self, data: bytes) -> bool:
         """True if the bytes look like a Save-PSG (no sample area) file.
 

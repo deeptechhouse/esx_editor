@@ -106,11 +106,13 @@ MIN_SAMPLES = 4096
 DEFAULT_MAX_SECONDS = 30.0
 
 
+# O(d) time, O(1) space — d = sys.path entries find_spec searches
 def available() -> bool:
     """True when librosa can be imported without actually importing it."""
     return importlib.util.find_spec("librosa") is not None
 
 
+# O(1) time, O(1) space
 def camelot_for(pitch_class: int, minor: bool) -> str:
     """Camelot code for a pitch class and mode.
 
@@ -131,25 +133,32 @@ def camelot_for(pitch_class: int, minor: bool) -> str:
     return f"{position}{'A' if minor else 'B'}"
 
 
+# O(1) time, O(1) space
 def classical_for(pitch_class: int, minor: bool) -> str:
     """'Am' / 'C' / 'F#m' for a pitch class and mode."""
     return PITCH_CLASSES[pitch_class] + ("m" if minor else "")
 
 
+# O(k) time, O(k) space — k = 12 pitch classes
 def _correlate(chroma: list[float], profile: tuple[float, ...], rotation: int) -> float:
     """Pearson correlation of the chroma against a rotated key profile."""
+    # O(k) time, O(k) space — k = 12 pitch classes
     rotated = [profile[(i - rotation) % 12] for i in range(12)]
     n = 12
     mean_c = sum(chroma) / n
     mean_p = sum(rotated) / n
+    # O(k) time, O(1) space — k = 12 pitch classes
     cov = sum((chroma[i] - mean_c) * (rotated[i] - mean_p) for i in range(n))
+    # O(k) time, O(1) space — k = 12 pitch classes
     var_c = sum((chroma[i] - mean_c) ** 2 for i in range(n))
+    # O(k) time, O(1) space — k = 12 pitch classes
     var_p = sum((rotated[i] - mean_p) ** 2 for i in range(n))
     if var_c <= 0 or var_p <= 0:
         return 0.0
     return cov / (var_c * var_p) ** 0.5
 
 
+# O(b) time, O(b) space — b = bins in the chroma vector (12 for a key estimate)
 def chroma_flatness(chroma: list[float]) -> float:
     """Geometric mean over arithmetic mean of the chroma vector.
 
@@ -160,12 +169,15 @@ def chroma_flatness(chroma: list[float]) -> float:
     total = sum(chroma)
     if total <= 0:
         return 1.0
+    # O(b) time, O(b) space — b = bins in the chroma vector
     normalised = [max(v / total, 1e-12) for v in chroma]
+    # O(b) time, O(1) space — b = bins in the chroma vector
     log_mean = sum(math.log(v) for v in normalised) / len(normalised)
     arithmetic = sum(normalised) / len(normalised)
     return math.exp(log_mean) / arithmetic if arithmetic > 0 else 1.0
 
 
+# O(r*k) time, O(r) space — r = 24 candidate keys (12 rotations x 2 modes), k = 12 pitch classes per correlation
 def estimate_from_chroma(chroma: list[float]) -> tuple[int, bool, float]:
     """Return (pitch_class, is_minor, margin) for a 12-bin chroma vector.
 
@@ -177,13 +189,16 @@ def estimate_from_chroma(chroma: list[float]) -> tuple[int, bool, float]:
     if len(chroma) != 12:
         raise ValueError(f"chroma must have 12 bins, got {len(chroma)}")
     scores = []
+    # O(r*k) time, O(r) space — r = 24 candidate keys, k = 12 pitch classes per correlation
     for rotation in range(12):
         scores.append((_correlate(chroma, MAJOR_PROFILE, rotation), rotation, False))
         scores.append((_correlate(chroma, MINOR_PROFILE, rotation), rotation, True))
     scores.sort(reverse=True)
     best_score, best_root, best_minor = scores[0]
     opposite = next(
-        (s for s in scores if s[2] is not best_minor), (0.0, 0, not best_minor)
+        # O(r) time, O(1) space — r = 24 scored candidates
+        (s for s in scores if s[2] is not best_minor),
+        (0.0, 0, not best_minor),
     )
     return best_root, best_minor, best_score - opposite[0]
 
@@ -193,6 +208,7 @@ class LibrosaKeyDetector:
 
     __slots__ = ("_min_margin", "_min_harmonic", "_max_seconds", "_max_flatness")
 
+    # O(d) time, O(1) space — d = sys.path entries find_spec searches
     def __init__(
         self,
         min_margin: float = DEFAULT_MIN_MARGIN,
@@ -209,6 +225,7 @@ class LibrosaKeyDetector:
         self._max_seconds = max_seconds
         self._max_flatness = max_chroma_flatness
 
+    # O(s) time, O(s) space — s = decoded samples, capped at max_seconds x rate (STFT/CQT windows are fixed-size, so each frame costs a constant)
     def detect(self, path: str, max_seconds: float | None = None) -> KeyResult | None:
         """Estimate the key, or None when the material is not tonal enough."""
         import librosa  # noqa: PLC0415 - deliberately lazy; see module docstring
@@ -234,6 +251,7 @@ class LibrosaKeyDetector:
             return None  # percussive: no key to find
 
         chroma = librosa.feature.chroma_cqt(y=harmonic, sr=sr)
+        # O(b) time, O(b) space — b = 12 chroma bins
         averaged = [float(v) for v in np.mean(chroma, axis=1)]
         if not any(averaged):
             return None

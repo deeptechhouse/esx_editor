@@ -46,6 +46,7 @@ TABS = (
 class MainWindow(QMainWindow):
     bankChanged = Signal()
 
+    # O(t + e + s + m + P·c + G·g) time, O(t + e + s + m + P·c + G·g) space — t = motion targets MotionEditor loads (313 shipped); e = entries swept under the staging temp root; s = sample slots (384); m = PCM bytes, copied only if pcm_used_bytes() raises; P = patterns in the bank (256 on the ESX-1); c = 4,280 bytes per pattern chunk; G = songs (64); g = 528 bytes per song block
     def __init__(self, session: BankSession | None = None, parent=None):
         super().__init__(parent)
         self.session = session or BankSession()
@@ -60,6 +61,7 @@ class MainWindow(QMainWindow):
         self._bind_views()
 
     # -- construction -------------------------------------------------------
+    # O(t + e) time, O(t + e) space — t = motion targets MotionEditor loads (313 shipped); e = entries swept under the staging temp root
     def _build_tabs(self) -> None:
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
@@ -77,6 +79,7 @@ class MainWindow(QMainWindow):
             "Song": self.song_view,
             "Global": self.global_view,
         }
+        # O(k) time, O(1) space — k = 6 tabs
         for name, _hint in TABS:
             self.tabs.addTab(self.views[name], name)
         self.setCentralWidget(self.tabs)
@@ -89,6 +92,7 @@ class MainWindow(QMainWindow):
         self.song_view.songEdited.connect(self._on_bank_edited)
         self.global_view.globalsEdited.connect(self._on_bank_edited)
 
+    # O(k) time, O(k) space — k = 6 tabs (one View-menu action each)
     def _build_menus(self) -> None:
         # Keep Python references to the menus: PySide does not own the wrappers
         # returned by addMenu(), so a garbage-collected QMenu wrapper makes the
@@ -114,6 +118,7 @@ class MainWindow(QMainWindow):
 
         view_menu = self.menuBar().addMenu("&View")
         self.menus["View"] = view_menu
+        # O(k) time, O(k) space — k = 6 tabs
         for i, (name, _) in enumerate(TABS):
             act = QAction(name, self)
             act.setShortcut(QKeySequence(f"Ctrl+{i + 1}"))
@@ -126,6 +131,7 @@ class MainWindow(QMainWindow):
         self.menus["Help"] = help_menu
         self._act("About", help_menu, self._on_about)
 
+    # O(1) time, O(1) space
     def _act(self, text, menu, slot, shortcut=None) -> QAction:
         act = QAction(text, self)
         if shortcut is not None:
@@ -134,6 +140,7 @@ class MainWindow(QMainWindow):
         menu.addAction(act)
         return act
 
+    # O(1) time, O(1) space
     def _build_status(self) -> None:
         self._path_label = QLabel("no bank")
         self._path_label.setProperty("role", "muted")
@@ -146,6 +153,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.meter)
 
     # -- binding ------------------------------------------------------------
+    # O(m) time, O(m) space — m = PCM bytes, copied only on BankSession.pcm_used()'s fallback path (the normal path is constant)
     def _refresh_chrome(self) -> None:
         path = self.session.path
         name = (
@@ -159,6 +167,7 @@ class MainWindow(QMainWindow):
         self._dirty_label.setText("modified" if self.session.dirty else "")
         self.meter.set_used(self.session.pcm_used())
 
+    # O(s + m + P·c + G·g) time, O(s + m + P·c + G·g) space — s = sample slots (384); m = PCM bytes, copied only if pcm_used_bytes() raises; P = patterns in the bank (256 on the ESX-1); c = 4,280 bytes per pattern chunk; G = songs (64); g = 528 bytes per song block
     def _bind_views(self) -> None:
         """Hand the live bank to every view, then re-bind the motion editor."""
         bank = self.session.bank
@@ -168,6 +177,7 @@ class MainWindow(QMainWindow):
         self.global_view.bind_bank(bank)
         self._bind_motion()
 
+    # O(P + k) time, O(P) space — P = patterns in the bank (tuple copy); k = 24 motion slots bound
     def _bind_motion(self) -> None:
         bank = self.session.bank
         if bank is None:
@@ -178,6 +188,7 @@ class MainWindow(QMainWindow):
             self.motion_editor.bind_pattern(patterns[index])
 
     # -- intent from the views ---------------------------------------------
+    # O(P + k) time, O(P) space — P = patterns in the bank (tuple copy); k = 24 motion slots bound
     def _on_pattern_selected(self, row: int) -> None:
         bank = self.session.bank
         if bank is None:
@@ -186,19 +197,23 @@ class MainWindow(QMainWindow):
         if 0 <= row < len(patterns):
             self.motion_editor.bind_pattern(patterns[row])
 
+    # O(m) time, O(m) space — m = PCM bytes, copied only on pcm_used()'s fallback path (see _refresh_chrome)
     def _on_bank_edited(self) -> None:
         """A view mutated the bank (pattern rename, …)."""
         self.session.mark_dirty()
         self._refresh_chrome()
 
+    # O(m) time, O(m) space — m = PCM bytes, copied only on pcm_used()'s fallback path (see _refresh_chrome)
     def _on_staging_changed(self) -> None:
         self.session.mark_dirty()
         self._refresh_chrome()
 
+    # O(f) time, O(1) space — f = converted files removed from the staging session dir
     def _on_clear_staging(self) -> None:
         self.staging_view.clear_staging()
 
     # -- menu actions -------------------------------------------------------
+    # O(w) time, O(w) space — w = 11 wizard pages constructed (each fills itself when shown)
     def open_wizard(self) -> SetupWizard:
         """Open the eleven-screen guided setup on the live session."""
         wizard = SetupWizard(
@@ -212,6 +227,7 @@ class MainWindow(QMainWindow):
         wizard.show()
         return wizard
 
+    # O(f log f) time, O(f) space — f = entries in the chosen directory (card.scan sorts them)
     def show_card_overview(self, directory: str | None = None) -> str:
         """List the banks on a card (or any folder) and how full it is.
 
@@ -230,6 +246,7 @@ class MainWindow(QMainWindow):
         lines = [contents.summary(), ""]
         if not contents.banks:
             lines.append("No .esx banks here.")
+        # O(b) time, O(b) space — b = .esx banks found in the directory
         for bank in contents.banks:
             if not bank.readable:
                 lines.append(f"{bank.name}  —  not a readable bank")
@@ -244,6 +261,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, f"Card — {directory}", text)
         return text
 
+    # O(f log f) time, O(f) space — f = entries in the destination directory (card.scan sorts them)
     def card_warning_for(self, path: str) -> str:
         """Warn if saving to `path` would not fit on its card. '' when fine."""
         directory = os.path.dirname(os.path.abspath(path))
@@ -262,11 +280,13 @@ class MainWindow(QMainWindow):
             "The ESX-1 accepts 4–128 MB cards; delete a bank or use a larger card."
         )
 
+    # O(s + m + P·c + G·g + n) time, O(s + m + P·c + G·g + n) space — s = sample slots (384); m = PCM bytes, copied only if pcm_used_bytes() raises; P = patterns in the bank (256 on the ESX-1); c = 4,280 bytes per pattern chunk; G = songs (64); g = 528 bytes per song block; n = staged samples redrawn
     def _on_wizard_changed(self) -> None:
         self.bankChanged.emit()
         self.staging_view.reload()
         self._refresh_chrome()
 
+    # O(B) time, O(B) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM)
     def _on_new(self) -> None:
         if not self._confirm_discard():
             return
@@ -278,6 +298,7 @@ class MainWindow(QMainWindow):
         self.bankChanged.emit()
         self._refresh_chrome()
 
+    # O(B) time, O(B) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM)
     def _on_open(self) -> None:
         if not self._confirm_discard():
             return
@@ -288,6 +309,7 @@ class MainWindow(QMainWindow):
             return
         self.open_path(path)
 
+    # O(B) time, O(B) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM)
     def open_path(self, path: str) -> bool:
         """Open a bank by path. Returns False and warns on failure."""
         try:
@@ -299,12 +321,14 @@ class MainWindow(QMainWindow):
         self._refresh_chrome()
         return True
 
+    # O(B + f log f) time, O(B + f) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM); f = entries in the destination directory
     def _on_save(self) -> None:
         if self.session.path:
             self._write(self.session.path)
         else:
             self._on_save_as()
 
+    # O(B + f log f) time, O(B + f) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM); f = entries in the destination directory
     def _on_save_as(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self, "Save ESX bank", "", "ESX banks (*.esx)"
@@ -312,6 +336,7 @@ class MainWindow(QMainWindow):
         if path:
             self._write(path)
 
+    # O(B + f log f) time, O(B + f) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM); f = entries in the destination directory (card check)
     def _write(self, path: str) -> None:
         warning = self.card_warning_for(path)
         if warning:
@@ -330,6 +355,7 @@ class MainWindow(QMainWindow):
                 return
         self._refresh_chrome()
 
+    # O(B + r log r) time, O(B + r) space — B = bytes in the bank file (fixed regions + up to 24 MiB of PCM); r = coherence findings reported
     def _offer_forced_save(self, path: str, exc: CodecError) -> bool:
         """Refused for incoherence — explain it and let the user decide.
 
@@ -348,6 +374,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Save refused", str(exc))
             return False
 
+        # O(r log r) time, O(r) space — r = coherence findings (dedupe, then sort the codes)
         codes = sorted({f.code for f in report.errors()})
         detail = (
             f"This bank has {len(report.errors())} coherence problem(s): "
@@ -373,6 +400,7 @@ class MainWindow(QMainWindow):
             return False
         return True
 
+    # O(1) time, O(1) space
     def _on_about(self) -> None:
         QMessageBox.about(
             self,
@@ -381,6 +409,7 @@ class MainWindow(QMainWindow):
             "Personal use, never commercial.",
         )
 
+    # O(1) time, O(1) space
     def _confirm_discard(self) -> bool:
         if not self.session.dirty:
             return True
@@ -392,6 +421,7 @@ class MainWindow(QMainWindow):
         )
         return reply == QMessageBox.StandardButton.Discard
 
+    # O(1) time, O(1) space
     def closeEvent(self, event) -> None:  # noqa: N802
         if self._confirm_discard():
             event.accept()

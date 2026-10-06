@@ -25,6 +25,7 @@ class StepGrid(QWidget):
     COLS = COLS
     ROWS = ROWS
 
+    # O(k) time, O(k) space — k = 128 step keys
     def __init__(self, parent=None, *, length: int = NUM_STEPS):
         super().__init__(parent)
         self._on = [False] * NUM_STEPS
@@ -33,10 +34,12 @@ class StepGrid(QWidget):
         self.setMinimumSize(COLS * 18, ROWS * 18)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
+    # O(1) time, O(1) space
     def set_length(self, length: int) -> None:
         self._length = max(1, min(NUM_STEPS, length))
         self.update()
 
+    # O(1) time, O(1) space
     def set_step(self, index: int, on: bool) -> None:
         if not (0 <= index < NUM_STEPS):
             return
@@ -45,12 +48,15 @@ class StepGrid(QWidget):
             self.stepToggled.emit(index, self._on[index])
             self.update()
 
+    # O(1) time, O(1) space
     def is_on(self, index: int) -> bool:
         return bool(self._on[index])
 
+    # O(k) time, O(k) space — k = 128 step keys
     def steps(self) -> tuple[bool, ...]:
         return tuple(self._on)
 
+    # O(1) time, O(1) space
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         idx = self._index_at(event.position().toPoint())
         if idx is not None:
@@ -58,6 +64,7 @@ class StepGrid(QWidget):
             self.set_step(idx, not self._on[idx])
             self.setFocus()
 
+    # O(1) time, O(1) space
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         key = event.key()
         if key in (Qt.Key.Key_Space, Qt.Key.Key_Return):
@@ -77,6 +84,7 @@ class StepGrid(QWidget):
         else:
             super().keyPressEvent(event)
 
+    # O(1) time, O(1) space
     def _index_at(self, pos) -> int | None:
         cell_w = self.width() / COLS
         cell_h = self.height() / ROWS
@@ -86,6 +94,7 @@ class StepGrid(QWidget):
             return row * COLS + col
         return None
 
+    # O(1) time, O(1) space
     def _cell_rect(self, index: int) -> QRect:
         row, col = divmod(index, COLS)
         cell_w = self.width() / COLS
@@ -97,9 +106,11 @@ class StepGrid(QWidget):
             int(cell_h) - 2,
         )
 
+    # O(k) time, O(1) space — k = 128 step keys painted
     def paintEvent(self, event) -> None:  # noqa: N802
         p = QPainter(self)
         p.fillRect(self.rect(), QColor(PALETTE.chassis))
+        # O(k) time, O(1) space — k = 128 step keys painted
         for i in range(NUM_STEPS):
             r = self._cell_rect(i)
             beyond = i >= self._length

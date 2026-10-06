@@ -78,6 +78,7 @@ class SequenceData:
 
     __slots__ = ("_steps",)
 
+    # O(1) time, O(1) space
     def __init__(self, steps: bytes):
         if len(steps) != SEQUENCE_BYTES:
             raise InvariantError(
@@ -86,20 +87,24 @@ class SequenceData:
         self._steps = bytearray(steps)
 
     @property
+    # O(1) time, O(1) space
     def steps(self) -> bytes:
         """Defensive copy of the raw per-step bytes."""
         return bytes(self._steps)
 
+    # O(1) time, O(1) space
     def _locate(self, step: int) -> tuple[int, int]:
         if not (0 <= step < NUM_STEPS):
             raise InvariantError(f"step {step} out of range 0..{NUM_STEPS - 1}")
         return step // 8, step % 8
 
+    # O(1) time, O(1) space
     def is_active(self, step: int) -> bool:
         """True if the given step triggers."""
         index, bit = self._locate(step)
         return bool((self._steps[index] >> bit) & 1)
 
+    # O(1) time, O(1) space
     def set_active(self, step: int, active: bool) -> None:
         """Turn one step on or off."""
         index, bit = self._locate(step)
@@ -108,11 +113,15 @@ class SequenceData:
         else:
             self._steps[index] &= ~(1 << bit) & 0xFF
 
+    # O(T) time, O(T) space — T = 128 steps
     def active_steps(self) -> tuple[int, ...]:
         """Every triggering step, ascending."""
+        # O(T) time, O(T) space — T = 128 steps
         return tuple(i for i in range(NUM_STEPS) if self.is_active(i))
 
+    # O(k) time, O(1) space — k = 16 bitmap bytes
     def count(self) -> int:
+        # O(k) time, O(1) space — k = 16 bitmap bytes
         return sum(bin(byte).count("1") for byte in self._steps)
 
 
@@ -125,20 +134,24 @@ class Part:
 
     __slots__ = ("_kind", "_index", "_raw")
 
+    # O(p) time, O(p) space — p = bytes in this part chunk (at most 274, a keyboard part)
     def __init__(self, kind: str, index: int, raw: bytes):
         self._kind = kind
         self._index = index
         self._raw = bytearray(raw)
 
     @property
+    # O(1) time, O(1) space
     def kind(self) -> str:
         return self._kind
 
     @property
+    # O(1) time, O(1) space
     def index(self) -> int:
         return self._index
 
     @property
+    # O(1) time, O(1) space
     def sample_number(self) -> int:
         """Which sample slot this part plays (VERIFIED 2026-08-23).
 
@@ -161,10 +174,12 @@ class Part:
             )
         return self._raw_sample_field() & SAMPLE_NUMBER_MASK
 
+    # O(1) time, O(1) space
     def _raw_sample_field(self) -> int:
         return struct.unpack_from(">H", self._raw, SAMPLE_NUMBER_OFFSET)[0]
 
     @property
+    # O(1) time, O(1) space
     def sample_assigned(self) -> bool:
         """False when the part carries the no-sample flag (bit 15).
 
@@ -175,6 +190,7 @@ class Part:
             return False
         return not (self._raw_sample_field() & SAMPLE_NUMBER_UNASSIGNED)
 
+    # O(1) time, O(1) space
     def set_sample_number(self, slot_index: int) -> None:
         """Point this part at a sample slot."""
         if self._kind not in SAMPLE_PLAYING_KINDS:
@@ -189,6 +205,7 @@ class Part:
         # set would write a field no machine has ever produced.
         struct.pack_into(">H", self._raw, SAMPLE_NUMBER_OFFSET, slot_index)
 
+    # O(1) time, O(1) space
     def clear_sample_assignment(self) -> None:
         """Mark the part as playing no sample, the way a blank pattern does."""
         if self._kind not in SAMPLE_PLAYING_KINDS:
@@ -199,10 +216,12 @@ class Part:
             ">H", self._raw, SAMPLE_NUMBER_OFFSET, SAMPLE_NUMBER_UNASSIGNED
         )
 
+    # O(1) time, O(1) space
     def has_sequence(self) -> bool:
         """Whether this part kind's trigger bitmap has been located."""
         return self._kind in SEQUENCE_OFFSETS
 
+    # O(1) time, O(1) space
     def sequence(self) -> SequenceData:
         """The part's step trigger bitmap.
 
@@ -217,6 +236,7 @@ class Part:
             )
         return SequenceData(bytes(self._raw[offset : offset + SEQUENCE_BYTES]))
 
+    # O(1) time, O(1) space
     def write_sequence(self, sequence: SequenceData) -> None:
         """Write a modified trigger bitmap back into the part chunk."""
         offset = SEQUENCE_OFFSETS.get(self._kind)
@@ -226,10 +246,12 @@ class Part:
             )
         self._raw[offset : offset + SEQUENCE_BYTES] = sequence.steps
 
+    # O(p) time, O(p) space — p = bytes in this part chunk (at most 274, a keyboard part)
     def to_bytes(self) -> bytes:
         return bytes(self._raw)
 
     @classmethod
+    # O(p) time, O(p) space — p = bytes in this part chunk (at most 274, a keyboard part)
     def from_bytes(cls, kind: str, index: int, raw: bytes) -> Part:
         if not raw:
             raise InvariantError("part raw bytes must be non-empty")

@@ -46,6 +46,7 @@ CAMELOT: dict[str, tuple[str, str]] = {
 SLOT_NAME_LEN = 8
 
 
+# O(1) time, O(1) space
 def classical(camelot: str, style: str = "short") -> str:
     """Return the classical spelling for a Camelot code.
 
@@ -64,10 +65,12 @@ def classical(camelot: str, style: str = "short") -> str:
     raise ValueError(f"unknown classical style {style!r}")
 
 
+# O(L) time, O(L) space — L = characters in the path
 def _stem(path_or_name: str) -> str:
     return os.path.splitext(os.path.basename(path_or_name))[0]
 
 
+# O(L) time, O(L) space — L = characters in the basename
 def pack_slot_name(basename: str, camelot: str | None, style: str = "short") -> str:
     """Pack an 8-byte machine slot name. Pads/truncates to exactly 8 chars.
 
@@ -89,6 +92,7 @@ def pack_slot_name(basename: str, camelot: str | None, style: str = "short") -> 
     return (head + tail)[:SLOT_NAME_LEN].ljust(SLOT_NAME_LEN)
 
 
+# O(L) time, O(L) space — L = characters in the basename and key strings
 def staging_filename(
     basename: str, classical_key: str | None, camelot: str | None
 ) -> str:

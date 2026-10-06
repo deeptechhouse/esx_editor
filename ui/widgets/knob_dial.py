@@ -18,6 +18,7 @@ from ui.theme import PALETTE, SPACE
 class KnobDial(QWidget):
     valueChanged = Signal(int)
 
+    # O(1) time, O(1) space
     def __init__(
         self, parent=None, *, value: int = 0, minimum: int = 0, maximum: int = 127
     ):
@@ -29,9 +30,11 @@ class KnobDial(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     @property
+    # O(1) time, O(1) space
     def value(self) -> int:
         return self._value
 
+    # O(1) time, O(1) space
     def setValue(self, value: int) -> None:  # noqa: N802  (Qt naming)
         clamped = max(self._min, min(self._max, int(value)))
         if clamped != self._value:
@@ -39,6 +42,7 @@ class KnobDial(QWidget):
             self.valueChanged.emit(self._value)
             self.update()
 
+    # O(1) time, O(1) space
     def keyPressEvent(self, event) -> None:  # noqa: N802
         step = 8 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier else 1
         if event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Up):
@@ -48,13 +52,16 @@ class KnobDial(QWidget):
         else:
             super().keyPressEvent(event)
 
+    # O(1) time, O(1) space
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         self._apply_pos(event.position())
 
+    # O(1) time, O(1) space
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if event.buttons() & Qt.MouseButton.LeftButton:
             self._apply_pos(event.position())
 
+    # O(1) time, O(1) space
     def _apply_pos(self, pos: QPointF) -> None:
         c = self.rect().center()
         angle = math.atan2(pos.y() - c.y(), pos.x() - c.x())  # -pi..pi, 0 = east
@@ -66,6 +73,7 @@ class KnobDial(QWidget):
         span = self._max - self._min
         self.setValue(self._min + round(t * span))
 
+    # O(1) time, O(1) space
     def paintEvent(self, event) -> None:  # noqa: N802
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)

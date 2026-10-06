@@ -35,6 +35,7 @@ class PatternView(QWidget):
     patternSelected = Signal(int)
     patternEdited = Signal()
 
+    # O(g) time, O(g) space — g = 128 step-grid cells built
     def __init__(self, parent=None):
         super().__init__(parent)
         self._bank: Bank | None = None
@@ -128,12 +129,14 @@ class PatternView(QWidget):
         layout.addLayout(left, 1)
         layout.addLayout(detail, 2)
 
+    # O(P·c + s) time, O(P·c + s) space — P = patterns in the bank (256 on the ESX-1); c = 4,280 bytes per pattern chunk; s = sample slots (384)
     def bind_bank(self, bank: Bank | None) -> None:
         self._bank = bank
         self.list.blockSignals(True)
         self.list.clear()
         if bank is not None:
             blank = bank.blank_pattern_bytes()
+            # O(P·c) time, O(P + c) space — P = patterns in the bank (256 on the ESX-1); c = 4,280 bytes per pattern chunk
             for i, p in enumerate(bank.patterns()):
                 # Marking the empty slots is what makes "add a pattern"
                 # discoverable: they are the ones free to build in.
@@ -147,10 +150,12 @@ class PatternView(QWidget):
             self._show(None)
 
     @property
+    # O(1) time, O(1) space
     def current_index(self) -> int:
         """0-based index of the selected pattern (-1 when nothing is selected)."""
         return self._index
 
+    # O(P) time, O(P) space — P = patterns in the bank (tuple copy)
     def current_pattern(self) -> Pattern | None:
         if self._bank is None:
             return None
@@ -159,12 +164,14 @@ class PatternView(QWidget):
             return pats[self._index]
         return None
 
+    # O(P + s) time, O(P + s) space — P = patterns in the bank; s = sample slots (384)
     def _on_row(self, row: int) -> None:
         self._index = row
         self._show(self.current_pattern())
         if row >= 0:
             self.patternSelected.emit(row)
 
+    # O(P·c) time, O(P·c) space — P = patterns in the bank (256 on the ESX-1); c = 4,280 bytes per pattern chunk (blank-form lookup)
     def _rename(self) -> None:
         pat = self.current_pattern()
         if pat is None:
@@ -173,6 +180,7 @@ class PatternView(QWidget):
         self.refresh_row(self._index)
         self.patternEdited.emit()
 
+    # O(P·c) time, O(P·c) space — P = patterns in the bank (256 on the ESX-1); c = 4,280 bytes per pattern chunk (blank-form lookup)
     def refresh_row(self, index: int) -> None:
         """Re-label one row after its pattern changed."""
         if self._bank is None:
@@ -185,6 +193,7 @@ class PatternView(QWidget):
         label = pattern.name.strip() or ("— empty —" if empty else f"P{index:03d}")
         item.setText(f"{index:03d}  {label}")
 
+    # O(P·c + s) time, O(P·c + s) space — P = patterns in the bank (256 on the ESX-1); c = 4,280 bytes per pattern chunk; s = sample slots (384)
     def clear_pattern(self) -> None:
         """Reset the selected pattern to the bank's blank form."""
         if self._bank is None or self._index < 0:
@@ -207,15 +216,23 @@ class PatternView(QWidget):
         self._show(self.current_pattern())
         self.patternEdited.emit()
 
+    # O(P·c + s) time, O(P·c + s) space — P = patterns in the bank (256 on the ESX-1); c = 4,280 bytes per pattern chunk; s = sample slots (384)
     def copy_pattern(self) -> None:
         """Copy the selected pattern onto another slot."""
         if self._bank is None or self._index < 0:
             return
-        total = len(self._bank.patterns())
+        patterns = self._bank.patterns()
+        total = len(patterns)
         # Default to the first empty slot: copying onto occupied material by
         # accident is the mistake worth designing against.
+        # The blank form is computed ONCE here. Calling is_pattern_blank(i)
+        # per slot recomputed it every time — that is itself a pass over all
+        # 256 patterns, so the search was 256 × 256 pattern serialisations
+        # (~280 MB of bytes built) for one button press. Same answer, one pass.
+        blank = self._bank.blank_pattern_bytes() if patterns else b""
         default = next(
-            (i for i in range(total) if self._bank.is_pattern_blank(i)),
+            # O(P·c) time, O(c) space — P = patterns in the bank (256 on the ESX-1); c = 4,280 bytes per pattern chunk (one serialisation per slot)
+            (i for i, p in enumerate(patterns) if p.to_bytes() == blank),
             min(self._index + 1, total - 1),
         )
         destination, ok = QInputDialog.getInt(
@@ -243,6 +260,7 @@ class PatternView(QWidget):
         self.patternEdited.emit()
         self.list.setCurrentRow(destination)
 
+    # O(P) time, O(P) space — P = patterns in the bank (tuple copy)
     def current_part(self):
         """The selected Part, or None."""
         pat = self.current_pattern()
@@ -253,12 +271,14 @@ class PatternView(QWidget):
             return parts[self._part_row]
         return None
 
+    # O(P + q) time, O(P) space — P = patterns in the bank; q = 128 steps
     def _on_part_row(self, row: int, _col: int = 0, *_args) -> None:
         if row < 0:
             return
         self._part_row = row
         self._show_steps()
 
+    # O(P + q) time, O(P) space — P = patterns in the bank; q = 128 steps
     def _show_steps(self) -> None:
         """Load the selected part's trigger bitmap into the grid."""
         part = self.current_part()
@@ -272,11 +292,13 @@ class PatternView(QWidget):
                     if part is not None
                     else "Steps"
                 )
+                # O(q) time, O(1) space — q = 128 steps
                 for i in range(StepGrid.NUM_STEPS):
                     self.steps.set_step(i, False)
                 return
             self.steps.setEnabled(True)
             sequence = part.sequence()
+            # O(q) time, O(1) space — q = 128 steps
             for i in range(StepGrid.NUM_STEPS):
                 self.steps.set_step(i, sequence.is_active(i))
             self._steps_label.setText(
@@ -286,6 +308,7 @@ class PatternView(QWidget):
         finally:
             self._loading = False
 
+    # O(P + q) time, O(P) space — P = patterns in the bank; q = 128 steps
     def _on_step_toggled(self, index: int, on: bool) -> None:
         if self._loading:
             return
@@ -298,6 +321,7 @@ class PatternView(QWidget):
         self._show_steps()
         self.patternEdited.emit()
 
+    # O(P) time, O(P) space — P = patterns in the bank (tuple copy)
     def _retempo(self, value: float) -> None:
         pat = self.current_pattern()
         if pat is None or self._loading:
@@ -307,6 +331,7 @@ class PatternView(QWidget):
         pat.header.set_tempo(value)
         self.patternEdited.emit()
 
+    # O(P + s) time, O(P + s) space — P = patterns in the bank; s = sample slots (384)
     def _show(self, pat: Pattern | None) -> None:
         self.parts.setRowCount(0)
         self.fx.setRowCount(0)
@@ -316,6 +341,7 @@ class PatternView(QWidget):
         finally:
             self._loading = False
 
+    # O(P + s) time, O(P + s) space — P = patterns in the bank; s = sample slots (384)
     def _populate(self, pat: Pattern | None) -> None:
         if pat is None:
             self._name.setText("")
@@ -341,6 +367,7 @@ class PatternView(QWidget):
         parts = pat.parts()
         self.parts.setRowCount(len(parts))
         samples = self._bank.samples() if self._bank is not None else ()
+        # O(n·(k + q)) time, O(n·k) space — n = 16 parts; k = 5 table columns; q = 128 steps counted per part
         for i, part in enumerate(parts):
             try:
                 number = part.sample_number
@@ -353,11 +380,13 @@ class PatternView(QWidget):
                 steps = str(part.sequence().count())
             except NotImplementedError:
                 steps = "—"
+            # O(k) time, O(k) space — k = 5 table columns
             for col, text in enumerate((str(i), part.kind, slot_text, name, steps)):
                 self.parts.setItem(i, col, QTableWidgetItem(text))
         self._show_steps()
         units = pat.fx_units()
         self.fx.setRowCount(len(units))
+        # O(x·k) time, O(x·k) space — x = 3 FX units; k = 3 table columns
         for i, fx in enumerate(units):
             # Show the index, not a name: the manual lists 16 effect types but
             # gives no index->name mapping, and its two orderings disagree.
@@ -366,5 +395,6 @@ class PatternView(QWidget):
                 f"type {fx.fx_type} of {NUM_FX_TYPES}",
                 "on" if fx.motion_enabled else "off",
             )
+            # O(k) time, O(k) space — k = 3 table columns
             for col, text in enumerate(vals):
                 self.fx.setItem(i, col, QTableWidgetItem(text))

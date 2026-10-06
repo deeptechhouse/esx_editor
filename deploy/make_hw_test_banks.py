@@ -55,6 +55,7 @@ TEST_STEP = 1
 TEST_NAME = "HWTEST"
 
 
+# O(1) time, O(1) space
 def sample_label(index: int, num_mono: int = 256) -> str:
     """Machine display for a sample slot: monaural 000-255 (manual p.2019).
 
@@ -66,13 +67,16 @@ def sample_label(index: int, num_mono: int = 256) -> str:
     return f"{index - num_mono:03d} (stereo)"
 
 
+# O(p) time, O(p) space — p = 256 patterns (fixed ESX-1 bank size, patterns() copies the tuple)
 def _first_named_pattern(bank) -> int:
+    # O(p) time, O(1) space — p = 256 patterns, each name check is on a fixed-length field
     for index, pattern in enumerate(bank.patterns()):
         if pattern.name.strip():
             return index
     return 0
 
 
+# O(1) time, O(1) space
 def t0_identical(bank, _report, _expect):
     """No change at all."""
     return (
@@ -82,6 +86,7 @@ def t0_identical(bank, _report, _expect):
     )
 
 
+# O(p) time, O(p) space — p = 256 patterns (fixed, scanned by _first_named_pattern)
 def t1_tempo(bank, report, expect):
     index = _first_named_pattern(bank)
     before = bank.patterns()[index].header.tempo
@@ -96,9 +101,11 @@ def t1_tempo(bank, report, expect):
     )
 
 
+# O(p) time, O(p) space — p = 256 patterns (fixed, the part search is over 16 fixed parts)
 def t2_step(bank, report, expect):
     index = _first_named_pattern(bank)
     pattern = bank.patterns()[index]
+    # O(k) time, O(1) space — k = 16 parts in a pattern (fixed)
     part = next(p for p in pattern.parts() if p.has_sequence())
     sequence = part.sequence()
     was = sequence.is_active(TEST_STEP)
@@ -118,9 +125,11 @@ def t2_step(bank, report, expect):
     )
 
 
+# O(p + s) time, O(p + s) space — p = 256 patterns (fixed); s = 384 sample slots (fixed)
 def t3_sample_number(bank, report, expect):
     index = _first_named_pattern(bank)
     part = bank.patterns()[index].parts()[TEST_PART]
+    # O(s) time, O(s) space — s = 256 mono sample slots (fixed slice)
     occupied = [i for i, s in enumerate(bank.samples()[:256]) if not s.empty]
     before = part.sample_number
     # Pick something far from the current value: a neighbouring slot could be
@@ -142,7 +151,9 @@ def t3_sample_number(bank, report, expect):
     )
 
 
+# O(s + b) time, O(b) space — s = 384 sample slots (fixed); b = PCM bytes in the bank after the commit (commit_sample rewrites the region)
 def t4_commit(bank, report, expect):
+    # O(s) time, O(1) space — s = 256 mono sample slots (fixed slice)
     free = next(i for i, s in enumerate(bank.samples()[:256]) if s.empty)
     rate = 44100
     # One second of a 220 Hz square-ish tone: audible, obviously synthetic, and
@@ -151,6 +162,7 @@ def t4_commit(bank, report, expect):
     import struct
 
     frames = rate
+    # O(f) time, O(f) space — f = 44100 frames (one fixed second of tone)
     pcm = b"".join(
         struct.pack(
             ">h", 12000 if math.sin(2 * math.pi * 220 * i / rate) > 0 else -12000
@@ -177,16 +189,19 @@ def t4_commit(bank, report, expect):
     )
 
 
+# O(p) time, O(p) space — p = 256 patterns (fixed, motion work is over 24 slots and 16 steps)
 def t5_motion(bank, report, expect):
     index = _first_named_pattern(bank)
     pattern = bank.patterns()[index]
     slots = pattern.motion_slots()
+    # O(k) time, O(1) space — k = 24 motion slots (fixed)
     target = next((i for i, s in enumerate(slots) if s.in_use), None)  # noqa: E501
     if target is None:
         report("SKIPPED - this pattern has no motion slot in use")
         return None
     slot = slots[target]
     domain = MotionDomain.continuous()
+    # O(k) time, O(1) space — k = 16 steps (fixed), each write_stored is bounded by the 128-step slot
     for step in range(16):
         slot.write_stored(step, 127 if step % 2 == 0 else 0, domain, length=64)
     pattern.replace_motion(target, slot)
@@ -198,6 +213,7 @@ def t5_motion(bank, report, expect):
         "motion_stored",
         pattern=index,
         slot=target,
+        # O(k) time, O(k) space — k = 16 steps (fixed)
         value=[127 if step % 2 == 0 else 0 for step in range(16)],
     )
     return (
@@ -213,6 +229,7 @@ SONG_CHAIN = (1, 0, 3, 5)
 SONG_SLOT = 3  # song 04 — leaves the two real songs on the card alone
 
 
+# O(g) time, O(g) space — g = 64 songs (fixed, songs() copies the tuple, the chain is 4 fixed entries)
 def t6_song(bank, report, expect):
     """Write a song chain from the editor and see whether the machine plays it.
 
@@ -224,17 +241,14 @@ def t6_song(bank, report, expect):
     song.clear()
     song.set_name(TEST_NAME[:8])
     song.set_chain(SONG_CHAIN)
-    report(
-        f"song {SONG_SLOT + 1:02d} -> {TEST_NAME}, chain "
-        + " ".join(pattern_label(i) for i in SONG_CHAIN)
-    )
+    # O(c) time, O(c) space — c = 4 entries in SONG_CHAIN (fixed)
+    labels = [pattern_label(i) for i in SONG_CHAIN]
+    report(f"song {SONG_SLOT + 1:02d} -> {TEST_NAME}, chain " + " ".join(labels))
     expect("song_name", slot=SONG_SLOT, value=TEST_NAME[:8])
     expect("song_chain", slot=SONG_SLOT, value=list(SONG_CHAIN))
     return (
         f"Song mode -> select song {SONG_SLOT + 1:02d} ({TEST_NAME}) and play it.\n"
-        "       Expect exactly "
-        + " -> ".join(pattern_label(i) for i in SONG_CHAIN)
-        + ", in that order.\n"
+        "       Expect exactly " + " -> ".join(labels) + ", in that order.\n"
         "       If the machine rejects the bank or plays a different order, the "
         "chain\n       encoding is wrong - say so, and change nothing else."
     )
@@ -247,6 +261,7 @@ def t6_song(bank, report, expect):
 CC_PROBE_BASE = 95
 
 
+# O(r) time, O(r) space — r = 33 CC assign rows (fixed)
 def t7_ccprobe(bank, report, expect):
     """Check that the editor WRITES the CC table where the machine reads it.
 
@@ -258,6 +273,7 @@ def t7_ccprobe(bank, report, expect):
     """
     params = bank.globals
     rows = NUM_CC_ASSIGN
+    # O(r) time, O(1) space — r = 33 CC assign rows (fixed)
     for row in range(rows):
         params.set_cc_assignment(row, CC_PROBE_BASE + row)
     report(
@@ -266,6 +282,7 @@ def t7_ccprobe(bank, report, expect):
     )
     expect(
         "cc_assignments",
+        # O(r) time, O(r) space — r = 33 CC assign rows (fixed)
         value=[CC_PROBE_BASE + row for row in range(rows)],
     )
     return (
@@ -294,6 +311,7 @@ TESTS = [
 ]
 
 
+# O(T·b + o) time, O(b + o) space — T = 8 fixed TESTS entries; b = bytes in the source bank (each test reads, writes and diffs one copy); o = rows in the research operation table
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, help="a bank from your card")
@@ -331,11 +349,13 @@ def main(argv=None) -> int:
         "tests": {},
     }
 
+    # O(T·b) time, O(b) space — T = 8 fixed TESTS entries; b = bytes in the source bank (validation walks fixed 256-pattern and 384-slot tables)
     for name, summary, mutate in TESTS:
         bank = reader.read_auto(original)
         notes: list[str] = []
         probes: list[dict] = []
 
+        # O(k) time, O(k) space — k = keyword params of this expectation
         def expect(kind: str, _probes=probes, **params) -> None:
             """Record one fact a bank coming BACK off the machine must show.
 
@@ -354,6 +374,7 @@ def main(argv=None) -> int:
         written = open(dest, "rb").read()
         report = validator.validate(reader.read_auto(written))
         new_errors = len(report.errors()) - len(baseline.errors())
+        # O(b) time, O(1) space — b = bytes in the shorter of the written and original banks
         delta = sum(
             1
             for i in range(min(len(written), len(original)))
@@ -362,6 +383,7 @@ def main(argv=None) -> int:
         flag = "" if new_errors <= 0 else f"  <-- {new_errors} NEW validation error(s)"
         plural = "byte differs" if delta == 1 else "bytes differ"
         print(f"{name:12s} {summary:34s} {delta:>9,} {plural}{flag}")
+        # O(u) time, O(1) space — u = notes the mutation reported
         for note in notes:
             print(f"       change: {note}")
         print(f"       ON THE MACHINE: {instruction}")

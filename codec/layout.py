@@ -135,6 +135,7 @@ MOTION_TARGET_EMPTY = 0xFFFF
 MOTION_VALUE_DISABLED = 0x80
 
 
+# O(1) time, O(1) space
 def discrete_step(n_options):
     """Byte spacing for a discrete motion parameter with `n_options` choices.
 
@@ -148,11 +149,13 @@ def discrete_step(n_options):
     return -(-128 // n_options)  # ceil(128 / n_options)
 
 
+# O(1) time, O(1) space
 def encode_discrete(index, n_options):
     """Option index -> stored byte."""
     return index * discrete_step(n_options)
 
 
+# O(1) time, O(1) space
 def decode_discrete(value, n_options):
     """Stored byte -> option index."""
     return value // discrete_step(n_options)
@@ -289,6 +292,7 @@ UNKNOWN_REGIONS = [
 ]
 
 
+# O(r) time, O(r) space — r = 15 fixed regions
 def region_map():
     """Return the full ordered region map as (name, start, end, note) tuples.
 

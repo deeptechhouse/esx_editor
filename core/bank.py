@@ -41,15 +41,20 @@ class RawRegions:
 
     __slots__ = ("_regions",)
 
+    # O(r) time, O(r) space — r = total bytes across all raw regions
     def __init__(self, regions: dict[str, bytes]):
+        # O(r) time, O(r) space — r = total bytes across all raw regions
         self._regions = {k: bytes(v) for k, v in regions.items()}
 
+    # O(k) time, O(k) space — k = named raw regions
     def names(self) -> tuple[str, ...]:
         return tuple(self._regions.keys())
 
+    # O(1) time, O(1) space
     def has(self, name: str) -> bool:
         return name in self._regions
 
+    # O(b) time, O(b) space — b = bytes in the named region (defensive copy)
     def get(self, name: str) -> bytes:
         """Return the verbatim bytes for a named region (a copy)."""
         try:
@@ -77,24 +82,29 @@ class SampleArea:
 
     __slots__ = ("_num_mono", "_num_stereo", "_current_offset")
 
+    # O(1) time, O(1) space
     def __init__(self, num_mono: int, num_stereo: int, current_offset: int):
         self._num_mono = num_mono
         self._num_stereo = num_stereo
         self._current_offset = current_offset
 
     @property
+    # O(1) time, O(1) space
     def num_mono(self) -> int:
         return self._num_mono
 
     @property
+    # O(1) time, O(1) space
     def num_stereo(self) -> int:
         return self._num_stereo
 
     @property
+    # O(1) time, O(1) space
     def current_offset(self) -> int:
         """Byte offset (relative to ADDR_SAMPLE_DATA) of the next free write."""
         return self._current_offset
 
+    # O(1) time, O(1) space
     def set_counts(self, num_mono: int, num_stereo: int) -> None:
         """Set how many slots the machine believes are occupied.
 
@@ -110,6 +120,7 @@ class SampleArea:
         self._num_mono = num_mono
         self._num_stereo = num_stereo
 
+    # O(1) time, O(1) space
     def set_current_offset(self, value: int) -> None:
         if value < 0 or value > L.MAX_SAMPLE_BYTES:
             raise InvariantError(
@@ -117,6 +128,7 @@ class SampleArea:
             )
         self._current_offset = value
 
+    # O(1) time, O(1) space
     def to_bytes(self) -> bytes:
         """The 12 bytes as they appear at ADDR_NUM_MONO_SAMPLES."""
         return struct.pack(
@@ -124,12 +136,14 @@ class SampleArea:
         )
 
     @classmethod
+    # O(1) time, O(1) space
     def from_bytes(cls, raw: bytes) -> SampleArea:
         if len(raw) != 12:
             raise InvariantError(f"sample-area header must be 12 bytes, got {len(raw)}")
         return cls(*struct.unpack(">III", raw))
 
     @classmethod
+    # O(1) time, O(1) space
     def empty(cls) -> SampleArea:
         return cls(0, 0, 0)
 
@@ -154,6 +168,7 @@ class Bank:
     NUM_SAMPLES_MONO = L.NUM_SAMPLES_MONO
     MAX_PCM_BYTES = L.MAX_SAMPLE_BYTES  # 25,165,824
 
+    # O(n) time, O(n) space — n = PCM bytes copied in (the 256 patterns, 64 songs and 384 slots are fixed-size lists)
     def __init__(
         self,
         globals_: GlobalParameters,
@@ -175,18 +190,22 @@ class Bank:
         self._sample_area = sample_area or SampleArea.empty()
 
     @property
+    # O(1) time, O(1) space
     def save_type(self) -> str:
         """SAVE_ALL or SAVE_PSG (TDD §2.5)."""
         return self._save_type
 
     @property
+    # O(1) time, O(1) space
     def globals(self) -> GlobalParameters:
         return self._globals
 
+    # O(P) time, O(P) space — P = 256 patterns
     def patterns(self) -> tuple[Pattern, ...]:
         """Immutable view of the patterns."""
         return tuple(self._patterns)
 
+    # O(G) time, O(G) space — G = 64 songs
     def songs(self) -> tuple[Song, ...]:
         """The 64 songs. The tuple is a view; the Songs in it are live.
 
@@ -197,29 +216,35 @@ class Bank:
         """
         return tuple(self._songs)
 
+    # O(B) time, O(B) space — B = 528 bytes per song block (via Song.clear)
     def clear_song(self, index: int) -> None:
         """Reset one song to the machine's untouched default."""
         self._songs[index].clear()
 
+    # O(S) time, O(S) space — S = 384 sample slots
     def samples(self) -> tuple[SampleSlot, ...]:
         """Immutable view of the 384 sample slots (256 mono + 128 stereo)."""
         return tuple(self._samples)
 
     @property
+    # O(1) time, O(1) space
     def raw_regions(self) -> RawRegions:
         return self._raw
 
     @property
+    # O(n) time, O(n) space — n = PCM bytes in the bank (defensive copy)
     def pcm(self) -> bytes:
         """The raw PCM region (a defensive copy)."""
         return bytes(self._pcm)
 
     @property
+    # O(1) time, O(1) space
     def sample_area(self) -> SampleArea:
         """Decoded counts + currentOffset (TDD §2.1)."""
         return self._sample_area
 
     # -- sample-area bookkeeping -------------------------------------------
+    # O(1) time, O(1) space
     def sample_area_header(self) -> tuple[int, int, int]:
         """Return (num_mono, num_stereo, current_offset).
 
@@ -231,6 +256,7 @@ class Bank:
         area = self._sample_area
         return area.num_mono, area.num_stereo, area.current_offset
 
+    # O(1) time, O(1) space
     def pcm_used_bytes(self) -> int:
         """Total PCM currently committed (from currentOffset)."""
         try:
@@ -238,11 +264,13 @@ class Bank:
         except InvariantError:
             return len(self._pcm)
 
+    # O(1) time, O(1) space
     def pcm_free_bytes(self) -> int:
         """MAX_PCM_BYTES minus pcm_used_bytes()."""
         return self.MAX_PCM_BYTES - self.pcm_used_bytes()
 
     # -- pattern operations -------------------------------------------------
+    # O(P·B) time, O(P·B) space — P = 256 patterns; B = 4,280 bytes per pattern chunk (each is serialised and hashed once)
     def blank_pattern_bytes(self) -> bytes:
         """This bank's OWN blank pattern chunk, taken from the bank itself.
 
@@ -259,11 +287,13 @@ class Bank:
             neighbours instead of importing another bank's convention.
         """
         counts: dict[bytes, int] = {}
+        # O(P·B) time, O(P·B) space — P = 256 patterns; B = 4,280 bytes per pattern chunk
         for pattern in self._patterns:
             raw = pattern.to_bytes()
             counts[raw] = counts.get(raw, 0) + 1
         return max(counts, key=lambda raw: counts[raw])
 
+    # O(P·B) time, O(P·B) space — P = 256 patterns; B = 4,280 bytes per pattern chunk (dominated by blank_pattern_bytes)
     def clear_pattern(self, index: int) -> None:
         """Reset a pattern to this bank's blank form (the machine's Pattern Clear).
 
@@ -273,6 +303,7 @@ class Bank:
         self._require_pattern(index)
         self._patterns[index] = Pattern.from_bytes(self.blank_pattern_bytes())
 
+    # O(B) time, O(B) space — B = 4,280 bytes per pattern chunk
     def copy_pattern(self, source: int, destination: int) -> None:
         """Copy one pattern's 4,280 bytes onto another slot."""
         self._require_pattern(source)
@@ -283,17 +314,20 @@ class Bank:
             self._patterns[source].to_bytes()
         )
 
+    # O(P·B) time, O(P·B) space — P = 256 patterns; B = 4,280 bytes per pattern chunk (dominated by blank_pattern_bytes)
     def is_pattern_blank(self, index: int) -> bool:
         """True when the pattern is byte-identical to this bank's blank form."""
         self._require_pattern(index)
         return self._patterns[index].to_bytes() == self.blank_pattern_bytes()
 
+    # O(1) time, O(1) space
     def _require_pattern(self, index: int) -> None:
         if not (0 <= index < len(self._patterns)):
             raise InvariantError(
                 f"pattern {index} out of range 0..{len(self._patterns) - 1}"
             )
 
+    # O(S + n) time, O(n) space — S = 384 sample slots (scanned for the high-water mark); n = PCM bytes in the bank after the commit (region grown, block written, trailer rewritten)
     def commit_sample(
         self,
         slot_index: int,
@@ -385,6 +419,7 @@ class Bank:
         self._recount()
         self._sync_trailer()
 
+    # O(S + n) time, O(n) space — S = 384 sample slots; n = PCM bytes in the bank (the trailer rewrite may regrow the region)
     def clear_sample(self, slot_index: int) -> None:
         """Empty a slot. The PCM it referenced is NOT reclaimed.
 
@@ -402,6 +437,7 @@ class Bank:
         self._recount()
         self._sync_trailer()
 
+    # O(S + n) time, O(n) space — S = 384 sample slots; n = PCM bytes in the bank (every occupied block is copied once into the rebuilt region)
     def compact_pcm(self) -> int:
         """Rewrite the PCM region with no gaps; return the bytes reclaimed.
 
@@ -413,11 +449,14 @@ class Bank:
         if self._save_type == SAVE_PSG:
             raise InvariantError("a PSG bank has no PCM to compact")
         before = len(self._pcm)
+        # O(S) time, O(S) space — S = 384 sample slots
         occupied = [s for s in self._samples if not s.empty]
+        # O(S + n) time, O(n) space — S = 384 sample slots; n = PCM bytes in the bank (each occupied block is sliced out once)
         chunks = [
             (s, bytes(self._pcm[s.offset_start : s.offset_end])) for s in occupied
         ]
         rebuilt = bytearray()
+        # O(S + n) time, O(n) space — S = 384 sample slots; n = PCM bytes in the bank (amortised bytearray.extend)
         for slot, data in chunks:
             start = _align_up(len(rebuilt) + 2, 4) if rebuilt else 0
             rebuilt.extend(b"\x00" * (start - len(rebuilt)))
@@ -430,6 +469,7 @@ class Bank:
         return before - len(self._pcm)
 
     # -- internals ----------------------------------------------------------
+    # O(S) time, O(1) space — S = 384 sample slots
     def _highest_end(self) -> int:
         """The furthest byte any occupied slot reaches into the PCM region.
 
@@ -439,6 +479,7 @@ class Bank:
         Chronic-Interactive.esx (40 stereo slots) before this accounted for it.
         """
         highest = 0
+        # O(S) time, O(1) space — S = 384 sample slots
         for slot in self._samples:
             if slot.empty:
                 continue
@@ -448,11 +489,13 @@ class Bank:
                 highest = max(highest, ch2[1])
         return highest
 
+    # O(S) time, O(1) space — S = 384 sample slots (via _highest_end)
     def _next_start(self) -> int:
         """align_up(highest_end + 2, 4), or 0 for the first sample."""
         highest = self._highest_end()
         return _align_up(highest + L.PCM_GAP, L.PCM_ALIGN) if highest else 0
 
+    # O(S) time, O(1) space — S = 384 sample slots (via _next_start)
     def _next_offset(self) -> int:
         """currentOffset = align_up(highest_end + 2, 4); 0 when no sample exists.
 
@@ -462,6 +505,7 @@ class Bank:
         """
         return self._next_start()
 
+    # O(S + n) time, O(n) space — S = 384 sample slots (via _highest_end); n = PCM bytes in the bank (truncate at the cursor, regrow if short)
     def _sync_trailer(self) -> None:
         """Rewrite the free-space block that terminates the PCM chain.
 
@@ -487,12 +531,16 @@ class Bank:
             self._pcm.extend(b"\x00" * (cursor - len(self._pcm)))
         self._pcm.extend(free)
 
+    # O(S) time, O(S) space — S = 384 sample slots (each slice copies its half of the slot list)
     def _recount(self) -> None:
+        # O(m) time, O(m) space — m = 256 mono slots (the slice is a copy)
         mono = sum(1 for s in self._samples[: L.NUM_SAMPLES_MONO] if not s.empty)
+        # O(k) time, O(k) space — k = 128 stereo slots (the slice is a copy)
         stereo = sum(1 for s in self._samples[L.NUM_SAMPLES_MONO :] if not s.empty)
         self._sample_area.set_counts(mono, stereo)
 
 
+# O(1) time, O(1) space
 def pcm_block_header(start: int, end: int, number: int, channel: int) -> bytes:
     """The 16 bytes that open every PCM block (VERIFIED — see codec.layout).
 
@@ -511,6 +559,7 @@ def pcm_block_header(start: int, end: int, number: int, channel: int) -> bytes:
     )
 
 
+# O(1) time, O(1) space
 def _align_up(value: int, boundary: int) -> int:
     """Smallest multiple of `boundary` at or above `value`."""
     return -(-value // boundary) * boundary

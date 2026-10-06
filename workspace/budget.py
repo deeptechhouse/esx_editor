@@ -34,6 +34,7 @@ class BudgetItem:
 
     __slots__ = ("_name", "_duration_s", "_source_rate", "_channels")
 
+    # O(1) time, O(1) space
     def __init__(self, name: str, duration_s: float, source_rate: int, channels: int):
         self._name = name
         self._duration_s = duration_s
@@ -41,14 +42,17 @@ class BudgetItem:
         self._channels = channels
 
     @property
+    # O(1) time, O(1) space
     def name(self) -> str:
         return self._name
 
     @property
+    # O(1) time, O(1) space
     def duration_s(self) -> float:
         return self._duration_s
 
     @property
+    # O(1) time, O(1) space
     def channels(self) -> int:
         return self._channels
 
@@ -59,11 +63,13 @@ class BudgetCalculator:
     __slots__ = ()
 
     @staticmethod
+    # O(1) time, O(1) space
     def align_up(n: int, boundary: int) -> int:
         if boundary <= 0:
             raise ValueError(f"alignment boundary must be > 0, got {boundary}")
         return ((n + boundary - 1) // boundary) * boundary
 
+    # O(1) time, O(1) space
     def cost_bytes(self, duration_s: float, rate: int, channels: int = 1) -> int:
         """Exact bytes a sample consumes, block header included.
 
@@ -86,22 +92,26 @@ class BudgetCalculator:
         raw = frames * 2 * channels
         return self.align_up(L.PCM_BLOCK_HEADER_LEN + raw + 2, 4)
 
+    # O(n) time, O(1) space — n = items (rate_for is called once per item and assumed constant-time)
     def total_cost(
         self, items: Sequence[BudgetItem], rate_for: Callable[[str], int] | None = None
     ) -> int:
         """Sum the cost of every item; rate_for(name)->rate overrides the default."""
         lookup = rate_for or (lambda _name: DEFAULT_RATE)
+        # O(n) time, O(1) space — n = items
         return sum(
             self.cost_bytes(item.duration_s, lookup(item.name), item.channels)
             for item in items
         )
 
+    # O(1) time, O(1) space
     def seconds_available(self, rate: int, channels: int = 1) -> float:
         """Seconds of audio that fit in an empty bank at this rate."""
         if rate <= 0 or channels < 1:
             raise ValueError(f"invalid rate/channels: {rate}/{channels}")
         return CAPACITY / (rate * 2 * channels)
 
+    # O(1) time, O(1) space
     def remaining_bytes(self, used: int) -> int:
         """Bytes still free given a currently-used total (may be negative)."""
         return CAPACITY - used

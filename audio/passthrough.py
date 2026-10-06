@@ -21,6 +21,7 @@ from audio.ports import ConversionSpec, KeyResult
 class WavPassthroughConverter:
     """AudioConverter for .wav files: header probe + byte-copy."""
 
+    # O(1) time, O(1) space
     def probe_duration(self, src_path: str) -> tuple[float, int, int]:
         """Read duration/rate/channels from the header only.
 
@@ -46,10 +47,12 @@ class WavPassthroughConverter:
                 f"{src_path!r} is not a readable WAV: {exc or type(exc).__name__}"
             ) from exc
 
+    # O(1) time, O(1) space
     def formats(self) -> tuple[str, ...]:
         """Container extensions this adapter can read: WAV only."""
         return ("wav",)
 
+    # O(n) time, O(1) space — n = bytes in the source file (copied in fixed-size chunks)
     def convert(self, src_path: str, dst_path: str, spec: ConversionSpec) -> None:
         shutil.copy2(src_path, dst_path)
 
@@ -57,5 +60,6 @@ class WavPassthroughConverter:
 class NullKeyDetector:
     """KeyDetector that never guesses — percussion-safe (TDD §5.1 / §6.5)."""
 
+    # O(1) time, O(1) space
     def detect(self, path: str, max_seconds: float | None = None) -> KeyResult | None:
         return None

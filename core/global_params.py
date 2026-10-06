@@ -127,11 +127,13 @@ MAX_NOTE = 127
 _NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
 
+# O(v) time, O(v) space — v = characters in the name
 def _normalise(name: str) -> str:
     """Fold case and collapse whitespace, so "Filter  Cutoff" finds its row."""
     return " ".join(name.split()).upper()
 
 
+# O(1) time, O(1) space
 def note_name(number: int) -> str:
     """MIDI note number -> the name the ESX-1 displays (Korg naming, C-1 = 0).
 
@@ -148,6 +150,7 @@ class GlobalParameters:
 
     __slots__ = ("_raw",)
 
+    # O(1) time, O(1) space
     def __init__(self, raw: bytes):
         if len(raw) != SIZE:
             raise InvariantError(
@@ -157,15 +160,18 @@ class GlobalParameters:
 
     # -- drum note numbers (VERIFIED) ---------------------------------------
 
+    # O(D) time, O(D) space — D = 13 drum-note parts
     def drum_notes(self) -> tuple[int, ...]:
         """The 13 note numbers, in DRUM_NOTE_PARTS order."""
         start = DRUM_NOTE_OFFSET
         return tuple(self._raw[start : start + NUM_DRUM_NOTES])
 
+    # O(1) time, O(1) space
     def drum_note(self, part: int) -> int:
         self._check_part(part)
         return self._raw[DRUM_NOTE_OFFSET + part]
 
+    # O(1) time, O(1) space
     def set_drum_note(self, part: int, number: int) -> None:
         """Assign one part's MIDI note number.
 
@@ -177,14 +183,18 @@ class GlobalParameters:
             raise InvariantError(f"note number {number} out of range 0..{MAX_NOTE}")
         self._raw[DRUM_NOTE_OFFSET + part] = number
 
+    # O(1) time, O(1) space
     def drum_note_name(self, part: int) -> str:
         return note_name(self.drum_note(part))
 
+    # O(D) time, O(1) space — D = 13 drum-note parts
     def reset_drum_notes(self) -> None:
         """Restore the manual's printed factory assignments."""
+        # O(D) time, O(1) space — D = 13 drum-note parts
         for part, number in enumerate(FACTORY_DRUM_NOTES):
             self.set_drum_note(part, number)
 
+    # O(D) time, O(D) space — D = 13 drum-note parts
     def duplicate_drum_notes(self) -> dict[int, tuple[int, ...]]:
         """Note numbers assigned to more than one part -> those parts.
 
@@ -194,10 +204,13 @@ class GlobalParameters:
         way a mapping session goes quietly wrong.
         """
         seen: dict[int, list[int]] = {}
+        # O(D) time, O(D) space — D = 13 drum-note parts
         for part, number in enumerate(self.drum_notes()):
             seen.setdefault(number, []).append(part)
+        # O(D) time, O(D) space — D = 13 drum-note parts
         return {n: tuple(parts) for n, parts in seen.items() if len(parts) > 1}
 
+    # O(1) time, O(1) space
     def _check_part(self, part: int) -> None:
         if not (0 <= part < NUM_DRUM_NOTES):
             raise InvariantError(
@@ -206,20 +219,24 @@ class GlobalParameters:
 
     # -- CC assign table (LOCATED; rows not yet named) ----------------------
 
+    # O(C) time, O(C) space — C = 33 CC assign rows
     def cc_assignments(self) -> tuple[int, ...]:
         """The 33 assigned control-change numbers, in stored order."""
         start = CC_ASSIGN_OFFSET
         return tuple(self._raw[start : start + NUM_CC_ASSIGN])
 
+    # O(1) time, O(1) space
     def cc_assignment(self, row: int) -> int:
         self._check_row(row)
         return self._raw[CC_ASSIGN_OFFSET + row]
 
+    # O(1) time, O(1) space
     def cc_name(self, row: int) -> str:
         """The knob this row drives."""
         self._check_row(row)
         return CC_ASSIGN_NAMES[row]
 
+    # O(C + v) time, O(v) space — C = 33 knob names, each normalised once; v = characters in the requested name
     def cc_row_for(self, name: str) -> int:
         """Row index for a knob name, matched case- and space-insensitively.
 
@@ -228,6 +245,7 @@ class GlobalParameters:
         of every caller.
         """
         wanted = _normalise(name)
+        # O(C) time, O(1) space — C = 33 knob names (each at most 16 characters)
         for row, knob in enumerate(CC_ASSIGN_NAMES):
             if _normalise(knob) == wanted:
                 return row
@@ -236,14 +254,17 @@ class GlobalParameters:
             f"the {NUM_CC_ASSIGN} names are {', '.join(CC_ASSIGN_NAMES)}"
         )
 
+    # O(C + v) time, O(v) space — C = 33 knob names (via cc_row_for); v = characters in the requested name
     def cc_for(self, name: str) -> int:
         """The control-change number currently driving a named knob."""
         return self.cc_assignment(self.cc_row_for(name))
 
+    # O(C + v) time, O(v) space — C = 33 knob names (via cc_row_for); v = characters in the requested name
     def set_cc_for(self, name: str, cc: int) -> None:
         """Point a named knob at a control-change number."""
         self.set_cc_assignment(self.cc_row_for(name), cc)
 
+    # O(C) time, O(C) space — C = 33 CC assign rows
     def duplicate_cc_rows(self) -> dict[int, tuple[int, ...]]:
         """Control-change numbers driving more than one knob -> those rows.
 
@@ -252,10 +273,13 @@ class GlobalParameters:
         likely way a remapping session goes quietly wrong.
         """
         seen: dict[int, list[int]] = {}
+        # O(C) time, O(C) space — C = 33 CC assign rows
         for row, cc in enumerate(self.cc_assignments()):
             seen.setdefault(cc, []).append(row)
+        # O(C) time, O(C) space — C = 33 CC assign rows
         return {cc: tuple(rows) for cc, rows in seen.items() if len(rows) > 1}
 
+    # O(1) time, O(1) space
     def set_cc_assignment(self, row: int, cc: int) -> None:
         """Set one row's control-change number.
 
@@ -267,6 +291,7 @@ class GlobalParameters:
             raise InvariantError(f"control change number {cc} out of range 0..{MAX_CC}")
         self._raw[CC_ASSIGN_OFFSET + row] = cc
 
+    # O(1) time, O(1) space
     def _check_row(self, row: int) -> None:
         if not (0 <= row < NUM_CC_ASSIGN):
             raise InvariantError(
@@ -274,6 +299,7 @@ class GlobalParameters:
             )
 
     @property
+    # O(1) time, O(1) space
     def midi_channel(self) -> int:
         """Not decoded: it is one of the ten bytes before the note table, and
         every corpus bank carries the same value, so it cannot be located."""
@@ -285,10 +311,12 @@ class GlobalParameters:
 
     # -- codec io ------------------------------------------------------------
 
+    # O(1) time, O(1) space
     def to_bytes(self) -> bytes:
         """Serialize back to the 192-byte block."""
         return bytes(self._raw)
 
     @classmethod
+    # O(1) time, O(1) space
     def from_bytes(cls, raw: bytes) -> GlobalParameters:
         return cls(raw)

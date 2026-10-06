@@ -39,35 +39,41 @@ KORG_ID = 0x42
 ESX_FAMILY = 0x71
 
 
+# O(n) time, O(n) space — n = bytes in the raw capture (each find() resumes where the last stopped)
 def split_sysex(data: bytes) -> list[bytes]:
     """Split a raw capture into individual F0..F7 messages."""
     msgs, i = [], 0
+    # O(n) time, O(n) space — n = bytes in the raw capture (every byte scanned once across all find() calls)
     while True:
         s = data.find(0xF0, i)
         if s < 0:
             break
         e = data.find(0xF7, s)
         if e < 0:
-            msgs.append(data[s:])          # truncated tail
+            msgs.append(data[s:])  # truncated tail
             break
-        msgs.append(data[s:e + 1])
+        msgs.append(data[s : e + 1])
         i = e + 1
     return msgs
 
 
+# O(n) time, O(n) space — n = bytes in the packed payload
 def unpack_7bit(payload: bytes) -> bytes:
     """Korg/Roland-style 8-in-7 expansion. See module docstring."""
     out = bytearray()
+    # O(n) time, O(n) space — n = bytes in the packed payload (8-byte groups, k = 7 bytes each inner)
     for g in range(0, len(payload), 8):
-        group = payload[g:g + 8]
+        group = payload[g : g + 8]
         if len(group) < 2:
             break
         msbs = group[0]
+        # O(k) time, O(1) space — k = 7 payload bytes per 8-byte group
         for n, b in enumerate(group[1:]):
             out.append(b | (0x80 if (msbs >> n) & 1 else 0))
     return bytes(out)
 
 
+# O(n + m) time, O(n + m) space — n = bytes in the capture file; m = bytes in the --compare bank
 def analyse(path: Path, compare: Path | None) -> int:
     data = path.read_bytes()
     msgs = split_sysex(data)
@@ -77,14 +83,18 @@ def analyse(path: Path, compare: Path | None) -> int:
         print("  no SysEx framing (F0..F7) found")
         return 1
 
+    # O(k) time, O(1) space — k = 8 messages shown x 8 header bytes each
     for i, m in enumerate(msgs[:8]):
+        # O(k) time, O(1) space — k = 8 header bytes
         head = " ".join(f"{b:02X}" for b in m[:8])
         print(f"\n  [{i}] {len(m):,} bytes   header: {head} ...")
         if len(m) > 4 and m[1] == KORG_ID:
-            print(f"       Korg 0x42 | channel {(m[2] & 0x0F) + 1} | "
-                  f"family 0x{m[3]:02X}"
-                  + (" = ESX-1" if m[3] == ESX_FAMILY else " (UNEXPECTED)")
-                  + f" | function 0x{m[4]:02X}")
+            print(
+                f"       Korg 0x42 | channel {(m[2] & 0x0F) + 1} | "
+                f"family 0x{m[3]:02X}"
+                + (" = ESX-1" if m[3] == ESX_FAMILY else " (UNEXPECTED)")
+                + f" | function 0x{m[4]:02X}"
+            )
         else:
             print(f"       manufacturer 0x{m[1]:02X} — not Korg")
 
@@ -94,11 +104,13 @@ def analyse(path: Path, compare: Path | None) -> int:
     # ---- try to unpack the largest message -------------------------------
     big = max(msgs, key=len)
     print(f"\n=== unpacking largest message ({len(big):,} bytes) ===")
+    # O(n) time, O(n) space — n = bytes in the largest message; k = 3 header guesses x 5 size labels
     for hdr in (5, 6, 7):
         body = big[hdr:-1] if big[-1] == 0xF7 else big[hdr:]
         dec = unpack_7bit(body)
         note = ""
         if L is not None:
+            # O(k) time, O(1) space — k = 5 known chunk sizes
             for label, expect in (
                 ("one pattern", L.CHUNK_PATTERN),
                 ("64 patterns", 64 * L.CHUNK_PATTERN),
@@ -108,14 +120,17 @@ def analyse(path: Path, compare: Path | None) -> int:
             ):
                 if dec and abs(len(dec) - expect) <= 8:
                     note = f"   <-- matches {label} ({expect:,})"
-        print(f"  header {hdr} bytes -> payload {len(body):,} -> decoded "
-              f"{len(dec):,} bytes{note}")
+        print(
+            f"  header {hdr} bytes -> payload {len(body):,} -> decoded "
+            f"{len(dec):,} bytes{note}"
+        )
 
     # ---- optional comparison against a known bank -------------------------
     if compare and L is not None:
         ref = compare.read_bytes()
-        pat0 = ref[L.ADDR_PATTERN_DATA:L.ADDR_PATTERN_DATA + L.CHUNK_PATTERN]
+        pat0 = ref[L.ADDR_PATTERN_DATA : L.ADDR_PATTERN_DATA + L.CHUNK_PATTERN]
         print(f"\n=== searching decoded data for pattern 0 of {compare.name} ===")
+        # O(n) time, O(n) space — n = bytes in the largest message (3 header guesses, 24-byte probe find)
         for hdr in (5, 6, 7):
             body = big[hdr:-1] if big[-1] == 0xF7 else big[hdr:]
             dec = unpack_7bit(body)
@@ -123,17 +138,22 @@ def analyse(path: Path, compare: Path | None) -> int:
             # distinctive enough to locate without matching the whole 4280 B.
             probe = pat0[:24]
             idx = dec.find(probe)
-            print(f"  header {hdr}: pattern-0 signature "
-                  + (f"FOUND at offset {idx}" if idx >= 0 else "not found"))
+            print(
+                f"  header {hdr}: pattern-0 signature "
+                + (f"FOUND at offset {idx}" if idx >= 0 else "not found")
+            )
     return 0
 
 
+# O(n + m) time, O(n + m) space — n = bytes in the capture file; m = bytes in the --compare bank
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("capture")
-    ap.add_argument("--compare", default=None,
-                    help="a .esx bank to look for known pattern data in")
+    ap.add_argument(
+        "--compare", default=None, help="a .esx bank to look for known pattern data in"
+    )
     a = ap.parse_args()
     return analyse(Path(a.capture), Path(a.compare) if a.compare else None)
 

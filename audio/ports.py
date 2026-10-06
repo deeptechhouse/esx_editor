@@ -23,21 +23,25 @@ class KeyResult:
 
     __slots__ = ("_camelot", "_classical", "_confidence")
 
+    # O(1) time, O(1) space
     def __init__(self, camelot: str, classical: str, confidence: float):
         self._camelot = camelot
         self._classical = classical
         self._confidence = confidence
 
+    # O(1) time, O(1) space
     @property
     def camelot(self) -> str:
         """e.g. '8A' (letter = mode: A minor, B major)."""
         return self._camelot
 
+    # O(1) time, O(1) space
     @property
     def classical(self) -> str:
         """e.g. 'Am', 'C', 'F#m'."""
         return self._classical
 
+    # O(1) time, O(1) space
     @property
     def confidence(self) -> float:
         return self._confidence
@@ -63,6 +67,7 @@ class NoteResult:
 
     __slots__ = ("_name", "_octave", "_frequency", "_cents", "_confidence")
 
+    # O(1) time, O(1) space
     def __init__(
         self, name: str, octave: int, frequency: float, cents: float, confidence: float
     ):
@@ -72,36 +77,43 @@ class NoteResult:
         self._cents = cents
         self._confidence = confidence
 
+    # O(1) time, O(1) space
     @property
     def name(self) -> str:
         """Pitch class, sharp spelling: 'C', 'F#', 'A'."""
         return self._name
 
+    # O(1) time, O(1) space
     @property
     def octave(self) -> int:
         """Scientific pitch notation octave — middle C is C4."""
         return self._octave
 
+    # O(1) time, O(1) space
     @property
     def label(self) -> str:
         """The note as a musician would write it: 'A1', 'F#3'."""
         return f"{self._name}{self._octave}"
 
+    # O(1) time, O(1) space
     @property
     def frequency(self) -> float:
         """The measured dominant frequency in Hz."""
         return self._frequency
 
+    # O(1) time, O(1) space
     @property
     def cents(self) -> float:
         """Deviation from equal temperament, -50..+50."""
         return self._cents
 
+    # O(1) time, O(1) space
     @property
     def confidence(self) -> float:
         """0..1, from how far the spectral peak stands above the noise floor."""
         return self._confidence
 
+    # O(1) time, O(1) space
     def __repr__(self) -> str:
         return f"<NoteResult {self.label} {self._cents:+.0f}c {self._frequency:.1f}Hz>"
 
@@ -115,19 +127,23 @@ class ConversionSpec:
 
     __slots__ = ("_rate", "_channels", "_strip_smpl")
 
+    # O(1) time, O(1) space
     def __init__(self, rate: int, channels: int, strip_smpl: bool = True):
         self._rate = rate
         self._channels = channels
         self._strip_smpl = strip_smpl
 
+    # O(1) time, O(1) space
     @property
     def rate(self) -> int:
         return self._rate
 
+    # O(1) time, O(1) space
     @property
     def channels(self) -> int:
         return self._channels
 
+    # O(1) time, O(1) space
     @property
     def strip_smpl(self) -> bool:
         """Strip inherited smpl chunks so the hardware does not silently
@@ -139,6 +155,7 @@ class ConversionSpec:
 class AudioConverter(Protocol):
     """Decode any input format and write 16-bit PCM at the requested spec."""
 
+    # O(s) time, O(s) space — s = samples in the source (the bound an adapter is expected to meet)
     def convert(self, src_path: str, dst_path: str, spec: ConversionSpec) -> None:
         """Convert src -> dst. The original file is NEVER modified (TDD §5.2).
 
@@ -146,6 +163,7 @@ class AudioConverter(Protocol):
         """
         ...
 
+    # O(1) time, O(1) space
     def probe_duration(self, src_path: str) -> tuple[float, int, int]:
         """Return (duration_seconds, source_rate, channels) from the header
         only, without decoding audio (TDD §6.1)."""
@@ -156,6 +174,7 @@ class AudioConverter(Protocol):
 class KeyDetector(Protocol):
     """Estimate the musical key of an audio file."""
 
+    # O(s) time, O(s) space — s = samples analysed (adapters cap them at max_seconds)
     def detect(self, path: str, max_seconds: float | None = None) -> KeyResult | None:
         """Return the estimated key, or None if the material is not tonal enough.
 
@@ -170,6 +189,7 @@ class KeyDetector(Protocol):
 class PitchDetector(Protocol):
     """Estimate the dominant pitch of a sound, tonal or percussive."""
 
+    # O(s) time, O(s) space — s = samples analysed (adapters cap them at max_seconds)
     def detect_note(
         self, path: str, max_seconds: float | None = None
     ) -> NoteResult | None:
@@ -191,6 +211,7 @@ class FxRenderer(Protocol):
     'approximate' in the UI.
     """
 
+    # O(s) time, O(s) space — s = bytes of PCM to render (contract only, no adapter ships in v1)
     def render(
         self, pcm: bytes, sample_rate: int, fx_type: int, edit1: int, edit2: int
     ) -> bytes: ...

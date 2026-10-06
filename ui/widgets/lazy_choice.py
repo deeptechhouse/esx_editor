@@ -32,6 +32,7 @@ class LazyChoiceBox(QComboBox):
 
     valueChanged = Signal(int)
 
+    # O(n) time, O(n) space — n = option values offered
     def __init__(
         self,
         values: Sequence[int],
@@ -49,9 +50,11 @@ class LazyChoiceBox(QComboBox):
 
     # -- value ---------------------------------------------------------------
 
+    # O(1) time, O(1) space
     def value(self) -> int:
         return self._value
 
+    # O(n) time, O(1) space — n = option values offered (a linear index lookup once the list is filled)
     def set_value(self, value: int) -> None:
         """Set the selection without emitting valueChanged."""
         if value == self._value and self.count():
@@ -68,10 +71,12 @@ class LazyChoiceBox(QComboBox):
 
     # -- laziness ------------------------------------------------------------
 
+    # O(n) time, O(n) space — n = option values offered (first open fills the list)
     def showPopup(self) -> None:  # noqa: N802 - Qt's name
         self.ensure_filled()
         super().showPopup()
 
+    # O(n) time, O(n) space — n = option values offered
     def ensure_filled(self) -> None:
         """Build the full option list. Idempotent; safe to call from tests."""
         if self._filled:
@@ -79,6 +84,7 @@ class LazyChoiceBox(QComboBox):
         self._quiet = True
         try:
             self.clear()
+            # O(n) time, O(n) space — n = option values offered
             for value in self._values:
                 self.addItem(self._label(value), value)
             self._filled = True
@@ -87,16 +93,19 @@ class LazyChoiceBox(QComboBox):
             self._quiet = False
 
     @property
+    # O(1) time, O(1) space
     def is_filled(self) -> bool:
         return self._filled
 
     # -- internals -----------------------------------------------------------
 
+    # O(1) time, O(1) space
     def _show_only_current(self) -> None:
         self.clear()
         self.addItem(self._label(self._value), self._value)
         self.setCurrentIndex(0)
 
+    # O(1) time, O(1) space
     def _on_index_changed(self, index: int) -> None:
         if self._quiet or index < 0:
             return
